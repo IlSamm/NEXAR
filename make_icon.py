@@ -8,11 +8,13 @@ BANNER = ROOT / 'branding' / 'nexar-banner.webp'
 
 def unblack(img: Image.Image) -> Image.Image:
     """Il logo è luce su nero: alpha = luminosità massima, così il bagliore sfuma su qualsiasi sfondo scuro."""
-    rgb = img.convert('RGB')
-    out = Image.new('RGBA', rgb.size)
-    out.putdata([(0, 0, 0, 0) if (a := max(p)) == 0 else (min(255, p[0] * 255 // a), min(255, p[1] * 255 // a), min(255, p[2] * 255 // a), a)
-                 for p in rgb.getdata()])
-    return out
+    raw = img.convert('RGB').tobytes()
+    out = bytearray()
+    for i in range(0, len(raw), 3):
+        r, g, b = raw[i:i + 3]
+        a = max(r, g, b)
+        out += bytes((0, 0, 0, 0)) if a == 0 else bytes((r * 255 // a, g * 255 // a, b * 255 // a, a))
+    return Image.frombytes('RGBA', img.size, bytes(out))
 
 def tile(logo: Image.Image, size=256) -> Image.Image:
     """Icona di Windows: logo su piastrella scura arrotondata, leggibile anche su barra delle applicazioni chiara."""
