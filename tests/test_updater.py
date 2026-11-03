@@ -44,3 +44,12 @@ def test_announce_after_update(monkeypatch, tmp_path):
     c = Ctrl(); c.state['last_version'] = '0.9.0'
     updater.Updater(c, tmp_path, tmp_path, True).announce()
     assert c.state['last_version'] == updater.VERSION and 'aggiornato' in c.notes[0]
+
+def test_spawn_falls_back_when_breakaway_denied(monkeypatch):
+    calls = []
+    def fake_popen(args, creationflags=0, **kw):
+        calls.append(creationflags)
+        if creationflags & updater.CREATE_BREAKAWAY_FROM_JOB: raise PermissionError('job senza breakaway')
+        return 'proc'
+    monkeypatch.setattr(updater.subprocess, 'Popen', fake_popen)
+    assert updater.spawn_detached(['x']) == 'proc' and len(calls) == 2

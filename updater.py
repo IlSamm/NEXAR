@@ -54,6 +54,17 @@ def safe_extract(zip_path: Path, dest: Path):
     if not exe or not (exe.parent / '_internal').is_dir(): raise RuntimeError('Archivio senza NEXAR.exe')
     return exe.parent
 
+CREATE_BREAKAWAY_FROM_JOB = 0x01000000
+
+def spawn_detached(args):
+    """Il sostituto deve sopravvivere alla chiusura di NEXAR. Se l'app gira dentro un job di Windows
+    (avvio da terminale o da un'altra app), un figlio normale verrebbe chiuso insieme a lei: si esce dal job.
+    Se il job non lo consente si ripiega su un processo staccato."""
+    base = getattr(subprocess, 'CREATE_NO_WINDOW', 0) | getattr(subprocess, 'CREATE_NEW_PROCESS_GROUP', 0)
+    io = dict(stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, close_fds=True)
+    try: return subprocess.Popen(args, creationflags=base | CREATE_BREAKAWAY_FROM_JOB, **io)
+    except OSError: return subprocess.Popen(args, creationflags=base | getattr(subprocess, 'DETACHED_PROCESS', 0), **io)
+
 SWAP = r'''$ErrorActionPreference = 'Continue'
 $log = '{log}'
 "$(Get-Date -Format s) aggiornamento {version}" | Out-File $log -Append -Encoding utf8
@@ -125,9 +136,7 @@ class Updater:
         script = work / 'swap.ps1'
         script.write_text(SWAP.format(pid=os.getpid(), src=src, dst=self.install_dir, log=self.data_dir / 'update.log',
                                       version=rel['tag']), encoding='utf-8-sig')
-        flags = getattr(subprocess, 'CREATE_NO_WINDOW', 0) | getattr(subprocess, 'DETACHED_PROCESS', 0)
-        subprocess.Popen(['powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', str(script)],
-                         creationflags=flags, close_fds=True)
+        spawn_detached(['powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', str(script)])
         self.ctrl.log_event(f'⬆️ Installazione NEXAR {rel["tag"]}: riavvio')
         self.ctrl.notify(f'⬆️ Installo NEXAR {rel["tag"].lstrip("v")}: torno online tra poco.')
         threading.Thread(target=self.exit_soon, daemon=True, name='update-exit').start()
