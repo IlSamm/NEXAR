@@ -1,0 +1,10 @@
+# Stack Portainer per umbrelOS. SOSTITUISCI 192.168.1.100 con IP IPv4 LAN del PC Windows.
+# Non pubblicare questo servizio su Internet: usa Tailscale per accesso remoto.
+services:
+  pc-eco-dashboard:
+    image: caddy:2-alpine
+    container_name: pc-eco-dashboard
+    command: ["reverse-proxy", "--from", ":80", "--to", "192.168.1.100:8765"]
+    ports:
+      - "8787:80"
+    restart: unless-stopped

@@ -1,0 +1,47 @@
+{
+  "access_token": "GENERATO_DALL_INSTALLAZIONE",
+  "web": {
+    "host": "127.0.0.1",
+    "port": 8765
+  },
+  "hardware": {
+    "cpu": "AMD Ryzen 7 9800X3D",
+    "gpu": "NVIDIA GeForce RTX 3060 Ti",
+    "motherboard": "MSI MAG B850 TOMAHAWK MAX WIFI",
+    "cooler": "ARCTIC Liquid Freezer II 240"
+  },
+  "eco_cpu_max_percent": 90,
+  "monitor_timeout_seconds": 60,
+  "telegram": {
+    "token": "",
+    "allowed_user_id": 0
+  },
+  "auto_detect": {
+    "enabled": false,
+    "process_names": [
+      "codex.exe",
+      "claude.exe"
+    ],
+    "restore_delay_seconds": 180
+  },
+  "sensors": {
+    "libre_hardware_monitor": "http://127.0.0.1:8085/data.json"
+  },
+  "rgb": {
+    "enabled": false,
+    "openrgb_exe": "",
+    "eco_profile": "",
+    "normal_profile": ""
+  },
+  "fans": {
+    "enabled": false,
+    "fancontrol_exe": "",
+    "eco_profile": "",
+    "normal_profile": ""
+  },
+  "alerts": {
+    "enabled": true,
+    "cpu_temp": 87,
+    "gpu_temp": 82
+  }
+}

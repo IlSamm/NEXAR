@@ -1,0 +1,343 @@
+﻿<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#090b0f"><meta name="color-scheme" content="dark">
+  <title>NEXAR</title>
+  <link rel="icon" href="/assets/icon-512.png" type="image/png">
+  <link rel="stylesheet" href="/assets/style.css"><script src="/assets/app.js" defer></script>
+</head>
+<body>
+<svg class="sprite" aria-hidden="true">
+ <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></symbol>
+ <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></symbol>
+ <symbol id="i-bulb" viewBox="0 0 24 24"><path d="M9 18h6M10 21.5h4M12 2.5a6.5 6.5 0 0 0-3.8 11.8c.5.4.8 1 .8 1.7v.5h6V16c0-.7.3-1.3.8-1.7A6.5 6.5 0 0 0 12 2.5z"/></symbol>
+ <symbol id="i-fan" viewBox="0 0 24 24"><circle cx="12" cy="12" r="1.8"/><path d="M12 10.2C11 6 12.5 3 15 3c2.2 0 3 2.3 1.6 4.2-1 1.4-2.8 2.6-4.6 3zM13.8 12c4.2-1 7.2.5 7.2 3 0 2.2-2.3 3-4.2 1.6-1.4-1-2.6-2.8-3-4.6zM12 13.8c1 4.2-.5 7.2-3 7.2-2.2 0-3-2.3-1.6-4.2 1-1.4 2.8-2.6 4.6-3zM10.2 12C6 13 3 11.5 3 9c0-2.2 2.3-3 4.2-1.6 1.4 1 2.6 2.8 3 4.6z"/></symbol>
+ <symbol id="i-power" viewBox="0 0 24 24"><path d="M12 2.5v9M17.7 6.3a8 8 0 1 1-11.4 0"/></symbol>
+ <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 13.5a4.5 4.5 0 0 0 6.8.5l3-3a4.5 4.5 0 0 0-6.4-6.4l-1.6 1.6M14 10.5a4.5 4.5 0 0 0-6.8-.5l-3 3a4.5 4.5 0 0 0 6.4 6.4l1.6-1.6"/></symbol>
+ <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></symbol>
+ <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="7" height="7" rx="2"/><rect x="13.5" y="3.5" width="7" height="7" rx="2"/><rect x="3.5" y="13.5" width="7" height="7" rx="2"/><rect x="13.5" y="13.5" width="7" height="7" rx="2"/></symbol>
+ <symbol id="i-monitor" viewBox="0 0 24 24"><rect x="2.5" y="3.5" width="19" height="13" rx="2"/><path d="M8 20.5h8M12 16.5v4"/></symbol>
+ <symbol id="i-leaf" viewBox="0 0 24 24"><path d="M5 20c0-9 5.5-15 15-15.5C19.6 14 14 19.5 5 20zM5 20l7.5-7.5"/></symbol>
+ <symbol id="i-cpu" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/><rect x="9.5" y="9.5" width="5" height="5" rx="1"/><path d="M9 2.5V6M15 2.5V6M9 18v3.5M15 18v3.5M2.5 9H6M2.5 15H6M18 9h3.5M18 15h3.5"/></symbol>
+ <symbol id="i-gpu" viewBox="0 0 24 24"><rect x="2.5" y="6.5" width="19" height="11" rx="2"/><circle cx="8.5" cy="12" r="2.6"/><circle cx="15.5" cy="12" r="2.6"/><path d="M6 17.5v2M10 17.5v2M14 17.5v2"/></symbol>
+ <symbol id="i-ram" viewBox="0 0 24 24"><rect x="2.5" y="7" width="19" height="9" rx="1.5"/><path d="M6.5 10v3M10 10v3M13.5 10v3M17 10v3M5 16v2.5M19 16v2.5"/></symbol>
+ <symbol id="i-temp" viewBox="0 0 24 24"><path d="M14 14.6V5a2 2 0 0 0-4 0v9.6a4 4 0 1 0 4 0z"/><path d="M12 11v6"/></symbol>
+ <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z"/></symbol>
+ <symbol id="i-restart" viewBox="0 0 24 24"><path d="M3.5 12a8.5 8.5 0 1 0 2.6-6.1L3.5 8.5M3.5 3.5v5h5"/></symbol>
+ <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="10.5" width="14" height="10" rx="2.5"/><path d="M8.5 10.5V7.5a3.5 3.5 0 0 1 7 0v3"/></symbol>
+ <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.2 2"/></symbol>
+ <symbol id="i-bot" viewBox="0 0 24 24"><rect x="4" y="8" width="16" height="12" rx="3.5"/><path d="M12 4.5V8M9 13.5v1.5M15 13.5v1.5M2 13v3M22 13v3"/><circle cx="12" cy="3.5" r="1"/></symbol>
+ <symbol id="i-send" viewBox="0 0 24 24"><path d="M21.5 3 2.5 10.5l7 2.5 2.5 7 3.5-5.5 5 4z"/><path d="M9.5 13 21.5 3"/></symbol>
+ <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20.5 12a8.5 8.5 0 1 1-2.6-6.1l2.6 2.6M20.5 3.5v5h-5"/></symbol>
+ <symbol id="i-plug" viewBox="0 0 24 24"><path d="M9 2.5V7M15 2.5V7M6 7h12v3.5a6 6 0 0 1-12 0zM12 16.5v5"/></symbol>
+ <symbol id="i-wave" viewBox="0 0 24 24"><path d="M4.5 9.5a11 11 0 0 1 15 0M7.5 13a6.5 6.5 0 0 1 9 0M10.5 16.5a2.2 2.2 0 0 1 3 0"/><circle cx="12" cy="19.5" r=".8"/></symbol>
+ <symbol id="i-palette" viewBox="0 0 24 24"><path d="M12 3a9 9 0 0 0 0 18c1.4 0 2-1 2-2 0-1.5-1.2-1.7-1.2-3s1-2 2.4-2H18a3 3 0 0 0 3-3c0-4.4-4-8-9-8z"/><circle cx="7.5" cy="11" r="1.2"/><circle cx="10" cy="7" r="1.2"/><circle cx="15" cy="7" r="1.2"/></symbol>
+ <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
+ <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+ <symbol id="i-chev" viewBox="0 0 24 24"><path d="m9 5.5 6.5 6.5L9 18.5"/></symbol>
+ <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8.5" y="8.5" width="12" height="12" rx="2.5"/><path d="M15.5 8.5V6a2.5 2.5 0 0 0-2.5-2.5H6A2.5 2.5 0 0 0 3.5 6v7A2.5 2.5 0 0 0 6 15.5h2.5"/></symbol>
+ <symbol id="i-disk" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r=".8"/></symbol>
+ <symbol id="i-game" viewBox="0 0 24 24"><path d="M7.5 7h9a5 5 0 0 1 4.9 6l-.8 3.7a2.4 2.4 0 0 1-4.2 1L14.6 16H9.4l-1.8 1.7a2.4 2.4 0 0 1-4.2-1L2.6 13a5 5 0 0 1 4.9-6z"/><path d="M7.5 10v3M6 11.5h3"/><circle cx="15.5" cy="11" r=".9"/><circle cx="17.5" cy="13" r=".9"/></symbol>
+ <symbol id="i-max" viewBox="0 0 24 24"><path d="M5 18 12 6l7 12M8.5 13h7"/></symbol>
+ <symbol id="i-list" viewBox="0 0 24 24"><path d="M8.5 6h12M8.5 12h12M8.5 18h12"/><circle cx="4.5" cy="6" r=".9"/><circle cx="4.5" cy="12" r=".9"/><circle cx="4.5" cy="18" r=".9"/></symbol>
+</svg>
+
+<div class="splash" id="splash" aria-hidden="true"><img src="/assets/logo.png" alt=""><b>NEXAR</b><div class="splash-bar"><i></i></div></div>
+
+<section class="login" id="auth-screen" hidden>
+ <div class="login-card">
+  <img class="login-logo" src="/assets/logo.png" alt="">
+  <h1>NEX<span>AR</span></h1>
+  <p>Accedi con la chiave generata durante l'installazione.</p>
+  <form id="login-form"><label for="key-input">Chiave di accesso</label><input id="key-input" type="password" autocomplete="off" placeholder="access_token da config.json" required><button type="submit" class="btn primary wide">Accedi</button></form>
+  <p class="login-error" id="login-error" role="alert"></p>
+ </div>
+</section>
+
+<div class="app" id="app-shell" hidden>
+ <aside class="rail">
+  <div class="brand"><img src="/assets/logo.png" alt=""><div><strong>NEXAR</strong><span id="app-version">PC control</span></div></div>
+  <nav class="rail-nav" aria-label="Menu principale">
+   <button data-view="home" class="active"><svg class="i"><use href="#i-home"/></svg>Panoramica</button>
+   <button data-view="energy"><svg class="i"><use href="#i-plug"/></svg>Consumi</button>
+   <button data-view="lights"><svg class="i"><use href="#i-bulb"/></svg>Luci</button>
+   <button data-view="cooling"><svg class="i"><use href="#i-fan"/></svg>Ventole</button>
+   <button data-view="power"><svg class="i"><use href="#i-power"/></svg>Accensione</button>
+   <div class="rail-sep"></div>
+   <button data-view="links"><svg class="i"><use href="#i-link"/></svg>Collegamenti<i class="badge" id="links-badge" hidden></i></button>
+   <button data-view="settings"><svg class="i"><use href="#i-sliders"/></svg>Impostazioni</button>
+  </nav>
+  <div class="rail-foot"><div class="conn"><i class="dot" id="conn-dot"></i><span id="conn-text">Connessione…</span></div></div>
+ </aside>
+
+ <div class="main">
+  <header class="top">
+   <img class="top-logo" src="/assets/logo.png" alt="">
+   <div class="top-title"><h1 id="page-title">Panoramica</h1><p id="page-desc">—</p></div>
+   <div class="top-actions">
+    <span class="mode-pill" id="mode-pill"><i class="dot"></i><span>—</span></span>
+    <button class="icon-btn power-btn" data-view="power" aria-label="Accensione e spegnimento"><svg class="i"><use href="#i-power"/></svg></button>
+   </div>
+  </header>
+
+  <main class="content">
+   <div class="demo-strip" id="demo-strip" hidden>Anteprima grafica · dati di esempio</div>
+
+   <!-- PANORAMICA -->
+   <section class="page active" id="page-home">
+    <div class="hero-grid">
+     <section class="card gauge-card">
+      <div class="gauge" id="gauge">
+       <svg viewBox="0 0 200 200" aria-hidden="true">
+        <defs><linearGradient id="gauge-grad" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#34d399"/><stop offset=".6" stop-color="#38bdf8"/><stop offset="1" stop-color="#fbbf24"/></linearGradient></defs>
+        <circle class="g-track" cx="100" cy="100" r="86" pathLength="100"/>
+        <circle class="g-fill" id="gauge-fill" cx="100" cy="100" r="86" pathLength="100"/>
+       </svg>
+       <div class="gauge-center"><span class="eyebrow">Alla presa</span><strong id="g-watts">—</strong><span class="unit">watt</span><small id="g-amps">— A · 230 V</small></div>
+      </div>
+      <div class="kwh-row">
+       <div><span>Oggi</span><b id="h-today">—</b><small id="h-today-cost">—</small></div>
+       <div><span>Mese</span><b id="h-month">—</b><small id="h-month-cost">—</small></div>
+       <div><span>Previsione</span><b id="h-forecast">—</b><small id="h-forecast-cost">—</small></div>
+      </div>
+     </section>
+
+     <section class="card mode-card" id="mode-card">
+      <div class="card-head"><div><h3>Modalità</h3><p id="mode-desc">—</p></div></div>
+      <div class="mode-switch">
+       <button class="mode-opt eco" data-action="eco"><svg class="i"><use href="#i-leaf"/></svg><b>AI ECO</b><small>Consuma meno, l'AI continua</small></button>
+       <button class="mode-opt normal" data-action="normal"><svg class="i"><use href="#i-bolt"/></svg><b>Normale</b><small>Piano di Windows</small></button>
+       <button class="mode-opt gaming" data-action="gaming"><svg class="i"><use href="#i-game"/></svg><b>Gaming</b><small>Massime prestazioni</small></button>
+      </div>
+      <div class="agents">
+       <div class="agent"><span class="agent-ico codex">⌘</span><div><b>Codex</b><small id="codex-state">—</small></div><i class="dot off" id="codex-dot"></i></div>
+       <div class="agent"><span class="agent-ico claude">✳</span><div><b>Claude</b><small id="claude-state">—</small></div><i class="dot off" id="claude-dot"></i></div>
+      </div>
+      <div class="switch-row"><div><b>Automazione AI</b><small id="auto-note">—</small></div><button class="toggle" id="auto-toggle" role="switch" aria-checked="false" aria-label="Automazione AI ECO"><span></span></button></div>
+     </section>
+    </div>
+
+    <div class="tiles">
+     <article class="tile"><div class="tile-head"><span class="tile-ico c-cpu"><svg class="i"><use href="#i-cpu"/></svg></span><div><b>Processore</b><small id="cpu-name">—</small></div><span class="temp" id="cpu-temp">—</span></div><strong class="tile-val" id="cpu-val">—</strong><div class="bar"><span id="cpu-bar"></span></div><small class="tile-sub" id="cpu-sub">—</small></article>
+     <article class="tile"><div class="tile-head"><span class="tile-ico c-gpu"><svg class="i"><use href="#i-gpu"/></svg></span><div><b>Scheda video</b><small id="gpu-name">—</small></div><span class="temp" id="gpu-temp">—</span></div><strong class="tile-val" id="gpu-val">—</strong><div class="bar"><span id="gpu-bar"></span></div><small class="tile-sub" id="gpu-sub">—</small></article>
+     <article class="tile"><div class="tile-head"><span class="tile-ico c-ram"><svg class="i"><use href="#i-ram"/></svg></span><div><b>Memoria</b><small id="ram-detail">—</small></div></div><strong class="tile-val" id="ram-val">—</strong><div class="bar"><span id="ram-bar"></span></div><small class="tile-sub" id="ram-sub">—</small></article>
+     <article class="tile"><div class="tile-head"><span class="tile-ico c-fan"><svg class="i"><use href="#i-fan"/></svg></span><div><b>Ventole</b><small id="fan-profile">—</small></div></div><strong class="tile-val" id="fan-val">—</strong><div class="bar"><span id="fan-bar"></span></div><small class="tile-sub">giri medi del case</small></article>
+    </div>
+
+    <section class="card">
+     <div class="card-head"><div><h3>Azioni rapide</h3><p>Il PC continua a lavorare</p></div></div>
+     <div class="actions">
+      <button class="act" data-action="screen"><svg class="i"><use href="#i-monitor"/></svg>Spegni monitor</button>
+      <button class="act" data-action="rgb-eco" id="q-rgb-off"><svg class="i"><use href="#i-bulb"/></svg>LED spenti</button>
+      <button class="act" data-action="rgb-normal" id="q-rgb-on"><svg class="i"><use href="#i-palette"/></svg>LED accesi</button>
+      <button class="act" data-action="fans-eco" id="q-fans-eco"><svg class="i"><use href="#i-fan"/></svg>Ventole silenziose</button>
+      <button class="act" data-action="fans-normal" id="q-fans-normal"><svg class="i"><use href="#i-fan"/></svg>Ventole normali</button>
+      <button class="act danger" data-view="power"><svg class="i"><use href="#i-power"/></svg>Spegni PC</button>
+     </div>
+    </section>
+
+    <section class="card">
+     <div class="card-head"><div><h3>Carico</h3><p>Processore e scheda video, ultimi minuti</p></div><div class="legend-mini"><span class="c-cpu">CPU</span><span class="c-gpu">GPU</span></div></div>
+     <div class="chart" id="chart-load"></div>
+    </section>
+   </section>
+
+   <!-- CONSUMI -->
+   <section class="page" id="page-energy">
+    <section class="card energy-card">
+     <div class="energy-top">
+      <div class="energy-main"><span class="eyebrow">Consumo alla presa</span><div class="big"><strong id="e-watts">—</strong><span>W</span></div><p class="muted" id="e-range">—</p></div>
+      <div class="energy-stats">
+       <div><span>Corrente</span><b id="e-amps">—</b><small id="e-volts">—</small></div>
+       <div><span>Alimentatore</span><b id="e-psu">—</b><small id="e-eff">—</small></div>
+       <div><span>Potenza apparente</span><b id="e-va">—</b><small id="e-pf">—</small></div>
+       <div><span>Misurato dai sensori</span><b id="e-measured">—</b><small>il resto è stimato</small></div>
+      </div>
+     </div>
+     <div class="stack" id="e-stack"></div>
+     <div class="breakdown" id="e-list"></div>
+    </section>
+    <div class="kwh-cards">
+     <article class="card kwh"><span class="eyebrow">Oggi</span><b id="e-today">—</b><small id="e-today-cost">—</small></article>
+     <article class="card kwh"><span class="eyebrow">Questo mese</span><b id="e-month">—</b><small id="e-month-cost">—</small></article>
+     <article class="card kwh"><span class="eyebrow">Previsione fine mese</span><b id="e-forecast">—</b><small id="e-forecast-cost">—</small></article>
+    </div>
+    <section class="card">
+     <div class="card-head"><div><h3>Andamento</h3><p>Watt alla presa, ultimi minuti</p></div></div>
+     <div class="chart" id="chart-power"></div>
+    </section>
+    <p class="fineprint">Processore (sensore Package, più i regolatori della scheda madre) e scheda video sono misurati. Scheda madre, RAM, dischi (secondo l'attività), ventole (dai giri), pompa, LED e periferiche sono stimati su dati tecnici tipici. Il totale tiene conto della curva di efficienza dell'alimentatore: imposta potenza e classe 80 PLUS in Impostazioni. Per un valore certificato serve una presa smart con misura.</p>
+   </section>
+
+   <!-- LUCI -->
+   <section class="page" id="page-lights">
+    <div class="two-col">
+     <section class="card">
+      <div class="card-head"><div><h3>Tutti i LED</h3><p id="rgb-label">—</p></div></div>
+      <div class="color-stage">
+       <div class="orb" id="rgb-orb"></div>
+       <div class="color-side">
+        <label class="color-input"><input type="color" id="rgb-color" value="#ffffff" aria-label="Colore LED"><span id="rgb-hex">#FFFFFF</span></label>
+        <div class="swatches" id="rgb-swatches"></div>
+        <div class="palette-tools"><button class="btn small" type="button" id="palette-save"><svg class="i"><use href="#i-check"/></svg>Salva colore</button><button class="btn small" type="button" id="palette-edit">Modifica</button></div>
+       </div>
+      </div>
+      <label class="range"><span>Luminosità</span><input type="range" id="rgb-bright" min="5" max="100" step="5" value="100"><b id="rgb-bright-val">100%</b></label>
+      <div class="btn-row"><button class="btn primary" type="button" id="rgb-apply-all">Applica a tutti</button><button class="btn" data-action="rgb-eco" id="rgb-eco">Spegni</button><button class="btn" data-action="rgb-normal" id="rgb-normal">Riaccendi</button></div>
+      <p class="fineprint">Il colore viene ricordato: dopo AI ECO i LED tornano così.</p>
+     </section>
+     <section class="card">
+      <div class="card-head"><div><h3>Per dispositivo</h3><p>Un colore diverso per ogni componente</p></div><button class="icon-btn" type="button" id="rgb-reload" aria-label="Ricarica"><svg class="i"><use href="#i-refresh"/></svg></button></div>
+      <div class="rgb-devices" id="rgb-devices"><p class="muted">Caricamento…</p></div>
+     </section>
+    </div>
+   </section>
+
+   <!-- VENTOLE -->
+   <section class="page" id="page-cooling">
+    <div class="temps">
+     <article class="card temp-card"><span class="eyebrow">CPU</span><b id="hw-cpu">—</b><div class="bar"><span id="hw-cpu-bar"></span></div></article>
+     <article class="card temp-card"><span class="eyebrow">GPU</span><b id="hw-gpu">—</b><div class="bar"><span id="hw-gpu-bar"></span></div></article>
+     <article class="card temp-card"><span class="eyebrow">Pompa AIO</span><b class="ok-text">Protetta</b><small>sempre al BIOS</small></article>
+    </div>
+    <section class="card">
+     <div class="card-head"><div><h3>Ventole del case</h3><p>Radiatore e pompa AIO restano sempre al BIOS</p></div></div>
+     <div class="seg2 seg4" id="fan-levels">
+      <button data-action="fans-off" id="fans-off"><svg class="i"><use href="#i-x"/></svg>Spente</button>
+      <button data-action="fans-eco" id="fans-eco"><svg class="i"><use href="#i-moon"/></svg>Silenziose</button>
+      <button data-action="fans-normal" id="fans-normal"><svg class="i"><use href="#i-fan"/></svg>Normali</button>
+      <button data-action="fans-max" id="fans-max"><svg class="i"><use href="#i-max"/></svg>Massimo</button>
+     </div>
+     <div class="notice" id="fans-upgrade" hidden><div><b>Nuovi profili Spente e Massimo</b><small>Vanno creati una volta in Fan Control: serve una conferma da amministratore.</small></div><button class="btn small primary" type="button" id="fans-upgrade-btn">Aggiorna profili</button></div>
+     <div class="fan-list" id="fan-list"></div>
+     <p class="fineprint">Sicurezza: con CPU sopra 80 °C (o GPU sopra 78 °C con le ventole spente) tornano da sole al profilo normale.</p>
+    </section>
+   </section>
+
+   <!-- ACCENSIONE -->
+   <section class="page" id="page-power">
+    <section class="card pc-state">
+     <div class="pc-on"><span class="pulse"></span><div><b>PC acceso</b><small id="pw-uptime">—</small></div></div>
+     <div class="pending" id="pw-pending" hidden>
+      <svg class="i"><use href="#i-clock"/></svg><div><b id="pw-pending-title">—</b><small id="pw-pending-sub">—</small></div>
+      <button class="btn danger" type="button" data-power="cancel">Annulla</button>
+     </div>
+    </section>
+    <div class="power-grid">
+     <button class="pwr" data-power="sleep"><svg class="i"><use href="#i-moon"/></svg><b>Sospendi</b><small>2–5 W, si riaccende subito</small></button>
+     <button class="pwr" data-power="restart"><svg class="i"><use href="#i-restart"/></svg><b>Riavvia</b><small>30 s per annullare</small></button>
+     <button class="pwr danger" data-power="shutdown"><svg class="i"><use href="#i-power"/></svg><b>Spegni</b><small>30 s per annullare</small></button>
+     <button class="pwr" data-power="hibernate" id="pw-hibernate" hidden><svg class="i"><use href="#i-disk"/></svg><b>Iberna</b><small>0 W, riprende da dove eri</small></button>
+     <button class="pwr" data-power="lock"><svg class="i"><use href="#i-lock"/></svg><b>Blocca</b><small>Schermata di accesso</small></button>
+    </div>
+    <section class="card">
+     <div class="card-head"><div><h3>Programma</h3><p>Il PC si spegne da solo, anche se chiudi l'app</p></div></div>
+     <div class="seg2 small" id="sched-kind"><button data-kind="shutdown" class="selected">Spegni</button><button data-kind="sleep">Sospendi</button></div>
+     <div class="chips" id="sched-chips">
+      <button data-minutes="15">15 min</button><button data-minutes="30">30 min</button><button data-minutes="60">1 ora</button><button data-minutes="120">2 ore</button><button data-minutes="180">3 ore</button>
+     </div>
+     <button class="wide-opt" type="button" id="sched-ai"><svg class="i"><use href="#i-bot"/></svg><div><b>Quando Codex e Claude hanno finito</b><small>2 minuti dopo che l'ultimo si chiude</small></div><svg class="i chev"><use href="#i-chev"/></svg></button>
+    </section>
+    <section class="card">
+     <div class="card-head"><div><h3>Accensione a distanza</h3><p>Da Telegram anche quando il PC è spento</p></div><span class="tag">WAKE-ON-LAN</span></div>
+     <ol class="steps" id="wol-steps">
+      <li id="wol-net"><i class="step-dot"></i><div><b>Scheda di rete via cavo</b><small id="wol-net-text">—</small></div></li>
+      <li id="wol-win"><i class="step-dot"></i><div><b>Wake-on-LAN in Windows</b><small id="wol-win-text">—</small></div><button class="btn small local-only" type="button" id="wol-enable" hidden>Attiva</button></li>
+      <li class="manual"><i class="step-dot"></i><div><b>BIOS MSI (una volta sola)</b><small>Canc all'avvio → Settings → Advanced → Power Management: <em>ErP Ready</em> = Disabled. Poi Wake Up Event Setup: <em>Resume By PCI-E Device</em> = Enabled.</small></div></li>
+      <li class="manual"><i class="step-dot"></i><div><b>Relay su Umbrel</b><small>Riceve /accendi quando il PC è spento e invia il segnale di accensione. Portainer → Stacks → Add stack → incolla → Deploy.</small></div><button class="btn small primary local-only" type="button" id="relay-show">Configurazione</button></li>
+     </ol>
+     <div class="relay" id="relay-box" hidden><div class="relay-head"><b>docker-compose per Umbrel</b><button class="btn small" type="button" id="relay-copy"><svg class="i"><use href="#i-copy"/></svg>Copia</button></div><pre id="relay-text"></pre><p class="fineprint warn-text">Contiene il token del bot: incollalo solo nel tuo Umbrel.</p></div>
+     <p class="fineprint" id="wol-phone">—</p>
+    </section>
+   </section>
+
+   <!-- COLLEGAMENTI -->
+   <section class="page" id="page-links">
+    <section class="card">
+     <div class="card-head"><div><h3>Programmi collegati</h3><p>L'app li cerca da sola; quelli mancanti si installano con un clic</p></div><button class="btn" type="button" id="links-refresh"><svg class="i"><use href="#i-refresh"/></svg>Cerca</button></div>
+     <div class="links" id="links-list"><p class="muted">Ricerca in corso…</p></div>
+     <p class="fineprint">Installazioni e conferme da amministratore sono possibili solo dall'app sul PC.</p>
+    </section>
+   </section>
+
+   <!-- IMPOSTAZIONI -->
+   <section class="page" id="page-settings">
+    <form id="settings-form" class="settings">
+     <section class="card">
+      <div class="card-head"><div><h3>Modalità e avvisi</h3><p>Valgono dal prossimo cambio di modalità</p></div></div>
+      <div class="fields">
+       <label>Limite CPU in AI ECO<span class="suffix"><input type="number" id="cfg-cpu" min="50" max="100" required><i>%</i></span></label>
+       <label>Spegni monitor dopo<span class="suffix"><input type="number" id="cfg-monitor" min="30" max="3600" required><i>s</i></span></label>
+       <label>Torna a Normale dopo l'AI<span class="suffix"><input type="number" id="cfg-delay" min="30" max="7200" required><i>s</i></span></label>
+       <label>Avviso temperatura CPU<span class="suffix"><input type="number" id="cfg-cpu-alert" min="70" max="99" required><i>°C</i></span></label>
+       <label>Avviso temperatura GPU<span class="suffix"><input type="number" id="cfg-gpu-alert" min="60" max="94" required><i>°C</i></span></label>
+       <label>Ventole in Gaming<select id="cfg-gaming-fans"><option value="normal">Normali (curva BIOS)</option><option value="max">Al massimo</option></select></label>
+       <label class="check"><input type="checkbox" id="cfg-alerts"><span>Avvisi Telegram per temperatura alta</span></label>
+      </div>
+     </section>
+     <section class="card">
+      <div class="card-head"><div><h3>Energia</h3><p>Rendono la stima dei consumi più precisa</p></div></div>
+      <div class="fields">
+       <label>Prezzo dell'energia<span class="suffix"><input type="number" id="cfg-price" min="5" max="100" required><i>c€/kWh</i></span></label>
+       <label>Potenza alimentatore<span class="suffix"><input type="number" id="cfg-psu" min="300" max="1600" step="50" required><i>W</i></span></label>
+       <label>Classe alimentatore<select id="cfg-psu-class"><option value="bronze">80 PLUS Bronze</option><option value="gold">80 PLUS Gold</option><option value="platinum">80 PLUS Platinum</option><option value="titanium">80 PLUS Titanium</option></select></label>
+       <label>Monitor (0 = escludi)<span class="suffix"><input type="number" id="cfg-monitor-w" min="0" max="200" required><i>W</i></span></label>
+       <label>Periferiche USB<span class="suffix"><input type="number" id="cfg-extra" min="0" max="60" required><i>W</i></span></label>
+      </div>
+     </section>
+     <div class="form-actions"><button type="submit" class="btn primary">Salva impostazioni</button></div>
+    </form>
+    <div class="two-col">
+     <section class="card">
+      <div class="card-head"><div><h3>Telegram</h3><p id="telegram-indicator">—</p></div><span class="tag">BOT</span></div>
+      <p class="muted small-text">Crea il bot con <a href="https://t.me/BotFather" target="_blank" rel="noopener noreferrer">@BotFather</a>, incolla il token e abbina il telefono con un codice temporaneo.</p>
+      <div class="inline-form local-only"><input type="password" id="bot-token" autocomplete="off" placeholder="Token: 123456789:AA…" aria-label="Token del bot Telegram"><button class="btn primary" type="button" id="tg-pair-start">Collega</button></div>
+      <div id="tg-pair-code" hidden><p class="muted small-text">Apri <strong id="tg-pair-name"></strong> e invia entro 10 minuti:</p><div class="inline-form"><code class="pair-command" id="tg-pair-command"></code><button type="button" class="btn" id="tg-pair-copy">Copia</button></div></div>
+      <p class="fineprint">Nel bot: /menu /consumo /eco /normal /luci /accensione /spegni /annulla</p>
+     </section>
+     <section class="card">
+      <div class="card-head"><div><h3>Registro</h3><p>Ultime operazioni</p></div><button class="icon-btn" type="button" id="refresh-events" aria-label="Aggiorna"><svg class="i"><use href="#i-refresh"/></svg></button></div>
+      <div class="events" id="events-list"><p class="muted">Nessun evento.</p></div>
+     </section>
+    </div>
+    <section class="card">
+     <div class="card-head"><div><h3>Aggiornamenti</h3><p id="upd-text">—</p></div><span class="tag" id="upd-version">v—</span></div>
+     <div class="switch-row upd-row"><div><b>Aggiorna da solo</b><small>Controlla GitHub ogni 6 ore, installa e riparte</small></div><button class="toggle" id="upd-auto" role="switch" aria-checked="true" aria-label="Aggiornamenti automatici"><span></span></button></div>
+     <div class="btn-row"><button class="btn" type="button" id="upd-check"><svg class="i"><use href="#i-refresh"/></svg>Controlla ora</button><button class="btn primary" type="button" id="upd-install" hidden>Installa aggiornamento</button><a class="btn" id="upd-page" href="https://github.com/IlSamm/NEXAR/releases" target="_blank" rel="noopener noreferrer">Novità su GitHub</a></div>
+    </section>
+    <section class="card hw">
+     <div><span>Scheda madre</span><b id="hw-mb">—</b></div><div><span>Processore</span><b id="hw-cpu-name">—</b></div><div><span>Scheda video</span><b id="hw-gpu-name">—</b></div><div><span>Dissipatore</span><b id="hw-cooler">—</b></div>
+     <button class="btn small" type="button" id="logout">Esci</button>
+    </section>
+   </section>
+
+   <!-- ALTRO (telefono) -->
+   <section class="page" id="page-more">
+    <div class="more-list">
+     <button data-view="power"><span class="more-ico c-red"><svg class="i"><use href="#i-power"/></svg></span><div><b>Accensione</b><small>Spegni, riavvia, sospendi, timer</small></div><svg class="i chev"><use href="#i-chev"/></svg></button>
+     <button data-view="links"><span class="more-ico c-cyan"><svg class="i"><use href="#i-link"/></svg></span><div><b>Collegamenti</b><small id="more-links">Programmi collegati</small></div><svg class="i chev"><use href="#i-chev"/></svg></button>
+     <button data-view="settings"><span class="more-ico c-violet"><svg class="i"><use href="#i-sliders"/></svg></span><div><b>Impostazioni</b><small>AI ECO, energia, Telegram, registro</small></div><svg class="i chev"><use href="#i-chev"/></svg></button>
+    </div>
+   </section>
+  </main>
+ </div>
+
+ <nav class="tabbar" aria-label="Navigazione">
+  <button data-view="home" class="active"><svg class="i"><use href="#i-home"/></svg>Home</button>
+  <button data-view="energy"><svg class="i"><use href="#i-plug"/></svg>Consumi</button>
+  <button data-view="lights"><svg class="i"><use href="#i-bulb"/></svg>Luci</button>
+  <button data-view="cooling"><svg class="i"><use href="#i-fan"/></svg>Ventole</button>
+  <button data-view="more"><svg class="i"><use href="#i-grid"/></svg>Altro</button>
+ </nav>
+</div>
+
+<dialog class="sheet" id="confirm">
+ <form method="dialog">
+  <span class="sheet-ico" id="confirm-ico"><svg class="i"><use href="#i-power"/></svg></span>
+  <h3 id="confirm-title">—</h3><p id="confirm-text">—</p>
+  <div class="sheet-actions"><button class="btn" value="no">Annulla</button><button class="btn primary" value="yes" id="confirm-yes">Conferma</button></div>
+ </form>
+</dialog>
+<div class="toast" role="status" id="toast"></div>
+</body></html>

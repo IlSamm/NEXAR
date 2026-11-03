@@ -1,0 +1,46 @@
+import json
+import zipfile
+import pytest
+import updater
+
+class Ctrl:
+    def __init__(self): self.state, self.config, self.notes, self.events = {}, {}, [], []
+    lock = __import__('threading').RLock()
+    def notify(self, m): self.notes.append(m)
+    def log_event(self, m): self.events.append(m)
+
+def release(tag, with_hash=True):
+    name = f'NEXAR-{tag.lstrip("v")}-win64.zip'
+    assets = [{'name': name, 'browser_download_url': f'https://github.com/IlSamm/NEXAR/releases/download/{tag}/{name}'}]
+    if with_hash: assets.append({'name': name + '.sha256', 'browser_download_url': assets[0]['browser_download_url'] + '.sha256'})
+    return json.dumps({'tag_name': tag, 'assets': assets, 'body': 'Novità'}).encode()
+
+def test_version_compare(monkeypatch, tmp_path):
+    monkeypatch.setattr(updater, 'VERSION', '1.0.0')
+    u = updater.Updater(Ctrl(), tmp_path, tmp_path, True)
+    monkeypatch.setattr(updater, 'fetch', lambda url, limit=0: release('v1.0.1'))
+    info = u.check()
+    assert info['available'] and info['latest'] == '1.0.1'
+    monkeypatch.setattr(updater, 'fetch', lambda url, limit=0: release('v1.0.0'))
+    assert not u.check()['available']
+    monkeypatch.setattr(updater, 'fetch', lambda url, limit=0: release('v2.0.0', with_hash=False))
+    assert not u.check()['available']   # senza hash non si installa niente
+
+def test_safe_extract_rejects_traversal(tmp_path):
+    bad = tmp_path / 'bad.zip'
+    with zipfile.ZipFile(bad, 'w') as z: z.writestr('../evil.txt', 'x')
+    with pytest.raises(RuntimeError): updater.safe_extract(bad, tmp_path / 'out')
+    good = tmp_path / 'good.zip'
+    with zipfile.ZipFile(good, 'w') as z:
+        z.writestr('NEXAR/NEXAR.exe', 'exe'); z.writestr('NEXAR/_internal/base.dll', 'dll')
+    assert updater.safe_extract(good, tmp_path / 'out2').name == 'NEXAR'
+
+def test_download_only_from_github(tmp_path):
+    with pytest.raises(RuntimeError): updater.download('https://example.com/NEXAR.zip', tmp_path / 'x.zip')
+
+def test_announce_after_update(monkeypatch, tmp_path):
+    import core
+    monkeypatch.setattr(core, 'STATE_FILE', tmp_path / 'state.json')
+    c = Ctrl(); c.state['last_version'] = '0.9.0'
+    updater.Updater(c, tmp_path, tmp_path, True).announce()
+    assert c.state['last_version'] == updater.VERSION and 'aggiornato' in c.notes[0]
