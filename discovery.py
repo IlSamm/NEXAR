@@ -385,8 +385,24 @@ if($nic){
  $net=[pscustomobject]@{name=$nic.Name;desc=$nic.InterfaceDescription;mac=$nic.MacAddress;ip=$ip.IPAddress;prefix=[int]$ip.PrefixLength;
   magic=$adv['*WakeOnMagicPacket'];s5=$adv['S5WakeOnLan']}
 }
-[pscustomobject]@{dimms=$dimms;disks=$disks;net=$net} | ConvertTo-Json -Depth 4 -Compress
+$cpu=(Get-CimInstance Win32_Processor | Select-Object -First 1).Name
+$gpus=@(Get-CimInstance Win32_VideoController | ForEach-Object { $_.Name })
+$mb=Get-CimInstance Win32_BaseBoard
+[pscustomobject]@{dimms=$dimms;disks=$disks;net=$net;cpu=$cpu;gpus=$gpus;board_vendor=$mb.Manufacturer;board=$mb.Product} | ConvertTo-Json -Depth 4 -Compress
 """
+VIRTUAL_GPU = ('basic display', 'basic render', 'virtual', 'parsec', 'remote', 'citrix', 'vmware', 'hyper-v', 'idd', 'meta ')
+VENDORS = {'micro-star': 'MSI', 'asustek': 'ASUS', 'gigabyte': 'Gigabyte', 'asrock': 'ASRock', 'biostar': 'Biostar', 'nzxt': 'NZXT'}
+
+def pick_gpu(names) -> str:
+    """Scheda video vera: niente adattatori virtuali; una dedicata vince sulla grafica integrata."""
+    real = [n.strip() for n in names or [] if n and not any(v in n.lower() for v in VIRTUAL_GPU)]
+    dedicated = [n for n in real if re.search(r'nvidia|geforce|rtx|gtx|radeon rx|radeon pro|arc a|arc b', n, re.I)]
+    return (dedicated or real or [''])[0]
+
+def board_name(vendor, product) -> str:
+    short = next((v for k, v in VENDORS.items() if k in (vendor or '').lower()), (vendor or '').split(' ')[0])
+    product = (product or '').strip()
+    return f'{short} {product}'.strip() if product and short.lower() not in product.lower() else product
 
 def disk_kind(d: dict) -> str:
     name, media, bus = (d.get('name') or '').upper(), (d.get('media') or '').upper(), (d.get('bus') or '').upper()
@@ -420,6 +436,11 @@ def hardware_inventory() -> dict:
                       # Valori registro del driver: 1 = attivo; None = il driver non espone l'opzione.
                       'wol_magic': None if net.get('magic') is None else net.get('magic') == '1',
                       'wol_shutdown': None if net.get('s5') is None else net.get('s5') == '1'}
+    gpus = raw.get('gpus') or []
+    cpu = re.sub(r'\s+', ' ', str(raw.get('cpu') or '')).strip()
+    inv['hardware'] = {'cpu': re.sub(r'\s+\d+-Core Processor$|\(R\)|\(TM\)', '', cpu).strip(),
+                       'gpu': pick_gpu([gpus] if isinstance(gpus, str) else gpus),
+                       'motherboard': board_name(raw.get('board_vendor'), raw.get('board'))}
     return inv
 
 def wol_enable_script(adapter: str) -> str:

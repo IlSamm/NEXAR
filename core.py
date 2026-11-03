@@ -294,6 +294,10 @@ class Control:
                     self.config[section] = config.get(section, {})
                 self.state.update({k: v for k, v in state.items() if k != 'rgb_leds'})  # appena contati sopra
                 if inventory: self.state['inventory'] = inventory
+                # Nomi dei componenti rilevati da Windows: riempiono solo i campi vuoti, quelli scritti a mano restano.
+                hw = self.config.setdefault('hardware', {})
+                for k, v in (inventory or {}).get('hardware', {}).items():
+                    if v and not hw.get(k): hw[k] = v
                 json_save(CONFIG_FILE, self.config)
                 json_save(STATE_FILE, self.state)
                 self.integrations = report
@@ -829,7 +833,8 @@ class Control:
                 if not self.config.get('alerts',{}).get('enabled',True):
                     active={'cpu':False,'gpu':False}
                     continue
-                for name,label in [('cpu','CPU Ryzen 7 9800X3D'),('gpu','GPU RTX 3060 Ti')]:
+                hw=self.config.get('hardware',{})
+                for name,label in [('cpu',('CPU '+hw.get('cpu','')).strip()),('gpu',('GPU '+hw.get('gpu','')).strip())]:
                     val=t.get(name+'_temp')
                     if val is None: continue
                     limit=float(self.config.get('alerts',{}).get(name+'_temp',87 if name=='cpu' else 82))

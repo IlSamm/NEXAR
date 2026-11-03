@@ -27,7 +27,7 @@ def ask(title, default=''):
     return input(title+(f' [{default}]' if default else '')+': ').strip() or default
 
 print('NEXAR - CONFIGURAZIONE HARDWARE FACOLTATIVA')
-print('La pompa e le ventole del radiatore ARCTIC NON devono essere fermate.')
+print('La pompa e le ventole del radiatore AIO NON devono essere fermate.')
 print('Nessuna integrazione si attiva se non hai creato/testato due profili.')
 
 rgb=config.setdefault('rgb',{})
@@ -50,7 +50,7 @@ if ask('\nVuoi configurare Fan Control SOLO per ventole case indipendenti? (s/n)
     eco=ask('Nome profilo già testato (esempio EcoCase.json)')
     normal=ask('Nome profilo normale già testato (esempio Default.json)')
     if exe.is_file() and all(x and Path(x).name==x and x.lower().endswith('.json') and (exe.parent/x).is_file() for x in (eco,normal)):
-        print('ATTENZIONE: CPU_FAN/AIO/PMW combinato ARCTIC mai in Zero RPM!')
+        print('ATTENZIONE: CPU_FAN/AIO/PMW combinato AIO mai in Zero RPM!')
         if ask('Confermi di aver escluso l\'AIO e testato il profilo ECO sotto carico? (scrivi SICURO)')=='SICURO':
             fans.update({'enabled':True,'fancontrol_exe':str(exe),'eco_profile':eco,'normal_profile':normal})
             print('Fan Control abilitato.')

@@ -90,10 +90,13 @@ def estimate(inputs: dict, cfg: dict, hardware: dict, inventory: dict):
         label = {'nvme': 'NVMe', 'ssd': 'SSD', 'hdd': 'HDD'}
         add('disks', 'Dischi', total_disk, False, ' + '.join(f'{n} {label.get(k, k)}' for k, n in kinds.items()))
 
-    fans = [f for f in inputs.get('fans') or [] if f.get('rpm', 0) > 0]
+    spinning = [f for f in inputs.get('fans') or [] if f.get('rpm', 0) > 0]
+    pumps = [f for f in spinning if 'pump' in str(f.get('name', '')).lower()]
+    fans = [f for f in spinning if f not in pumps]
     fw = sum(fan_watts(f['rpm']) for f in fans)
     cooler = (hardware.get('cooler') or '').lower()
-    pump = 3.5 if any(x in cooler for x in ('liquid', 'aio', 'kraken', 'h100', 'h150')) else 0.0
+    # Pompa AIO: dal sensore "Pump" se c'è, altrimenti dal nome del dissipatore.
+    pump = 3.5 if pumps or any(x in cooler for x in ('liquid', 'aio', 'kraken', 'h100', 'h150')) else 0.0
     if fans or pump:
         add('cooling', 'Ventole e pompa', fw + pump, False, f'{len(fans)} ventole' + (' + pompa AIO' if pump else ''))
 

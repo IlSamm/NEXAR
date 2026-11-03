@@ -127,3 +127,15 @@ def test_fan_levels_validation():
     c = core.Control({'fans': {'enabled': False}})
     assert 'BIOS' in c.fans_level('max')
     with pytest.raises(ValueError): c.fans_level('turbo')
+
+def test_hardware_names_detected():
+    import discovery
+    assert discovery.pick_gpu(['Microsoft Basic Display Adapter', 'AMD Radeon(TM) Graphics', 'NVIDIA GeForce RTX 4070']) == 'NVIDIA GeForce RTX 4070'
+    assert discovery.pick_gpu(['Parsec Virtual Display Adapter', 'Intel(R) UHD Graphics 770']) == 'Intel(R) UHD Graphics 770'
+    assert discovery.board_name('Micro-Star International Co., Ltd.', 'MAG B850 TOMAHAWK MAX WIFI (MS-7E62)') == 'MSI MAG B850 TOMAHAWK MAX WIFI (MS-7E62)'
+    assert discovery.board_name('ASUSTeK COMPUTER INC.', 'ROG STRIX B650E-F GAMING WIFI') == 'ASUS ROG STRIX B650E-F GAMING WIFI'
+
+def test_pump_from_sensor_without_cooler_name():
+    p = energy_model.estimate({'cpu_w': 30, 'fans': [{'name': 'Pump Fan', 'rpm': 2400}]}, {}, {}, {})
+    cooling = next(i for i in p['items'] if i['key'] == 'cooling')
+    assert cooling['watts'] == 3.5 and 'pompa' in cooling['detail']

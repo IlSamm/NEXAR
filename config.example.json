@@ -5,10 +5,10 @@
     "port": 8765
   },
   "hardware": {
-    "cpu": "AMD Ryzen 7 9800X3D",
-    "gpu": "NVIDIA GeForce RTX 3060 Ti",
-    "motherboard": "MSI MAG B850 TOMAHAWK MAX WIFI",
-    "cooler": "ARCTIC Liquid Freezer II 240"
+    "cpu": "",
+    "gpu": "",
+    "motherboard": "",
+    "cooler": ""
   },
   "eco_cpu_max_percent": 90,
   "monitor_timeout_seconds": 60,
