@@ -234,7 +234,7 @@ class TelegramBot:
                 self.ctrl.set_rgb_palette(palette[-18:])
                 reply(('💾 Colore salvato: ' if a == 'salva' else '🗑 Colore tolto: ') + value.upper(), self.rgb_menu())
         elif a in ('fans','ventole'):
-            reply('🌀 <b>Ventole del case</b>\nRadiatore e pompa restano sempre al BIOS. Sopra 80 °C tornano normali da sole.', self.fans_menu())
+            reply('🌀 <b>Ventole</b>\n🚀 Massimo: tutte al 100% (case, radiatore, pompa, scheda video).\n⏸ Spente e 🤫 Silenziose: solo quelle del case. Sopra 80 °C tornano normali da sole.', self.fans_menu())
         elif a in ('fans_off','fans_eco','fans_normal','fans_max'):
             reply('🌀 '+esc(self.ctrl.fans_level(a[5:])), self.fans_menu())
         elif a == 'auto':

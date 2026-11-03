@@ -164,3 +164,17 @@ def test_shortcut_script_targets_exe():
     from pathlib import Path
     s = discovery.shortcut_script(r'C:\Apps\NEXAR\NEXAR.exe', [Path(r'C:\Desk\NEXAR.lnk')])
     assert r"TargetPath -ne 'C:\Apps\NEXAR\NEXAR.exe'" in s and r"IconLocation='C:\Apps\NEXAR\NEXAR.exe,0'" in s
+
+def test_max_profile_drives_every_fan(tmp_path, monkeypatch):
+    import discovery, json
+    cfg = tmp_path / 'Configurations'; cfg.mkdir()
+    ctl = lambda ident, nick: {'Identifier': ident, 'NickName': nick, 'Enable': False, 'ManualControl': False}
+    (cfg / 'userConfig.json').write_text(json.dumps({'FanControl': {'Controls': [
+        ctl('/lpc/nct6687dr/control/0', 'CPU Fan'), ctl('/lpc/nct6687dr/control/1', 'Pump Fan'),
+        ctl('/lpc/nct6687dr/control/11', 'System Fan #2'), ctl('NVApiWrapper/0-GA104-A/control/0', 'Control 1 - NVIDIA GeForce RTX 3060 Ti')]}}))
+    monkeypatch.setattr(discovery, 'live_fan_rpm', lambda: {'nct6687dr/0': 900, 'nct6687dr/1': 2400, 'nct6687dr/11': 750})
+    profiles, chosen = discovery.build_fan_profiles(str(tmp_path / 'FanControl.exe'), 40)
+    manual = lambda level: {c['NickName']: c.get('ManualControlValue') for c in profiles[level]['FanControl']['Controls'] if c['ManualControl']}
+    assert manual('max') == {'CPU Fan': 100, 'Pump Fan': 100, 'System Fan #2': 100, 'Control 1 - NVIDIA GeForce RTX 3060 Ti': 100}
+    assert manual('off') == {'System Fan #2': 0}          # radiatore, pompa e GPU non si fermano mai
+    assert manual('eco') == {'System Fan #2': 40} and manual('normal') == {} and chosen == ['System Fan #2']

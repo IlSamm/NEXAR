@@ -190,6 +190,10 @@ FAN_TASKS = {'eco': 'PC ECO Control - Ventole ECO', 'normal': 'PC ECO Control - 
 FAN_FILES = {'eco': 'PCECO-Eco.json', 'normal': 'PCECO-Normale.json', 'off': 'PCECO-Spente.json', 'max': 'PCECO-Massimo.json'}
 # Velocità fissa delle sole ventole del case per ogni profilo; None = tutto al BIOS (eco: dalla configurazione).
 FAN_LEVELS = {'off': 0, 'eco': None, 'normal': None, 'max': 100}
+# "Massimo" porta al 100% ogni ventola che Fan Control vede: case, radiatore, pompa, chipset e scheda video.
+# Spegnere o rallentare resta solo per le ventole del case (radiatore, pompa e GPU non si fermano mai).
+FAN_ALL_AT_MAX = True
+FAN_PROFILES_VERSION = 2  # 2 = Massimo su tutte le ventole
 FAN_EXCLUDE = ('cpu', 'pump', 'aio', 'nvidia', 'gpu', 'chipset')
 
 def live_fan_rpm() -> dict[str, float]:
@@ -222,7 +226,7 @@ def build_fan_profiles(exe: str, eco_percent: int) -> tuple[dict[str, dict], lis
             m = re.match(r'/lpc/([^/]+)/control/(\d+)$', ident)
             case_fan = bool(m) and not any(w in (nick + ident).lower() for w in FAN_EXCLUDE) \
                 and rpm.get(f'{m.group(1)}/{m.group(2)}', 0) > 200
-            manual = percent is not None and case_fan
+            manual = percent is not None and (case_fan or (level == 'max' and FAN_ALL_AT_MAX))
             ctl['Enable'] = ctl['ManualControl'] = manual
             if manual:
                 ctl['ManualControlValue'] = percent

@@ -420,6 +420,11 @@ class Control:
     def fans_profile(self, eco):
         return self.fans_level('eco' if eco else 'normal')
 
+    def fans_profiles_outdated(self):
+        """Profili creati da una versione precedente (es. Massimo solo sulle ventole del case): vanno rigenerati."""
+        import discovery
+        return int(self.config.get('fans',{}).get('profiles_version',1)) < discovery.FAN_PROFILES_VERSION
+
     def fans_levels_ready(self):
         """Profili Spente/Massimo presenti: dopo l'aggiornamento serve un nuovo "Configura" (una conferma UAC)."""
         import discovery
@@ -449,7 +454,8 @@ class Control:
             cmd(['schtasks', '/run', '/tn', task], 15)
             with self.lock:
                 self.state.update(fans_level=level, fans_eco=level in ('eco','off')); json_save(STATE_FILE, self.state)
-            return 'Ventole: '+FAN_LEVEL_NAMES[level]+(' (solo case, radiatore e pompa al BIOS)' if level!='normal' else ' (BIOS)')
+            detail={'normal':' (BIOS)','max':' (tutte: case, radiatore, pompa e scheda video)' if not self.fans_profiles_outdated() else ' (solo case: premi "Aggiorna profili" per includere radiatore, pompa e GPU)'}
+            return 'Ventole: '+FAN_LEVEL_NAMES[level]+detail.get(level,' (solo case, radiatore e pompa al BIOS)')
         opts = dict(cwd=str(exe.parent), stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         if os.name == 'nt': opts['creationflags'] = subprocess.CREATE_NO_WINDOW
         subprocess.Popen([str(exe),'-c',name],**opts)
@@ -478,7 +484,8 @@ class Control:
         chosen = discovery.fancontrol_setup(exe, percent, ROOT / 'fan_profiles')
         self.fans_ready_cache = (0.0, False)
         with self.lock:
-            self.config.setdefault('fans', {}).update(eco_profile=discovery.FAN_FILES['eco'], normal_profile=discovery.FAN_FILES['normal'])
+            self.config.setdefault('fans', {}).update(eco_profile=discovery.FAN_FILES['eco'], normal_profile=discovery.FAN_FILES['normal'],
+                                                      profiles_version=discovery.FAN_PROFILES_VERSION)
             json_save(CONFIG_FILE, self.config)
         self.discover()
         msg = f'Ventole configurate: ECO porta al {percent}% ' + ', '.join(chosen) + ' (radiatore e pompa esclusi)'
@@ -756,6 +763,7 @@ class Control:
             'fans_eco':bool(self.state.get('fans_eco')),
             'fans_level':self.state.get('fans_level') or ('eco' if self.state.get('fans_eco') else 'normal'),
             'fans_levels_ready':self.fans_levels_ready() if self.config.get('fans',{}).get('enabled') else False,
+            'fans_profiles_outdated':self.fans_profiles_outdated() if self.config.get('fans',{}).get('enabled') else False,
             'pc':self.pc_info(),
         })
         return t
