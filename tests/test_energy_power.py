@@ -139,3 +139,28 @@ def test_pump_from_sensor_without_cooler_name():
     p = energy_model.estimate({'cpu_w': 30, 'fans': [{'name': 'Pump Fan', 'rpm': 2400}]}, {}, {}, {})
     cooling = next(i for i in p['items'] if i['key'] == 'cooling')
     assert cooling['watts'] == 3.5 and 'pompa' in cooling['detail']
+
+def test_bot_identity_and_rejected_token(monkeypatch, tmp_path):
+    import core, telegram_bot
+    from urllib.error import HTTPError
+    monkeypatch.setattr(core, 'STATE_FILE', tmp_path / 'state.json')
+    c = core.Control({})
+    bot = telegram_bot.TelegramBot(c)
+    calls = []
+    def ok(method, payload):
+        calls.append(method)
+        return {'username': 'NexarPc_Bot'} if method == 'getMe' else True
+    bot.call = ok
+    assert bot.identify() and c.telegram_bot['username'] == 'NexarPc_Bot'
+    assert 'setMyName' in calls and c.state['bot_branded'] == 'NexarPc_Bot'
+    calls.clear(); bot.identify()
+    assert calls == ['getMe']   # nome e descrizioni impostati una volta sola
+    def denied(method, payload): raise HTTPError('u', 401, 'Unauthorized', None, None)
+    bot.call = denied; bot.token = 'vecchio'
+    assert not bot.identify() and bot.bad_token == 'vecchio' and 'non più valido' in c.telegram_bot['error']
+
+def test_shortcut_script_targets_exe():
+    import discovery
+    from pathlib import Path
+    s = discovery.shortcut_script(r'C:\Apps\NEXAR\NEXAR.exe', [Path(r'C:\Desk\NEXAR.lnk')])
+    assert r"TargetPath -ne 'C:\Apps\NEXAR\NEXAR.exe'" in s and r"IconLocation='C:\Apps\NEXAR\NEXAR.exe,0'" in s

@@ -361,6 +361,8 @@ input[type=range]{accent-color:var(--green);width:100%}
 @keyframes sp-run{from{transform:translateX(-110%)}to{transform:translateX(260%)}}
 .upd-row{margin-top:0;padding-top:0;border-top:0}
 a.btn{text-decoration:none;color:var(--text)}
+.tg-link{text-decoration:none;color:var(--cyan);border-color:rgba(56,189,248,.4);text-transform:none;letter-spacing:.02em}
+.tg-error{margin:-4px 0 12px;padding:10px 12px;border-radius:10px;background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.35);color:#ffc9c9;font-size:13px}
 
 /* ---------- schermi medi ---------- */
 @media (max-width:1180px){

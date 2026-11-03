@@ -144,7 +144,10 @@ function render(s){
  paintOrb(s.rgb_off);
  renderFans(s.fans||[]);
  // Telegram e connessione
- $('telegram-indicator').textContent=s.telegram_enabled?'Collegato al tuo account':'Non collegato';
+ const bot=s.telegram_bot||{};
+ $('telegram-indicator').textContent=bot.error?'Bot non raggiungibile':s.telegram_enabled?`Collegato a @${bot.username||'bot'} · solo il tuo account`:bot.username?`@${bot.username}: invia il codice /pair`:'Non collegato';
+ $('tg-error').hidden=!bot.error;$('tg-error').textContent=bot.error||'';
+ $('tg-bot-link').hidden=!bot.username;if(bot.username){$('tg-bot-link').textContent='@'+bot.username;$('tg-bot-link').href='https://t.me/'+bot.username;}
  const ok=!!s.connected;$('conn-dot').classList.toggle('off',!ok);$('conn-text').textContent=ok?'PC connesso':'Non connesso';
  document.querySelectorAll('.local-only').forEach(e=>e.hidden=!!s.remote);
  renderPower(s.power,s.energy);

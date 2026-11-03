@@ -738,7 +738,9 @@ class Control:
             'auto_enabled':bool(self.config.get('auto_detect',{}).get('enabled')),
             'processes':self.processes(), 'message':self.last_message,
             'hardware':self.config.get('hardware',{}), 'sensor_connected':t['cpu_temp'] is not None,
-            'telegram_enabled': bool(self.config.get('telegram',{}).get('token') and self.config.get('telegram',{}).get('allowed_user_id')),
+            'telegram_enabled': bool(self.config.get('telegram',{}).get('token') and self.config.get('telegram',{}).get('allowed_user_id')
+                                     and not getattr(self,'telegram_bot',{}).get('error')),
+            'telegram_bot': dict(getattr(self,'telegram_bot',{}) or {}),
             'updated_at':datetime.now().isoformat(timespec='seconds'),
             'started_at':self.started,'alerts_enabled':self.config.get('alerts',{}).get('enabled',True),
             'monitor_timeout_seconds':int(self.config.get('monitor_timeout_seconds',60)),

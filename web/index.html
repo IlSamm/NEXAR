@@ -290,8 +290,9 @@
     </form>
     <div class="two-col">
      <section class="card">
-      <div class="card-head"><div><h3>Telegram</h3><p id="telegram-indicator">—</p></div><span class="tag">BOT</span></div>
-      <p class="muted small-text">Crea il bot con <a href="https://t.me/BotFather" target="_blank" rel="noopener noreferrer">@BotFather</a>, incolla il token e abbina il telefono con un codice temporaneo.</p>
+      <div class="card-head"><div><h3>Telegram</h3><p id="telegram-indicator">—</p></div><a class="tag tg-link" id="tg-bot-link" href="https://t.me/" target="_blank" rel="noopener noreferrer" hidden>@bot</a></div>
+      <p class="tg-error" id="tg-error" hidden></p>
+      <p class="muted small-text" id="tg-help">Usa il tuo bot: token da <a href="https://t.me/BotFather" target="_blank" rel="noopener noreferrer">@BotFather</a> (/mybots → il bot → API Token), incollalo qui e abbina il telefono con il codice temporaneo.</p>
       <div class="inline-form local-only"><input type="password" id="bot-token" autocomplete="off" placeholder="Token: 123456789:AA…" aria-label="Token del bot Telegram"><button class="btn primary" type="button" id="tg-pair-start">Collega</button></div>
       <div id="tg-pair-code" hidden><p class="muted small-text">Apri <strong id="tg-pair-name"></strong> e invia entro 10 minuti:</p><div class="inline-form"><code class="pair-command" id="tg-pair-command"></code><button type="button" class="btn" id="tg-pair-copy">Copia</button></div></div>
       <p class="fineprint">Nel bot: /menu /consumo /eco /normal /luci /accensione /spegni /annulla</p>

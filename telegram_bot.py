@@ -5,6 +5,7 @@ import queue
 import logging
 import threading
 import time
+from urllib.error import HTTPError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
@@ -44,6 +45,33 @@ class TelegramBot:
         self.menu_synced = None
         self.tunnel = None
         self.updater = None
+        self.bad_token = ''
+        controller.telegram_bot = {'username': '', 'error': ''}
+
+    def reject_token(self):
+        self.bad_token = self.token
+        self.ctrl.telegram_bot = {'username': '', 'error': 'Token non più valido: in Impostazioni → Telegram incolla quello attuale del tuo bot (@BotFather → /token).'}
+        logging.warning('Telegram: token rifiutato (401)')
+
+    def identify(self):
+        """Chi è il bot (es. @NexarPc_Bot) e, la prima volta, nome e descrizioni NEXAR nel profilo del bot."""
+        try: me = self.call('getMe', {})
+        except HTTPError as ex:
+            if ex.code in (401, 404): self.reject_token(); return False
+            raise
+        self.bad_token = ''
+        self.ctrl.telegram_bot = {'username': me.get('username', ''), 'error': ''}
+        branded = self.ctrl.state.get('bot_branded')
+        if branded != me.get('username'):
+            for method, payload in (('setMyName', {'name': 'NEXAR'}),
+                                    ('setMyShortDescription', {'short_description': 'Controlla il tuo PC: consumi, AI ECO, Gaming, LED, ventole e accensione.'}),
+                                    ('setMyDescription', {'description': 'NEXAR · il tuo PC Windows sotto controllo.\n\nConsumo reale alla presa, modalità AI ECO / Normale / Gaming, luci, ventole, spegnimento e accensione. Risponde solo al proprietario abbinato.'})):
+                try: self.call(method, payload)
+                except Exception: logging.info('Telegram: %s non applicato', method)
+            from core import json_save, STATE_FILE
+            with self.ctrl.lock:
+                self.ctrl.state['bot_branded'] = me.get('username'); json_save(STATE_FILE, self.ctrl.state)
+        return True
 
     # ---------- API ----------
     def call(self, method, payload):
@@ -257,10 +285,14 @@ class TelegramBot:
                 if not next_token:
                     stop.wait(3)
                     continue
+                if next_token == self.bad_token:
+                    stop.wait(5)  # token rifiutato da Telegram: si riprova solo quando ne incolli uno nuovo
+                    continue
                 if next_token != self.token:
                     self.token=next_token
                     self.offset=None
                     self.menu_synced=None
+                    if not self.identify(): continue
                     if next_user:
                         try:
                             # Se gia abbinato, non eseguire comandi arrivati quando il PC era offline.
@@ -314,6 +346,10 @@ class TelegramBot:
                         logging.exception('Comando Telegram')
                         try: self.send(chat['id'],'⚠️ Operazione non eseguita: '+html.escape(str(ex)[:250]))
                         except Exception: pass
+            except HTTPError as ex:
+                if ex.code == 401: self.reject_token()  # token revocato mentre l'app era accesa
+                else: logging.warning('Telegram non disponibile (HTTP %s)', ex.code)
+                stop.wait(6)
             except Exception as ex:
                 logging.warning('Telegram temporaneamente non disponibile (dettagli omessi per proteggere il token)')
                 stop.wait(6)

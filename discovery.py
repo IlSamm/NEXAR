@@ -256,6 +256,38 @@ def winget_install(section: str) -> str:
         raise RuntimeError('Installazione non riuscita: ' + (r.stdout or r.stderr).strip().splitlines()[-1][:200])
     return pkg + ' installato'
 
+def known_folder(csidl: int) -> Path | None:
+    """Cartelle vere di Windows (il Desktop può stare in OneDrive)."""
+    if os.name != 'nt': return None
+    buf = ctypes.create_unicode_buffer(260)
+    if ctypes.windll.shell32.SHGetFolderPathW(None, csidl, None, 0, buf) != 0: return None
+    return Path(buf.value)
+
+CSIDL_DESKTOPDIRECTORY, CSIDL_PROGRAMS = 0x10, 0x02
+
+def shortcut_script(exe: str, links: list[Path]) -> str:
+    """Crea o corregge i collegamenti: esistenti ma rivolti a un altro exe (es. vecchia cartella) vengono aggiornati."""
+    body = ''.join(
+        f"$s=$w.CreateShortcut({_q(l)}); if($s.TargetPath -ne {_q(exe)}){{ $s.TargetPath={_q(exe)}; "
+        f"$s.WorkingDirectory={_q(Path(exe).parent)}; $s.IconLocation={_q(str(exe) + ',0')}; $s.Description='NEXAR'; $s.Save(); "
+        f"Write-Output {_q(l.name + '@' + l.parent.name)} }};" for l in links)
+    return "$w=New-Object -ComObject WScript.Shell;" + body
+
+def ensure_shortcuts(state: dict) -> list[str]:
+    """Voce nel menu Start sempre presente; icona sul Desktop creata solo la prima volta (se la cancelli resta cancellata)."""
+    if os.name != 'nt' or not getattr(sys, 'frozen', False): return []
+    exe = sys.executable
+    links = []
+    start, desktop = known_folder(CSIDL_PROGRAMS), known_folder(CSIDL_DESKTOPDIRECTORY)
+    if start: links.append(start / 'NEXAR.lnk')
+    if desktop and (not state.get('desktop_shortcut') or (desktop / 'NEXAR.lnk').exists()):
+        links.append(desktop / 'NEXAR.lnk')
+    if not links: return []
+    r = subprocess.run(['powershell', '-NoProfile', '-Command', shortcut_script(exe, links)], capture_output=True,
+                       text=True, errors='replace', timeout=30, **_no_window())
+    if desktop: state['desktop_shortcut'] = True
+    return [x for x in r.stdout.split() if x]
+
 def autostart_target():
     if getattr(sys, 'frozen', False): return f'"{sys.executable}" --minimized'
     pyw = Path(sys.executable).with_name('pythonw.exe')
@@ -369,6 +401,10 @@ def autoconfigure(config: dict, state: dict, allow_uac=False) -> list[dict]:
         on = autostart_get()
         report.append(item('autostart', 'Avvio con Windows', 'ok' if on else 'warn',
                            'Parte da solo all\'accesso' if on else 'Disattivato'))
+        try:
+            made = ensure_shortcuts(state)
+            if made: logging.info('Icone NEXAR create/aggiornate: %s', ', '.join(made))
+        except (OSError, subprocess.TimeoutExpired) as ex: logging.warning('Icone Desktop/Start: %s', ex)
     logging.info('Collegamenti: %s', json.dumps([(r['key'], r['level']) for r in report]))
     return report
 
