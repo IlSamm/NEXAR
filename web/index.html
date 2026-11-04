@@ -268,6 +268,41 @@
      <article class="card kwh"><span class="eyebrow">Questo mese</span><b id="e-month">—</b><small id="e-month-cost">—</small></article>
      <article class="card kwh"><span class="eyebrow">Previsione fine mese</span><b id="e-forecast">—</b><small id="e-forecast-cost">—</small></article>
     </div>
+    <section class="card stats-card">
+     <div class="card-head"><div><h3>Statistiche</h3><p id="st-since">Da quando usi NEXAR</p></div></div>
+     <div class="stat-grid">
+      <div class="sg c-cyan"><span>Consumo totale</span><b id="st-kwh">—</b><small id="st-kwh-sub">—</small></div>
+      <div class="sg c-amber"><span>Spesa totale</span><b id="st-cost">—</b><small id="st-cost-sub">—</small></div>
+      <div class="sg c-violet"><span>Ore di accensione</span><b id="st-hours">—</b><small id="st-hours-sub">—</small></div>
+      <div class="sg c-teal"><span>Media al giorno</span><b id="st-avgday">—</b><small id="st-avgday-sub">—</small></div>
+      <div class="sg c-red"><span>Spesa in un anno</span><b id="st-year">—</b><small>al ritmo di adesso</small></div>
+      <div class="sg c-green"><span>CO₂ stimata</span><b id="st-co2">—</b><small>0,26 kg per kWh (rete italiana)</small></div>
+     </div>
+    </section>
+    <div class="two-col">
+     <section class="card">
+      <div class="card-head"><div><h3>Ultimi 30 giorni</h3><p id="st-days-sub">Un giorno per barra</p></div>
+       <div class="seg3" id="st-metric"><button type="button" class="selected" data-m="kwh">kWh</button><button type="button" data-m="cost">€</button><button type="button" data-m="hours">Ore</button></div></div>
+      <div class="dbars" id="st-days"><p class="muted">Raccolgo i dati: la prima barra compare oggi.</p></div>
+      <p class="dtip" id="st-tip">Tocca una barra per i dettagli del giorno</p>
+     </section>
+     <section class="card">
+      <div class="card-head"><div><h3>Mese per mese</h3><p>Consumo, spesa e ore accese</p></div></div>
+      <div class="months" id="st-months"><p class="muted">Nessun mese ancora.</p></div>
+     </section>
+    </div>
+    <div class="two-col">
+     <section class="card">
+      <div class="card-head"><div><h3>Record</h3><p>I valori più alti mai registrati</p></div></div>
+      <div class="records" id="st-records"><p class="muted">Ancora nessun record.</p></div>
+     </section>
+     <section class="card">
+      <div class="card-head"><div><h3>Come usi il PC</h3><p>Ore in ogni modalità</p></div></div>
+      <div class="modebar" id="st-modes"></div>
+      <div class="mode-legend" id="st-modes-legend"></div>
+      <div class="st-extra" id="st-extra"></div>
+     </section>
+    </div>
     <section class="card">
      <div class="card-head"><div><h3>Andamento</h3><p>Watt alla presa, ultimi minuti</p></div></div>
      <div class="chart" id="chart-power"></div>

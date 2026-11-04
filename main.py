@@ -341,6 +341,10 @@ def gaming_cover(gid: str, kind: str):
     if not path: raise HTTPException(404,'Nessuna immagine')
     return FileResponse(path, media_type='image/png' if kind == 'logo' else 'image/jpeg', headers={'Cache-Control':'private, max-age=86400'})
 
+@app.get('/api/stats',dependencies=[Depends(authorized)])
+def stats():
+    return controller.stats_summary()
+
 @app.get('/api/optimize',dependencies=[Depends(authorized)])
 def optimize_info():
     return {'report':getattr(controller,'optimize_report',None),'disks':optimizer.disks(),

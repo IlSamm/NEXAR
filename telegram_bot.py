@@ -106,6 +106,10 @@ class TelegramBot:
                  f"🔌 {n(pw['total'] if pw else None,' W')} · oggi {e.get('today_kwh',0):.2f} kWh ({e.get('today_cost',0):.2f} €)".replace('.', ','),
                  f"🧠 CPU {n(s.get('cpu'),'%')} · {n(s.get('cpu_temp'),'°C')}   🎮 GPU {n(s.get('gpu'),'%')} · {n(s.get('gpu_temp'),'°C')}",
                  f"⏻ Acceso da {duration(s['pc']['uptime_s'])}" + (' · ⏳ ' + html.escape(s['pc']['pending']['label']) if s['pc'].get('pending') else '')]
+        try:
+            t = self.ctrl.stats_summary()
+            if t.get('since'): lines.append(f"📊 Da sempre: {t['total_kwh']:.1f} kWh · {t['total_cost']:.2f} € · {t['on_hours']:.0f} h acceso".replace('.', ','))
+        except Exception: pass
         return '\n'.join(lines)
 
     def home_text(self):

@@ -206,3 +206,19 @@ def test_fan_guard_restores_when_hot(monkeypatch, tmp_path):
     monkeypatch.setattr(stop, 'wait', wait)
     c.fan_guard_loop(stop)
     assert calls == ['normal'] and 'CPU a 76' in notes[0] and waits[0] == core.FAN_GUARD_SECONDS
+
+
+def test_lifetime_stats_and_records(tmp_path, monkeypatch):
+    import core
+    monkeypatch.setattr(core, 'STATE_FILE', tmp_path / 'state.json')
+    monkeypatch.setattr(core, 'CONFIG_FILE', tmp_path / 'config.json')
+    c = core.Control({'energy': {'price_eur_kwh': 0.25}})
+    c.add_energy(300, 3600, {'cpu_temp': 71, 'gpu_temp': 64}, 'gaming')   # 300 Wh in un'ora di gioco
+    c.add_energy(100, 1800, {'cpu_temp': 50}, 'eco')                     # 50 Wh in mezz'ora
+    s = c.stats_summary()
+    assert s['total_kwh'] == 0.35 and abs(s['total_cost'] - 0.09) < 0.01 and s['on_hours'] == 1.5
+    assert s['modes'] == {'gaming': 1.0, 'eco': 0.5} and s['avg_w'] == 233
+    assert s['records']['peak_w']['v'] == 300 and s['records']['cpu_temp']['v'] == 71 and s['records']['gpu_temp']['v'] == 64
+    d = s['days'][-1]
+    assert d['kwh'] == 0.35 and d['peak'] == 300 and d['cpu_temp'] == 71 and d['modes'] == {'gaming': 1.0, 'eco': 0.5}
+    assert s['months'][-1]['kwh'] == 0.35 and s['co2_kg'] == 0.1

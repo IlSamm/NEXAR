@@ -96,6 +96,7 @@ function navigate(view){
  if(view==='lights')loadRgbDevices();
  if(view==='optimize')loadOptimize();
  if(view==='gaming')loadGaming(false,true);
+ if(view==='energy')loadStats();
  const tab=['power','links','settings','energy','lights'].includes(view)&&!document.querySelector(`.tabbar [data-view="${view}"]`)?'more':view;
  document.querySelectorAll('.rail-nav [data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===view));
  document.querySelectorAll('.tabbar [data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===tab));
@@ -905,6 +906,61 @@ function pageScan(){
  if(calm.matches)return;const m=document.querySelector('.content');if(!m)return;
  m.querySelector('.page-scan')?.remove();const s=el('div','page-scan');m.prepend(s);setTimeout(()=>s.remove(),700);
 }
+/* ---------- statistiche (consumi da sempre) ---------- */
+let statsData=null,statMetric='kwh',statSel=null;
+const DEMO_STATS=(()=>{const days=[];const now=new Date();for(let i=29;i>=0;i--){const d=new Date(now-i*864e5);const h=6+Math.random()*9,k=h*(.11+Math.random()*.08);
+ days.push({day:d.toISOString().slice(0,10),kwh:+k.toFixed(2),cost:+(k*.3).toFixed(2),hours:+h.toFixed(1),peak:250+Math.round(Math.random()*200),cpu_temp:60+Math.round(Math.random()*20),gpu_temp:55+Math.round(Math.random()*20),modes:{eco:+(h*.5).toFixed(1),normal:+(h*.3).toFixed(1),gaming:+(h*.2).toFixed(1)}});}
+ return {since:days[0].day,price_eur_kwh:.3,total_kwh:48.6,total_cost:14.58,co2_kg:12.6,on_hours:312,avg_w:156,avg_day_kwh:1.62,avg_day_cost:.49,days_count:30,year_cost:177,
+  modes:{eco:150,normal:98,gaming:64},gaming_hours:41.5,freed_total:1.24e10,records:{peak_w:{v:462,at:days[20].day},cpu_temp:{v:84,at:days[12].day},gpu_temp:{v:79,at:days[20].day},day_wh:{v:3120,at:days[20].day}},
+  days,months:[{month:'2026-09',kwh:41.2,cost:12.36,hours:280},{month:'2026-10',kwh:52.8,cost:15.84,hours:338},{month:'2026-11',kwh:6.4,cost:1.92,hours:41}]};})();
+const MONTHS_IT=['gen','feb','mar','apr','mag','giu','lug','ago','set','ott','nov','dic'];
+const dayLabel=d=>new Date(d+'T12:00').toLocaleDateString('it-IT',{weekday:'short',day:'numeric',month:'short'});
+async function loadStats(){
+ if(demo){renderStats(DEMO_STATS);return;}
+ try{renderStats(await req('/api/stats'));}catch(ex){}
+}
+function renderStats(d){
+ statsData=d;
+ $('st-since').textContent=d.since?`Da quando usi NEXAR: dal ${new Date(d.since+'T12:00').toLocaleDateString('it-IT',{day:'numeric',month:'long',year:'numeric'})} · ${d.days_count} giorni`:'I dati si raccolgono mentre il PC è acceso';
+ countUp($('st-kwh'),d.total_kwh,v=>nf(v,v<100?2:1)+' kWh');$('st-kwh-sub').textContent=d.avg_w?`in media ${d.avg_w} W alla presa`:'—';
+ countUp($('st-cost'),d.total_cost,v=>eur(v));$('st-cost-sub').textContent=`a ${nf(d.price_eur_kwh*100,0)} c€ per kWh`;
+ countUp($('st-hours'),d.on_hours,v=>nf(v,0)+' h');$('st-hours-sub').textContent=d.days_count?`${nf(d.on_hours/Math.max(1,d.days_count),1)} h al giorno`:'—';
+ $('st-avgday').textContent=nf(d.avg_day_kwh,2)+' kWh';$('st-avgday-sub').textContent=eur(d.avg_day_cost)+' al giorno';
+ $('st-year').textContent=d.year_cost!=null?eur(d.year_cost):'—';$('st-co2').textContent=nf(d.co2_kg,1)+' kg';
+ renderDayBars();
+ const mb=$('st-months');mb.replaceChildren();const mx=Math.max(.01,...d.months.map(m=>m.kwh));
+ if(!d.months.length)mb.append(el('p','muted','Nessun mese ancora.'));
+ d.months.slice().reverse().forEach(m=>{const [y,mo]=m.month.split('-');const r=el('div','mrow');
+  const bar=el('div','bar');const f=el('span');f.style.width=(m.kwh/mx*100)+'%';bar.append(f);
+  const t=el('div');t.append(el('b','',`${MONTHS_IT[+mo-1]} ${y}`),bar);r.append(t,el('strong','',nf(m.kwh,1)+' kWh'),el('small','',`${eur(m.cost)} · ${nf(m.hours,0)} h`));mb.append(r);});
+ const R=d.records||{},rec=$('st-records');rec.replaceChildren();
+ [['bolt','Picco di potenza',R.peak_w&&Math.round(R.peak_w.v)+' W',R.peak_w?.at],['cpu','Processore più caldo',R.cpu_temp&&Math.round(R.cpu_temp.v)+' °C',R.cpu_temp?.at],
+  ['gpu','Scheda video più calda',R.gpu_temp&&Math.round(R.gpu_temp.v)+' °C',R.gpu_temp?.at],['plug','Giorno con più consumo',R.day_wh&&nf(R.day_wh.v/1000,2)+' kWh',R.day_wh?.at]]
+  .filter(x=>x[2]).forEach(([ic,l,v,at])=>{const r=el('div','rec');const i=el('span','rec-ico');i.append(icon(ic));const t=el('div');t.append(el('small','',l),el('b','',v));r.append(i,t,el('em','',at?dayLabel(at):''));rec.append(r);});
+ if(!rec.children.length)rec.append(el('p','muted','Ancora nessun record.'));
+ const M=d.modes||{},tot=Object.values(M).reduce((a,b)=>a+b,0),bar=$('st-modes'),lg=$('st-modes-legend');bar.replaceChildren();lg.replaceChildren();
+ [['eco','AI ECO','#34d399'],['normal','Normale','#60a5fa'],['gaming','Gaming','#ec4899']].forEach(([k,l,c])=>{const h=M[k]||0;if(tot){const s=el('i');s.style.cssText=`flex-grow:${h};background:${c}`;bar.append(s);}
+  const it=el('span');const dot=el('i');dot.style.background=c;it.append(dot,document.createTextNode(`${l} ${nf(h,0)} h`+(tot?` · ${Math.round(h/tot*100)}%`:'')));lg.append(it);});
+ const ex=$('st-extra');ex.replaceChildren();
+ [['game','Ore di gioco',nf(d.gaming_hours,1)+' h'],['clean','Spazio liberato da NEXAR',bytes(d.freed_total)],['plug','Prezzo energia',`${nf(d.price_eur_kwh*100,0)} c€/kWh`]]
+  .forEach(([ic,l,v])=>{const r=el('div');r.append(icon(ic),el('span','',l),el('b','',v));ex.append(r);});
+}
+function renderDayBars(){
+ const d=statsData;if(!d)return;const box=$('st-days');box.replaceChildren();
+ if(!d.days.length){box.append(el('p','muted','Raccolgo i dati: la prima barra compare oggi.'));return;}
+ const val=x=>statMetric==='cost'?x.cost:statMetric==='hours'?x.hours:x.kwh;const mx=Math.max(.01,...d.days.map(val));
+ const fmt=v=>statMetric==='cost'?eur(v):statMetric==='hours'?nf(v,1)+' h':nf(v,2)+' kWh';
+ $('st-days-sub').textContent=`Media ${fmt(d.days.reduce((a,x)=>a+val(x),0)/d.days.length)} al giorno`;
+ d.days.forEach((x,i)=>{const b=el('button','dbar'+(x.day===statSel?' sel':''));b.type='button';const f=el('i');f.style.height=Math.max(2,val(x)/mx*100)+'%';f.style.setProperty('--i',i);b.append(f);
+  const dd=+x.day.slice(8);if(i===0||i===d.days.length-1||dd%5===0)b.append(el('small','',dd));
+  b.title=dayLabel(x.day)+' · '+fmt(val(x));
+  b.addEventListener('click',()=>{statSel=x.day;box.querySelectorAll('.dbar').forEach(z=>z.classList.toggle('sel',z===b));
+   const md=Object.entries(x.modes||{}).map(([k,v])=>`${{eco:'ECO',normal:'Normale',gaming:'Gaming'}[k]} ${nf(v,1)} h`).join(' · ');
+   $('st-tip').textContent=`${dayLabel(x.day)}: ${nf(x.kwh,2)} kWh · ${eur(x.cost)} · acceso ${nf(x.hours,1)} h · picco ${Math.round(x.peak||0)} W`+(x.cpu_temp?` · CPU max ${Math.round(x.cpu_temp)}°C`:'')+(x.gpu_temp?` · GPU max ${Math.round(x.gpu_temp)}°C`:'')+(md?` · ${md}`:'');});
+  box.append(b);});
+}
+document.querySelectorAll('#st-metric button').forEach(b=>b.addEventListener('click',()=>{statMetric=b.dataset.m;document.querySelectorAll('#st-metric button').forEach(x=>x.classList.toggle('selected',x===b));renderDayBars();}));
+setInterval(()=>{if(!document.hidden&&$('page-energy').classList.contains('active'))loadStats();},60000);
 /* ---------- gaming ---------- */
 let gameData=null,libStore='',showHidden=false,heroArt=null;const covers=new Map();
 const STORE_COLORS={Steam:'#66c0f4',Epic:'#e5e7eb',Riot:'#ff6b75',GOG:'#c79cff'};

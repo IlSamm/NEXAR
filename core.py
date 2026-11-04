@@ -974,7 +974,7 @@ class Control:
                 self.auto_last=running
             except Exception: logging.exception('Auto rilevamento')
 
-    def add_energy(self, watts, seconds):
+    def add_energy(self, watts, seconds, t=None, mode=None):
         today=datetime.now().strftime('%Y-%m-%d')
         with self.lock:
             e=self.state.setdefault('energy',{})
@@ -982,8 +982,56 @@ class Control:
             if e.get('month')!=today[:7]: e.update(month=today[:7], month_wh=0.0)
             wh=watts*seconds/3600
             e['day_wh']+=wh; e['month_wh']+=wh
+            self.add_stats(today, wh, watts, seconds, t or {}, mode)
             if time.monotonic()-getattr(self,'energy_saved',0)>60:
                 json_save(STATE_FILE,self.state); self.energy_saved=time.monotonic()
+
+    def add_stats(self, today, wh, watts, seconds, t, mode):
+        """Storico permanente: totali da sempre, giorno per giorno (oltre un anno), mese per mese e record."""
+        price=float(self.config.get('energy',{}).get('price_eur_kwh',0.30))
+        st=self.state.setdefault('stats',{})
+        if not st.get('since'):
+            # Prima volta: si parte dal consumo del mese già contato, per non ricominciare da zero.
+            e=self.state.get('energy',{})
+            seed=float(e.get('month_wh',0.0))-wh if e.get('month')==today[:7] else 0.0
+            st.update(since=today, total_wh=max(0.0,seed), total_cost=max(0.0,seed)/1000*price, on_s=0.0, modes={})
+        cost=wh/1000*price
+        st['total_wh']=st.get('total_wh',0.0)+wh; st['total_cost']=st.get('total_cost',0.0)+cost; st['on_s']=st.get('on_s',0.0)+seconds
+        if mode: st.setdefault('modes',{})[mode]=st['modes'].get(mode,0.0)+seconds
+        d=st.setdefault('days',{}).setdefault(today,{'wh':0.0,'cost':0.0,'s':0.0,'peak':0.0})
+        d['wh']+=wh; d['cost']+=cost; d['s']+=seconds; d['peak']=max(d['peak'],round(watts,1))
+        if mode: d[mode]=d.get(mode,0.0)+seconds
+        for k in ('cpu_temp','gpu_temp'):
+            v=t.get(k)
+            if isinstance(v,(int,float)): d[k]=max(d.get(k,0),round(v,1))
+        m=st.setdefault('months',{}).setdefault(today[:7],{'wh':0.0,'cost':0.0,'s':0.0})
+        m['wh']+=wh; m['cost']+=cost; m['s']+=seconds
+        rec=st.setdefault('records',{})
+        for key,val in (('peak_w',watts),('cpu_temp',t.get('cpu_temp')),('gpu_temp',t.get('gpu_temp')),('day_wh',d['wh'])):
+            if isinstance(val,(int,float)) and val>rec.get(key,{}).get('v',-1): rec[key]={'v':round(val,1),'at':today}
+        if len(st['days'])>420:
+            for k in sorted(st['days'])[:-400]: st['days'].pop(k,None)
+
+    def stats_summary(self):
+        """Riepilogo per la pagina Consumi e il bot: totali, medie, record, ultimi 30 giorni e 12 mesi."""
+        with self.lock: st=json.loads(json.dumps(self.state.get('stats',{})))
+        price=float(self.config.get('energy',{}).get('price_eur_kwh',0.30))
+        days=st.get('days',{}); n=max(1,len(days))
+        kwh=st.get('total_wh',0.0)/1000; on_h=st.get('on_s',0.0)/3600
+        last30=[{'day':k,'kwh':round(v['wh']/1000,3),'cost':round(v['cost'],2),'hours':round(v['s']/3600,1),'peak':v.get('peak'),
+                 'cpu_temp':v.get('cpu_temp'),'gpu_temp':v.get('gpu_temp'),
+                 'modes':{m:round(v.get(m,0)/3600,1) for m in ('eco','normal','gaming') if v.get(m)}} for k,v in sorted(days.items())[-30:]]
+        months=[{'month':k,'kwh':round(v['wh']/1000,2),'cost':round(v['cost'],2),'hours':round(v['s']/3600,1)} for k,v in sorted(st.get('months',{}).items())[-12:]]
+        games=self.state.get('games') or {}
+        return {'since':st.get('since'),'price_eur_kwh':price,
+                'total_kwh':round(kwh,2),'total_cost':round(st.get('total_cost',0.0),2),'co2_kg':round(kwh*0.26,1),
+                'on_hours':round(on_h,1),'avg_w':round(st.get('total_wh',0.0)/on_h) if on_h>0.05 else None,
+                'avg_day_kwh':round(kwh/n,2),'avg_day_cost':round(st.get('total_cost',0.0)/n,2),'days_count':len(days),
+                'year_cost':round(st.get('total_cost',0.0)/n*365,0) if len(days)>=3 else None,
+                'modes':{m:round(v/3600,1) for m,v in (st.get('modes') or {}).items()},
+                'gaming_hours':round(sum(int(g.get('seconds',0)) for g in games.values())/3600,1),
+                'freed_total':int(self.state.get('optimize_freed_total',0)),
+                'records':st.get('records',{}),'days':last30,'months':months}
 
     def energy_summary(self):
         price=float(self.config.get('energy',{}).get('price_eur_kwh',0.30))
@@ -1008,7 +1056,7 @@ class Control:
             try:
                 t=self.telemetry()
                 now=time.monotonic()
-                if t.get('power'): self.add_energy(t['power']['total'], min(60.0, now-last))
+                if t.get('power'): self.add_energy(t['power']['total'], min(60.0, now-last), t, self.mode())
                 last=now
                 # Protezione sempre attiva (anche ad avvisi spenti): CPU calda con ventole case rallentate.
                 # Con le ventole del case spente conta anche la GPU, che scarica il calore dentro il case.
