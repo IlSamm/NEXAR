@@ -56,12 +56,20 @@ if os.name == 'nt':
     user32.SetWindowLongPtrW.restype = ctypes.c_void_p
     user32.SetWindowLongPtrW.argtypes = [wintypes.HWND, ctypes.c_int, ctypes.c_void_p]
     user32.PostMessageW.argtypes = [wintypes.HWND, ctypes.c_uint, wintypes.WPARAM, wintypes.LPARAM]
+    user32.SendMessageW.restype = LRESULT
+    user32.SendMessageW.argtypes = [wintypes.HWND, ctypes.c_uint, wintypes.WPARAM, wintypes.LPARAM]
     user32.IsZoomed.argtypes = [wintypes.HWND]
     user32.ShowWindowAsync.argtypes = [wintypes.HWND, ctypes.c_int]
     user32.SetWindowPos.argtypes = [wintypes.HWND, wintypes.HWND, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_uint]
 
-WM_CLOSE, WM_NCCALCSIZE, WM_NCLBUTTONDOWN = 0x10, 0x83, 0xA1
-HIT = {'caption': 2, 'top': 12, 'topleft': 13, 'topright': 14}
+WM_CLOSE, WM_NCCALCSIZE, WM_SYSCOMMAND, WM_APP_DRAG = 0x10, 0x83, 0x112, 0x8001
+WM_WINDOWPOSCHANGING, WM_WINDOWPOSCHANGED = 0x46, 0x47
+if os.name == 'nt':
+    class WINDOWPOS(ctypes.Structure):
+        _fields_ = [('hwnd', wintypes.HWND), ('after', wintypes.HWND), ('x', ctypes.c_int), ('y', ctypes.c_int),
+                    ('cx', ctypes.c_int), ('cy', ctypes.c_int), ('flags', ctypes.c_uint)]
+# SC_MOVE|HTCAPTION e SC_SIZE|WMSZ_*: gli stessi comandi che usa Windows trascinando la barra o il bordo
+SC_DRAG = {'caption': 0xF012, 'top': 0xF003, 'topleft': 0xF004, 'topright': 0xF005}
 
 def find_hwnd(title='NEXAR'):
     """Finestra principale di questo processo (anche se è ancora nascosta)."""
@@ -86,6 +94,7 @@ class WindowApi:
         self._hwnd = None
         self._proc = None
         self._orig = None
+        self._nested = 0
 
     def _attach(self, window):
         self._window = window
@@ -98,6 +107,24 @@ class WindowApi:
         hwnd = self._hwnd
 
         def proc(h, msg, wp, lp):
+            if msg == WM_APP_DRAG:
+                # Sul thread della finestra: solo qui si può togliere il mouse alla pagina web
+                # e far partire lo spostamento/ridimensionamento nativo di Windows.
+                # Solo se il tasto è ancora premuto: con un clic velocissimo Windows resterebbe
+                # in "modalità sposta" con la finestra attaccata al cursore.
+                button = 0x02 if user32.GetSystemMetrics(23) else 0x01  # SM_SWAPBUTTON: VK_RBUTTON / VK_LBUTTON
+                if user32.GetAsyncKeyState(button) & 0x8000:
+                    user32.ReleaseCapture()
+                    user32.SendMessageW(h, WM_SYSCOMMAND, wp, 0)
+                return 0
+            if msg == WM_WINDOWPOSCHANGED:
+                self._nested += 1
+                try: return user32.CallWindowProcW(self._orig, h, msg, wp, lp)
+                finally: self._nested -= 1
+            if msg == WM_WINDOWPOSCHANGING and self._nested:
+                # WinForms, dopo un ripristino, riaggiunge l'altezza della vecchia barra del titolo
+                # (+31 px a ogni ingrandisci/riduci): blocca solo quel ridimensionamento interno.
+                ctypes.cast(lp, ctypes.POINTER(WINDOWPOS)).contents.flags |= 0x1  # SWP_NOSIZE
             if msg == WM_NCCALCSIZE and wp:
                 # Tieni i bordi invisibili per ridimensionare, togli solo la barra del titolo.
                 rc = ctypes.cast(lp, ctypes.POINTER(wintypes.RECT)).contents
@@ -118,39 +145,27 @@ class WindowApi:
 
     def win_drag(self):
         # Trascinamento nativo: funzionano Snap, Aero Shake e il trascinamento tra schermi.
-        if self._hwnd:
-            user32.ReleaseCapture()
-            user32.PostMessageW(self._hwnd, WM_NCLBUTTONDOWN, HIT['caption'], 0)
+        if self._hwnd: user32.PostMessageW(self._hwnd, WM_APP_DRAG, SC_DRAG['caption'], 0)
 
     def win_resize(self, edge):
-        if self._hwnd and edge in HIT and edge != 'caption' and not user32.IsZoomed(self._hwnd):
-            user32.ReleaseCapture()
-            user32.PostMessageW(self._hwnd, WM_NCLBUTTONDOWN, HIT[edge], 0)
+        if self._hwnd and edge in SC_DRAG and edge != 'caption' and not user32.IsZoomed(self._hwnd):
+            user32.PostMessageW(self._hwnd, WM_APP_DRAG, SC_DRAG[edge], 0)
 
     def win_min(self):
         if self._hwnd: user32.ShowWindowAsync(self._hwnd, 6)  # SW_MINIMIZE
 
     def win_toggle_max(self):
         if not self._hwnd: return False
-        if self._fullscreen(): self._window.toggle_fullscreen(); return False
         zoomed = bool(user32.IsZoomed(self._hwnd))
         user32.ShowWindowAsync(self._hwnd, 9 if zoomed else 3)  # SW_RESTORE / SW_MAXIMIZE
         return not zoomed
-
-    def win_fullscreen(self):
-        if self._window: self._window.toggle_fullscreen()
-        return self._fullscreen()
 
     def win_close(self):
         # Come la X di Windows: la finestra si nasconde e NEXAR resta vicino all'orologio.
         if self._hwnd: user32.PostMessageW(self._hwnd, WM_CLOSE, 0, 0)
 
     def win_state(self):
-        return {'max': bool(self._hwnd and user32.IsZoomed(self._hwnd)), 'full': self._fullscreen()}
-
-    def _fullscreen(self):
-        try: return bool(self._window.native.is_fullscreen)
-        except Exception: return False
+        return {'max': bool(self._hwnd and user32.IsZoomed(self._hwnd))}
 
 def run():
     port = int(config.get('web', {}).get('port', 8765))

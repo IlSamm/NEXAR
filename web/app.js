@@ -968,7 +968,7 @@ const islandW=w=>Math.min(w,innerWidth-24);
 function islandScene(kind,src,{title,sub,auto}){
  const M=MODE_FX[kind]||MODE_FX.normal,col=(LQ_COL[kind]||LQ_COL.normal)[1];const I=island(col,M.i);
  let fillEl=null;
- if(src?.appendChild&&!auto){fillEl=el('span','fx-fill');fillEl.style.background=`color-mix(in srgb,${col} 26%,transparent)`;src.appendChild(fillEl);
+ if(src?.appendChild&&!auto&&!src.closest?.('.mode-seg')){fillEl=el('span','fx-fill');fillEl.style.background=`color-mix(in srgb,${col} 26%,transparent)`;src.appendChild(fillEl);
   fillEl.animate([{transform:'scaleX(0)'},{transform:'scaleX(1)'}],{duration:800,easing:EASE.io,fill:'forwards'});}
  I.t1.textContent=title;I.t2.textContent=auto?'Attivata automaticamente':sub||'Applico energia, luci e ventole…';
  I.morph(islandW(340),56).then(()=>{I.txt.animate([{opacity:0},{opacity:1}],{duration:200,fill:'forwards'});if(!auto)I.spin.animate([{opacity:0},{opacity:1}],{duration:200,fill:'forwards'});});
@@ -1007,14 +1007,20 @@ function fx(kind,title,sub,img){
  const s=st==='discreet'?islandScene('gaming',null,{title:'Avvio '+(sub||title),sub:'NEXAR prepara il PC',auto:true})
   :liquidScene('gaming',null,{title:sub||title,sub:'Avvio il gioco…',auto:true,img});
 }
+function markMode(mode){
+ // Il selettore si sposta subito al clic, senza aspettare che il PC abbia applicato tutto.
+ document.querySelectorAll('.mode-opt').forEach(b=>b.classList.toggle('selected',b.classList.contains(mode)));
+ const h=$('hm-hero');if(h)h.dataset.mode=mode;lastMode=mode;
+}
 async function modeSwitch(mode,src){
  if(busy)return;
- if(demo){const b=modeSceneOpen(mode,src);setTimeout(()=>modeSceneDone(b,'Energia: '+MODE_FX[mode].t+' · RGB: profilo applicato · Ventole: profilo '+(mode==='eco'?'silenzioso':'normale')+(mode==='gaming'?' · Gaming Boost attivo':'')),1100);return;}
+ const prev=current?.mode;markMode(mode);
+ if(demo){statusDemo.mode=mode;const b=modeSceneOpen(mode,src);setTimeout(()=>modeSceneDone(b,'Energia: '+MODE_FX[mode].t+' · RGB: profilo applicato · Ventole: profilo '+(mode==='eco'?'silenzioso':'normale')+(mode==='gaming'?' · Gaming Boost attivo':'')),1100);return;}
  if(!key&&!tgInit){loginScreen(true);return;}
  fxQuiet=Date.now()+15000;busy=true;
  const scene=modeSceneOpen(mode,src);
  try{const r=await req('/api/mode','POST',{mode});modeSceneDone(scene,r.message);await refresh();}
- catch(ex){modeSceneDone(scene,ex.message,false);}
+ catch(ex){modeSceneDone(scene,ex.message,false);if(prev)markMode(prev);}
  finally{busy=false;}
 }
 const cfx={box:null,h:null};
@@ -1433,20 +1439,19 @@ navigate('home');
 setInterval(()=>{if(!document.hidden)refresh();},4000);
 /* ---------- barra della finestra (solo nell'app per Windows) ---------- */
 // La barra grigia di Windows non c'è più: qui ci sono trascinamento, Snap, doppio clic per
-// ingrandire, ridimensionamento dal bordo alto, F11 per lo schermo intero.
+// ingrandire e ridimensionamento dal bordo alto.
 function setupWinbar(){
  const api=window.pywebview?.api;if(!api?.win_drag||$('winbar'))return;
  const root=document.documentElement;root.classList.add('in-desktop');
  const bar=document.createElement('div');bar.id='winbar';bar.className='winbar';
  bar.innerHTML=`<div class="wb-btns">
-  <button type="button" class="wb-btn" data-wb="full" title="Schermo intero (F11)" aria-label="Schermo intero"><svg viewBox="0 0 12 12"><path class="wb-full-in" d="M1.5 4.5v-3h3M7.5 1.5h3v3M10.5 7.5v3h-3M4.5 10.5h-3v-3"/><path class="wb-full-out" d="M4.5 1.5v3h-3M10.5 4.5h-3v-3M7.5 10.5v-3h3M1.5 7.5h3v3"/></svg></button>
   <button type="button" class="wb-btn" data-wb="min" title="Riduci a icona" aria-label="Riduci a icona"><svg viewBox="0 0 12 12"><path d="M2 6h8"/></svg></button>
   <button type="button" class="wb-btn" data-wb="max" title="Ingrandisci" aria-label="Ingrandisci"><svg viewBox="0 0 12 12"><rect class="wb-max-in" x="1.75" y="1.75" width="8.5" height="8.5" rx="2"/><path class="wb-max-out" d="M3.75 3.25V2.9c0-.6.5-1.15 1.15-1.15h4.2c.6 0 1.15.5 1.15 1.15v4.2c0 .6-.5 1.15-1.15 1.15h-.35"/><rect class="wb-max-out" x="1.75" y="3.75" width="6.5" height="6.5" rx="1.6"/></svg></button>
   <button type="button" class="wb-btn close" data-wb="close" title="Chiudi: NEXAR resta attivo vicino all'orologio" aria-label="Chiudi"><svg viewBox="0 0 12 12"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7"/></svg></button></div>`;
  const edges=document.createElement('div');edges.className='wb-edges';edges.setAttribute('aria-hidden','true');
  edges.innerHTML='<i data-edge="top"></i><i data-edge="topleft"></i><i data-edge="topright"></i>';
  document.body.append(bar,edges);
- const sync=()=>api.win_state().then(s=>{root.classList.toggle('win-max',!!s.max);root.classList.toggle('win-full',!!s.full);
+ const sync=()=>api.win_state().then(s=>{root.classList.toggle('win-max',!!s.max);
   const m=bar.querySelector('[data-wb=max]');m.title=s.max?'Ripristina':'Ingrandisci';m.setAttribute('aria-label',m.title);}).catch(()=>{});
  let last=0;
  const drag=e=>{
@@ -1455,14 +1460,11 @@ function setupWinbar(){
   last=now;api.win_drag();
  };
  bar.addEventListener('mousedown',drag);
- document.querySelector('.rail .brand')?.addEventListener('mousedown',drag);
+ // si trascina anche dal logo e dalla zona del titolo della pagina
+ document.querySelectorAll('.rail .brand,.main>.top').forEach(n=>n.addEventListener('mousedown',drag));
  edges.addEventListener('mousedown',e=>{const k=e.target.dataset.edge;if(k&&e.button===0){e.preventDefault();api.win_resize(k);}});
  bar.addEventListener('click',e=>{const b=e.target.closest('[data-wb]');if(!b)return;const k=b.dataset.wb;
-  ({min:()=>api.win_min(),max:()=>api.win_toggle_max(),close:()=>api.win_close(),full:()=>api.win_fullscreen()})[k]?.().then?.(()=>setTimeout(sync,250));});
- document.addEventListener('keydown',e=>{
-  if(e.key==='F11'){e.preventDefault();api.win_fullscreen().then(()=>setTimeout(sync,250));}
-  else if(e.key==='Escape'&&root.classList.contains('win-full')&&!document.querySelector('dialog[open]')&&$('palette').hidden){api.win_fullscreen().then(()=>setTimeout(sync,250));}
- });
+  ({min:()=>api.win_min(),max:()=>api.win_toggle_max(),close:()=>api.win_close()})[k]?.().then?.(()=>setTimeout(sync,250));});
  addEventListener('resize',()=>{clearTimeout(sync.t);sync.t=setTimeout(sync,60);});
  addEventListener('scroll',()=>bar.classList.toggle('scrolled',scrollY>6),{passive:true});
  sync();
