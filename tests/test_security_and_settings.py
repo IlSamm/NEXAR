@@ -43,14 +43,9 @@ def test_unauthenticated_routes_denied():
     assert client.post('/api/settings',headers={'X-PC-ECO-Key':key},json={'eco_cpu_max_percent':5}).status_code==400
 
 
-def test_telegram_menu_contains_safe_actions():
+def test_telegram_menu_has_no_remote_controls():
     from telegram_bot import TelegramBot
-    class Fake:
-        config={}
-        def status(self): return {'mode':'eco','auto_enabled':True}
-        def rgb_palette(self): return ['#ff0000','#12ab34']
-    bot=TelegramBot(Fake())
-    rows=bot.menu()['inline_keyboard']+bot.rgb_menu()['inline_keyboard']+bot.fans_menu()['inline_keyboard']
-    actions={b.get('callback_data') for row in rows for b in row}
-    assert {'eco','normal','status','power','screen','auto','rgb','fans','rgb_off','rgb_on','fans_eco','fans_normal'} <= actions
-    assert not {'shutdown','cpu_fan_off','aio_off'} & actions
+    bot=TelegramBot(type('Fake',(),{'config':{}})())
+    bot.webapp_url='https://pc.example.org/'
+    rows=bot.menu()['inline_keyboard']
+    assert len(rows)==1 and 'web_app' in rows[0][0] and not any('callback_data' in b for r in rows for b in r)

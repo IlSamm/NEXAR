@@ -57,7 +57,8 @@ async def lifespan(app: FastAPI):
     t6 = threading.Thread(target=updater.loop,args=(stop,),daemon=True,name='updater')
     t7 = threading.Thread(target=controller.fan_guard_loop,args=(stop,),daemon=True,name='fan-guard')
     t8 = threading.Thread(target=controller.boost_loop,args=(stop,),daemon=True,name='gaming-boost')
-    t1.start();t2.start();t3.start();t4.start();t5.start();t6.start();t7.start();t8.start()
+    t9 = threading.Thread(target=controller.optimize_loop,args=(stop,),daemon=True,name='auto-clean')
+    t1.start();t2.start();t3.start();t4.start();t5.start();t6.start();t7.start();t8.start();t9.start()
     updater.announce()
     # Avviso "PC acceso" solo dopo un avvio vero di Windows, non a ogni riapertura dell'app.
     import psutil
@@ -343,7 +344,7 @@ def gaming_cover(gid: str, kind: str):
 @app.get('/api/optimize',dependencies=[Depends(authorized)])
 def optimize_info():
     return {'report':getattr(controller,'optimize_report',None),'disks':optimizer.disks(),
-            'memory':optimizer.memory_top(),'startup':optimizer.startup_items()}
+            'memory':optimizer.memory_top(),'startup':optimizer.startup_items(),**controller.optimize_extra()}
 
 def optimize_scan_job():
     controller.optimize_report = optimizer.analyze()
@@ -362,6 +363,7 @@ def optimize_clean(data: CleanRequest, request: Request):
     remote = is_remote(request)  # la conferma amministratore compare sullo schermo del PC: da remoto solo pulizie utente
     def job():
         res = optimizer.clean(data.keys, discovery.run_elevated, allow_admin=not remote)
+        controller.record_clean(res['freed'], 'manuale')
         optimize_scan_job()
         return 'Pulizia: liberati ' + optimizer.human(res['freed']) + ('. ' + ' · '.join(res['notes']) if res['notes'] else '')
     if not data.keys or set(data.keys) - {t['key'] for t in optimizer.targets()}: raise HTTPException(400,'Scegli cosa pulire')
@@ -381,13 +383,14 @@ def optimize_startup(data: StartupToggle, request: Request):
         return {'ok':True,'message':f'{name}: ' + ('parte con Windows' if data.enabled else 'non parte più con Windows')}
     except (ValueError,RuntimeError,OSError) as ex: raise HTTPException(400,str(ex))
 
-QUICK_CLEAN = ('temp','shader','thumbs','crash','browser')  # mai cestino né cartelle di Windows: niente admin, niente perdite
+QUICK_CLEAN = optimizer.SAFE_CLEAN
 
 @app.post('/api/optimize/quick',dependencies=[Depends(authorized)])
 def optimize_quick():
     """Ottimizza ora: pulizia sicura + cache DNS in un clic, poi nuova analisi per il punteggio."""
     def job():
         res = optimizer.clean(QUICK_CLEAN)
+        controller.record_clean(res['freed'], 'rapida')
         try: optimizer.flush_dns(); dns = ' · DNS svuotata'
         except (RuntimeError,OSError): dns = ''
         optimize_scan_job()
@@ -399,6 +402,74 @@ def optimize_quick():
 def optimize_dns():
     try: return {'ok':True,'message':optimizer.flush_dns()}
     except (RuntimeError,OSError) as ex: raise HTTPException(400,str(ex))
+
+@app.get('/api/optimize/processes',dependencies=[Depends(authorized)])
+def optimize_processes():
+    return optimizer.processes()
+
+class AppName(BaseModel):
+    name: str
+@app.post('/api/optimize/close',dependencies=[Depends(authorized)])
+def optimize_close(data: AppName):
+    try:
+        msg = optimizer.close_app(data.name); controller.log_event('Ottimizza: ' + msg)
+        return {'ok':True,'message':msg}
+    except (ValueError,OSError) as ex: raise HTTPException(400,str(ex))
+
+def optimize_large_job():
+    controller.large_report = optimizer.large_files()
+    r = controller.large_report
+    return f"File grandi: {r['count']} file, {optimizer.human(r['total'])}"
+@app.post('/api/optimize/large/scan',dependencies=[Depends(authorized)])
+def optimize_large_scan():
+    try: return {'ok':True,'message':controller.run_job('optimize-large',optimize_large_job)}
+    except RuntimeError as ex: raise HTTPException(409,str(ex))
+
+class FilePath(BaseModel):
+    path: str
+def known_large(path):
+    # Solo file trovati dall'ultima ricerca: niente percorsi arbitrari dal browser.
+    files = (getattr(controller,'large_report',None) or {}).get('files') or []
+    f = next((f for f in files if f['path'] == path), None)
+    if not f or not os.path.isfile(path): raise HTTPException(404,'File non trovato: ripeti la ricerca')
+    return f
+@app.post('/api/optimize/large/reveal',dependencies=[Depends(authorized),Depends(local_only)])
+def optimize_large_reveal(data: FilePath):
+    known_large(data.path); optimizer.reveal(data.path)
+    return {'ok':True,'message':'Cartella aperta sul PC'}
+@app.post('/api/optimize/large/recycle',dependencies=[Depends(authorized),Depends(local_only)])
+def optimize_large_recycle(data: FilePath):
+    f = known_large(data.path)
+    try: optimizer.to_recycle_bin(data.path)
+    except (RuntimeError,OSError) as ex: raise HTTPException(400,str(ex))
+    rep = controller.large_report
+    rep['files'] = [x for x in rep['files'] if x['path'] != data.path]; rep['total'] -= f['bytes']; rep['count'] -= 1
+    controller.log_event(f"Nel Cestino: {f['name']} ({optimizer.human(f['bytes'])})")
+    return {'ok':True,'message':f"{f['name']} spostato nel Cestino (recuperabile)"}
+
+def optimize_health_job():
+    controller.disk_report = {'at': int(time.time()), 'disks': optimizer.disk_health()}
+    bad = [d['name'] for d in controller.disk_report['disks'] if not d['ok']]
+    return ('Dischi da controllare: ' + ', '.join(bad)) if bad else f"Dischi in salute ({len(controller.disk_report['disks'])})"
+@app.post('/api/optimize/health',dependencies=[Depends(authorized)])
+def optimize_health():
+    try: return {'ok':True,'message':controller.run_job('optimize-health',optimize_health_job)}
+    except RuntimeError as ex: raise HTTPException(409,str(ex))
+
+def optimize_net_job():
+    controller.net_report = optimizer.network_check()
+    n = controller.net_report
+    return f"Rete {n['quality']}: internet {n['internet'].get('ms') or '—'} ms"
+@app.post('/api/optimize/net',dependencies=[Depends(authorized)])
+def optimize_net():
+    try: return {'ok':True,'message':controller.run_job('optimize-net',optimize_net_job)}
+    except RuntimeError as ex: raise HTTPException(409,str(ex))
+
+class AutoClean(BaseModel):
+    enabled: bool
+@app.post('/api/optimize/auto',dependencies=[Depends(authorized)])
+def optimize_auto(data: AutoClean):
+    return {'ok':True,'message':controller.set_optimize_auto(data.enabled)}
 
 @app.post('/api/optimize/trim',dependencies=[Depends(authorized),Depends(local_only)])
 def optimize_trim():

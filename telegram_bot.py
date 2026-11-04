@@ -1,4 +1,4 @@
-"""Bot long-polling: no port forwarding required, only approved private user."""
+"""Bot NEXAR: avvisi dal PC e accesso alla dashboard. Long polling (nessuna porta aperta), solo il proprietario abbinato."""
 import html
 import json
 import queue
@@ -9,28 +9,8 @@ from urllib.error import HTTPError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
-COLORS = {'bianco': '#ffffff', 'rosso': '#ff2a2a', 'arancione': '#ff8a00', 'giallo': '#ffd400', 'verde': '#2cff5a',
-          'azzurro': '#00e5ff', 'blu': '#1f6bff', 'viola': '#8a3cff', 'rosa': '#ff3cc8'}
-COLOR_EMOJI = {'bianco': '⚪', 'rosso': '🔴', 'arancione': '🟠', 'giallo': '🟡', 'verde': '🟢', 'azzurro': '🩵', 'blu': '🔵', 'viola': '🟣', 'rosa': '🩷'}
-COMMANDS = [('menu', 'Pannello di controllo'), ('status', 'Stato del PC'), ('consumo', 'Consumo ed energia'),
-            ('eco', 'Attiva AI ECO'), ('normal', 'Modalità normale'), ('gaming', 'Modalità Gaming'), ('luci', 'LED e colori'),
-            ('colore', 'Colore LED, es. /colore blu o /colore #ff8800'), ('salva', 'Salva un colore, es. /salva #ff8800'),
-            ('ventole', 'Profili ventole'), ('giochi', 'Giochi, partita in corso e Gaming automatico'),
-            ('screen', 'Spegni il monitor'), ('auto', 'Automazione Codex/Claude'), ('accensione', 'Spegni, riavvia, sospendi, timer'),
-            ('spegni', 'Spegni il PC'), ('sospendi', 'Metti il PC in sospensione'), ('annulla', 'Annulla lo spegnimento'),
-            ('accendi', 'Accendi il PC (relay su Umbrel)'), ('pulizia', 'Spazio libero e pulizia del PC'),
-            ('aggiorna', 'Versione e aggiornamenti'), ('app', 'Apri la dashboard')]
-# Pulizia da Telegram: solo voci sicure e reversibili da sole (niente cestino, niente cartelle di Windows che chiedono l'admin).
-SAFE_CLEAN = ('temp', 'shader', 'thumbs', 'crash', 'browser')
-POWER_ASK = {'shutdown': '⏻ Spegnere il PC?\nCodex e Claude verranno chiusi.', 'restart': '🔄 Riavviare il PC?',
-             'sleep': '🌙 Mettere il PC in sospensione?\nConsuma 2–5 W e si risveglia con Wake-on-LAN.',
-             'hibernate': '💤 Ibernare il PC?'}
-
-def nearest_emoji(hex_color):
-    rgb = lambda h: tuple(int(h[i:i + 2], 16) for i in (1, 3, 5))
-    target = rgb(hex_color)
-    name = min(COLORS, key=lambda n: sum((a - b) ** 2 for a, b in zip(rgb(COLORS[n]), target)))
-    return COLOR_EMOJI[name]
+# Il bot non è un telecomando a pulsanti: manda gli avvisi e apre la dashboard (Mini App), dove c'è tutto.
+COMMANDS = [('start', 'Apri NEXAR'), ('stato', 'Il PC in breve')]
 
 def duration(seconds):
     h, m = divmod(int(seconds) // 60, 60)
@@ -87,12 +67,12 @@ class TelegramBot:
         return obj.get('result')
     def send(self, chat_id, msg, markup=None):
         payload={'chat_id':chat_id,'text':msg[:3900],'parse_mode':'HTML','disable_web_page_preview':'true'}
-        if markup: payload['reply_markup']=json.dumps(markup)
+        if markup and markup.get('inline_keyboard'): payload['reply_markup']=json.dumps(markup)
         return self.call('sendMessage',payload)
     def edit(self, chat_id, message_id, msg, markup=None):
         """Aggiorna il pannello nello stesso messaggio: la chat non si riempie di risposte."""
         payload={'chat_id':chat_id,'message_id':message_id,'text':msg[:3900],'parse_mode':'HTML','disable_web_page_preview':'true'}
-        if markup: payload['reply_markup']=json.dumps(markup)
+        if markup and markup.get('inline_keyboard'): payload['reply_markup']=json.dumps(markup)
         try: self.call('editMessageText',payload)
         except Exception: pass  # testo identico o messaggio troppo vecchio: nessun problema
 
@@ -102,109 +82,38 @@ class TelegramBot:
 
     def sync_menu_button(self):
         if not (self.token and self.user_id) or self.menu_synced == self.webapp_url: return
-        button = {'type':'web_app','text':'📱 App','web_app':{'url':self.webapp_url}} if self.webapp_url else {'type':'commands'}
+        button = {'type':'web_app','text':'📱 NEXAR','web_app':{'url':self.webapp_url}} if self.webapp_url else {'type':'commands'}
         try:
             self.call('setChatMenuButton',{'chat_id':self.user_id,'menu_button':json.dumps(button)})
             self.call('setMyCommands',{'commands':json.dumps([{'command':c,'description':d} for c,d in COMMANDS])})
             self.menu_synced = self.webapp_url
         except Exception: logging.warning('Telegram: pulsante app non aggiornato')
 
-    # ---------- pannelli ----------
+    # ---------- messaggi ----------
     def app_row(self):
         return [[{'text':'📱 Apri la dashboard','web_app':{'url':self.webapp_url}}]] if self.webapp_url else []
     def menu(self):
-        s = self.ctrl.status()
-        mode = s.get('mode')
-        auto = '🟢 attiva' if s.get('auto_enabled') else '⚪ spenta'
-        tick = lambda m: '✅ ' if mode == m else ''
-        return {'inline_keyboard': self.app_row() + [
-            [{'text':tick('eco')+'🌙 AI ECO','callback_data':'eco'},{'text':tick('normal')+'⚡ Normale','callback_data':'normal'},
-             {'text':tick('gaming')+'🎮 Gaming','callback_data':'gaming'}],
-            [{'text':'📊 Stato','callback_data':'status'},{'text':'🔌 Consumo','callback_data':'power'}],
-            [{'text':'💡 Luci','callback_data':'rgb'},{'text':'🌀 Ventole','callback_data':'fans'},{'text':'🖥 Monitor','callback_data':'screen'}],
-            [{'text':f'🤖 Automazione AI: {auto}','callback_data':'auto'}],
-            [{'text':'🎮 Giochi','callback_data':'games'},{'text':'🧹 Ottimizza','callback_data':'opt'},{'text':'⏻ Accensione','callback_data':'pw'}],
-        ]}
-    def games_panel(self):
-        """Partita in corso (o ultima) e i giochi giocati più di recente, da avviare con un tocco."""
-        esc = lambda t: html.escape(str(t))
-        info = self.ctrl.booster.info()
-        games = [g for g in self.ctrl.booster.games() if not g.get('hidden')]
-        ses, run = info.get('session'), info.get('running')
-        if info['active'] and ses:
-            temps = ' · '.join(f'{n} max {ses[k]:.0f}°C' for n, k in (('CPU', 'cpu_temp_max'), ('GPU', 'gpu_temp_max')) if ses.get(k) is not None)
-            text = (f"🎮 <b>{esc(ses['game'] or 'Gaming attivo')}</b> · {duration(ses['elapsed'])}" + (f'\n🌡 {temps}' if temps else '')
-                    + (f"\n🔌 {ses['kwh']:.2f} kWh".replace('.', ',') if ses.get('kwh') else ''))
-        elif run: text = f"🎮 Aperto: <b>{esc(run['name'])}</b> (Gaming spento)"
-        else: text = '🎮 <b>Giochi</b>\nTocca un gioco: NEXAR attiva Gaming e lo apre sul PC.'
-        hist = self.ctrl.booster.history()[:3]
-        if hist:
-            text += '\n\n<b>Ultime partite</b>\n' + '\n'.join(f"• {esc(h['game'] or 'Gaming')}: {duration(h['elapsed'])}" for h in hist)
-        auto = self.ctrl.booster.settings()['auto']
-        rows = [[{'text':'▶ '+g['name'][:28],'callback_data':'gl:'+g['id'][:61]} for g in games[i:i+2]] for i in range(0, min(len(games), 8), 2)]
-        rows.append([{'text':('⏹ Esci da Gaming' if info['active'] else '🎮 Attiva Gaming'),'callback_data':'normal' if info['active'] else 'gaming'},
-                     {'text':f"🤖 Automatico: {'ON' if auto else 'OFF'}",'callback_data':'gauto'}])
-        return text, {'inline_keyboard': rows + [self.back()]}
-    @staticmethod
-    def back(): return [{'text':'⬅️ Menu','callback_data':'home'}]
-    def rgb_menu(self):
-        # I tuoi colori salvati (dashboard o /salva): pallino più vicino + codice, 3 per riga.
-        buttons=[{'text':f'{nearest_emoji(c)} {c[1:].upper()}','callback_data':'c:'+c} for c in self.ctrl.rgb_palette()]
-        rows=[buttons[i:i+3] for i in range(0,len(buttons),3)]
-        return {'inline_keyboard':[[{'text':'⚫ Spegni LED','callback_data':'rgb_off'},{'text':'💡 Riaccendi','callback_data':'rgb_on'}]]+rows+[self.back()]}
-    def fans_menu(self):
-        return {'inline_keyboard':[[{'text':'⏸ Spente','callback_data':'fans_off'},{'text':'🤫 Silenziose','callback_data':'fans_eco'}],
-                                   [{'text':'🌀 Normali','callback_data':'fans_normal'},{'text':'🚀 Massimo','callback_data':'fans_max'}],self.back()]}
-    def power_menu(self):
-        pc = self.ctrl.pc_info()
-        rows = [[{'text':'🌙 Sospendi','callback_data':'pwc:sleep'},{'text':'🔄 Riavvia','callback_data':'pwc:restart'},{'text':'⏻ Spegni','callback_data':'pwc:shutdown'}],
-                [{'text':'⏱ 30 min','callback_data':'t:30'},{'text':'⏱ 1 ora','callback_data':'t:60'},{'text':'⏱ 2 ore','callback_data':'t:120'}],
-                [{'text':'🤖 Spegni quando l\'AI ha finito','callback_data':'pwai'}],
-                [{'text':'🔒 Blocca lo schermo','callback_data':'pwx:lock'}]]
-        if pc.get('hibernate'): rows[0].insert(1, {'text':'💤 Iberna','callback_data':'pwc:hibernate'})
-        if pc.get('pending'): rows.insert(0, [{'text':'✖️ Annulla spegnimento','callback_data':'pwcancel'}])
-        return {'inline_keyboard':rows+[self.back()]}
-    def power_status(self):
-        pc = self.ctrl.pc_info(); plan = pc.get('pending')
-        text = f"⏻ <b>Accensione</b>\n🟢 Acceso da {duration(pc['uptime_s'])}"
-        if plan:
-            when = 'quando Codex e Claude hanno finito' if plan['after_ai'] else 'tra ' + duration(max(60, plan['seconds_left'] or 0))
-            text += f"\n⏳ <b>{html.escape(plan['label'])}</b> {when}"
-        return text + '\n\n<i>Per accenderlo da spento: /accendi tramite il relay su Umbrel.</i>'
+        """Un solo pulsante: la dashboard. Se il collegamento esterno non è ancora pronto, nessun pulsante."""
+        return {'inline_keyboard': self.app_row()}
 
     def status_text(self):
         s = self.ctrl.status()
         n = lambda v, unit='': '—' if v is None else f'{round(v)}{unit}'
-        p, e, pw = s.get('processes', {}), s.get('energy', {}), s.get('power')
-        agents = ' · '.join(f"{k.capitalize()} {'🟢' if v else '⚪'}" for k, v in p.items())
-        fans = [f['rpm'] for f in s.get('fans', []) if 'system' in f['name'].lower() and f['rpm'] > 0]
-        lines = [
-            f"<b>{ {'eco':'🌙 AI ECO attiva','gaming':'🎮 Modalità Gaming'}.get(s.get('mode'),'⚡ Modalità normale') }</b>",
-            '',
-            f"🔌 <b>{n(pw['total'] if pw else None,' W')}</b> alla presa · oggi {e.get('today_kwh',0):.2f} kWh ({e.get('today_cost',0):.2f} €)",
-            f"⏻ Acceso da {duration(s['pc']['uptime_s'])}" + (' · ⏳ ' + html.escape(s['pc']['pending']['label']) + ' programmato' if s['pc'].get('pending') else ''),
-            f"🧠 CPU {n(s.get('cpu'),'%')} · {n(s.get('cpu_temp'),'°C')}",
-            f"🎮 GPU {n(s.get('gpu'),'%')} · {n(s.get('gpu_temp'),'°C')}",
-            f"💾 RAM {n(s.get('ram'),'%')} ({s.get('ram_used')} di {s.get('ram_total')} GB)",
-            f"🌀 Ventole case {round(sum(fans)/len(fans)) if fans else '—'} RPM · { {'off':'spente','eco':'silenziose','max':'al massimo'}.get(s.get('fans_level'),'normali') }",
-            f"💡 LED {'spenti' if s.get('rgb_off') else 'accesi'}",
-            f"🤖 {agents} · automazione {'attiva' if s.get('auto_enabled') else 'spenta'}",
-        ]
+        e, pw, boost = s.get('energy', {}), s.get('power'), s.get('boost') or {}
+        mode = {'eco':'🌙 AI ECO','gaming':'🎮 Gaming'}.get(s.get('mode'),'⚡ Normale')
+        game = (boost.get('session') or {}).get('game') or (boost.get('running') or {}).get('name')
+        lines = [f"<b>NEXAR</b> · {mode}" + (f" · {html.escape(game)}" if game else ''),
+                 f"🔌 {n(pw['total'] if pw else None,' W')} · oggi {e.get('today_kwh',0):.2f} kWh ({e.get('today_cost',0):.2f} €)".replace('.', ','),
+                 f"🧠 CPU {n(s.get('cpu'),'%')} · {n(s.get('cpu_temp'),'°C')}   🎮 GPU {n(s.get('gpu'),'%')} · {n(s.get('gpu_temp'),'°C')}",
+                 f"⏻ Acceso da {duration(s['pc']['uptime_s'])}" + (' · ⏳ ' + html.escape(s['pc']['pending']['label']) if s['pc'].get('pending') else '')]
         return '\n'.join(lines)
 
-    def power_text(self):
-        s = self.ctrl.status(); p, e = s.get('power'), s.get('energy', {})
-        if not p: return '🔌 Consumo non disponibile: collega i sensori dalla app sul PC.'
-        icons = {'cpu':'🧠','gpu':'🎮','board':'🧩','ram':'💾','disks':'🗄','cooling':'🌀','rgb':'💡','usb':'🖱','monitor':'🖥'}
-        rows = '\n'.join(f"{icons.get(i['key'],'•')} {html.escape(i['name'])} {'' if i['source']=='misurato' else '~'}{i['watts']:.0f} W"
-                         for i in sorted(p['items'], key=lambda i: -i['watts']))
-        forecast = f"\n🔮 Fine mese ≈ {e['forecast_kwh']:.0f} kWh · {e['forecast_cost']:.2f} €" if e.get('forecast_kwh') else ''
-        return (f"🔌 <b>{p['total']:.0f} W</b> alla presa ({p['low']}–{p['high']} W)\n"
-                f"⚡ {p['amps']:.2f} A a {p['voltage']} V · alimentatore al {p['psu_load']:.0f}%, efficienza {p['efficiency']*100:.0f}%\n\n"
-                f"{rows}\n⚙️ Perdite alimentatore {p['loss']:.0f} W\n\n"
-                f"📅 Oggi <b>{e.get('today_kwh',0):.2f} kWh</b> · {e.get('today_cost',0):.2f} €\n"
-                f"🗓 Mese <b>{e.get('month_kwh',0):.1f} kWh</b> · {e.get('month_cost',0):.2f} €{forecast}\n"
-                f"<i>~ = stimato · {e.get('price_eur_kwh',0)*100:.0f} c€/kWh{'' if p['monitor_on'] or p['monitor_watts'] else ' · monitor escluso'}</i>")
+    def home_text(self):
+        try: summary = self.status_text()
+        except Exception: summary = '<b>NEXAR</b>'
+        hint = ('Tocca <b>📱 Apri la dashboard</b>: lì trovi modalità, Gaming, Ottimizza, luci, ventole e accensione.'
+                if self.webapp_url else 'La dashboard da Telegram si attiva quando il collegamento esterno è pronto (sul PC: Collegamenti → App Telegram).')
+        return summary + '\n\n' + hint + '\n<i>Gli avvisi del PC arrivano qui da soli.</i>'
 
     def notify(self, message):
         # In coda anche prima che il bot sia partito (es. "PC acceso" all'avvio): li invia il primo giro di run().
@@ -224,126 +133,13 @@ class TelegramBot:
 
     # ---------- comandi ----------
     def dispatch(self, action, chat, message_id=None, arg=''):
-        """message_id presente = pulsante premuto: si aggiorna lo stesso messaggio."""
-        def reply(text, markup=None):
-            markup = markup or self.menu()
-            if message_id: self.edit(chat, message_id, text, markup)
-            else: self.send(chat, text, markup)
-        esc = lambda t: html.escape(str(t))
+        """Qualsiasi messaggio (o pulsante di vecchi messaggi): riepilogo e pulsante della dashboard."""
         a = action.lstrip('/')
-        if a in ('start','help','menu','home'):
-            reply('<b>NEXAR</b>\nScegli cosa fare. '+('Con 📱 apri la dashboard completa.' if self.webapp_url else ''))
-        elif a == 'status': reply(self.status_text())
-        elif a in ('power','consumo'): reply(self.power_text())
-        elif a in ('eco','normal','gaming'):
-            reply('✅ '+esc(self.ctrl.set_mode(a))+'\n\n'+self.status_text())
-        elif a == 'screen': reply('🖥 '+esc(self.ctrl.screen_off()))
-        elif a in ('rgb','luci'): reply('💡 <b>Luci</b>\nSpegni, riaccendi o scegli un colore per tutti i LED.', self.rgb_menu())
-        elif a in ('rgb_off','rgb_on'):
-            reply('💡 '+esc(self.ctrl.rgb_profile(a=='rgb_off')), self.rgb_menu())
-        elif a.startswith('c:') or a == 'colore':
-            name = (a[2:] if a.startswith('c:') else arg).strip().lower()
-            value = COLORS.get(name, name if len(name)==7 and name.startswith('#') else '')
-            if not value: reply('🎨 Colori: '+', '.join(COLORS)+'\noppure un codice, es. <code>/colore #ff8800</code>', self.rgb_menu())
-            else:
-                bright = int(self.ctrl.config.get('rgb',{}).get('brightness',100))
-                reply('🎨 '+esc(self.ctrl.rgb_color(value, bright)), self.rgb_menu())
-        elif a in ('salva', 'togli'):
-            value = arg.strip().lower()
-            value = COLORS.get(value, value)
-            palette = self.ctrl.rgb_palette()
-            if not (len(value) == 7 and value.startswith('#')):
-                reply(f'🎨 Scrivi un codice colore, es. <code>/{a} #ff8800</code>', self.rgb_menu())
-            else:
-                palette = [c for c in palette if c != value] + ([value] if a == 'salva' else [])
-                self.ctrl.set_rgb_palette(palette[-18:])
-                reply(('💾 Colore salvato: ' if a == 'salva' else '🗑 Colore tolto: ') + value.upper(), self.rgb_menu())
-        elif a in ('fans','ventole'):
-            reply('🌀 <b>Ventole</b>\n🚀 Massimo: tutte al 100% (case, radiatore, pompa, scheda video).\n'
-                  '⏸ Spente: tutte ferme, scegli tu se tenere la pompa al minimo (a 75 °C tornano normali).\n'
-                  '🤫 Silenziose: solo quelle del case, più lente.', self.fans_menu())
-        elif a == 'fans_off':
-            # Spegnere TUTTO (radiatore e pompa compresi) va chiesto ogni volta: la pompa può restare al minimo.
-            reply('⏸ <b>Spegnere tutte le ventole?</b>\nCase, radiatore e scheda video si fermano.\n'
-                  '<b>La pompa AIO la tengo al minimo?</b>\n<i>Se CPU o GPU arrivano a 75 °C tornano normali da sole.</i>',
-                  {'inline_keyboard':[[{'text':'💧 Sì, pompa al minimo','callback_data':'fans_off_pump'}],
-                                      [{'text':'⛔ No, spegni anche la pompa','callback_data':'fans_off_all'}],
-                                      [{'text':'❌ Annulla','callback_data':'fans'}]]})
-        elif a in ('fans_off_pump','fans_off_all'):
-            reply('🌀 '+esc(self.ctrl.fans_level('off', keep_pump=a == 'fans_off_pump')), self.fans_menu())
-        elif a in ('fans_eco','fans_normal','fans_max'):
-            reply('🌀 '+esc(self.ctrl.fans_level(a[5:])), self.fans_menu())
-        elif a in ('games', 'giochi'):
-            reply(*self.games_panel())
-        elif a.startswith('gl:'):
-            gid = a[3:]
-            game = next((g for g in self.ctrl.booster.games() if g['id'].startswith(gid)), None)
-            if not game: reply('Gioco non trovato.', self.games_panel()[1]); return
-            msg = self.ctrl.launch_game(game['id'])
-            text, markup = self.games_panel()
-            reply('▶ '+esc(msg)+'\n\n'+text, markup)
-        elif a == 'gauto':
-            on = not self.ctrl.booster.settings()['auto']
-            self.ctrl.save_boost_settings({'auto': on})
-            text, markup = self.games_panel()
-            reply(('🤖 Gaming automatico attivo: parte quando apri un gioco.' if on else '🤖 Gaming automatico spento.')+'\n\n'+text, markup)
-        elif a == 'auto':
-            old=bool(self.ctrl.config.get('auto_detect',{}).get('enabled'))
-            reply('🤖 '+esc(self.ctrl.set_auto(not old)))
-        elif a == 'alerts':
-            s=self.ctrl.public_settings()
-            reply(f'🌡 Avvisi: {"attivi" if s["alerts_enabled"] else "disattivati"}\nCPU ≥ {s["cpu_temp_alert"]}°C · GPU ≥ {s["gpu_temp_alert"]}°C')
-        elif a in ('pw', 'accensione'): reply(self.power_status(), self.power_menu())
-        elif a.startswith('pwc:') or a in ('spegni', 'riavvia', 'sospendi'):
-            kind = a[4:] if a.startswith('pwc:') else {'spegni':'shutdown','riavvia':'restart','sospendi':'sleep'}[a]
-            if kind not in POWER_ASK: raise ValueError('Azione non prevista')
-            reply('<b>'+POWER_ASK[kind]+'</b>', {'inline_keyboard':[[{'text':'✅ Sì','callback_data':'pwx:'+kind},{'text':'❌ No','callback_data':'pw'}]]})
-        elif a.startswith('pwx:'):
-            msg = self.ctrl.power_action(a[4:])
-            reply('⏻ '+esc(msg), {'inline_keyboard':[[{'text':'✖️ Annulla','callback_data':'pwcancel'}]]} if a[4:] in ('shutdown','restart') else self.power_menu())
-        elif a.startswith('t:'):
-            reply('⏱ '+esc(self.ctrl.power_action('shutdown', minutes=int(a[2:])))+'\n\n'+self.power_status(), self.power_menu())
-        elif a == 'pwai':
-            reply('🤖 '+esc(self.ctrl.power_action('shutdown', after_ai=True))+'\n\n'+self.power_status(), self.power_menu())
-        elif a in ('pwcancel', 'annulla'): reply('✖️ '+esc(self.ctrl.cancel_power())+'\n\n'+self.power_status(), self.power_menu())
-        elif a in ('accendi', 'wake'):
-            reply('🟢 Il PC è già acceso.\n<i>Quando è spento, /accendi lo riceve il relay su Umbrel (app → Accensione).</i>', self.power_menu())
-        elif a in ('aggiorna', 'versione', 'upd_check'):
-            if not self.updater: reply('Aggiornamenti non disponibili.'); return
-            try: u = self.updater.check()
-            except Exception: u = self.updater.info(); u['message'] = 'GitHub non raggiungibile, riprova più tardi.'
-            text = f"⬆️ <b>NEXAR {u['current']}</b>\n{esc(u['message'])}"
-            buttons = [[{'text':f"⬇️ Installa {u['latest']}",'callback_data':'upd_install'}]] if u['available'] else []
-            reply(text + (f"\n\n<i>{esc(u['notes'][:600])}</i>" if u['available'] and u['notes'] else ''), {'inline_keyboard':buttons+[self.back()]})
-        elif a == 'upd_install':
-            if not self.updater: reply('Aggiornamenti non disponibili.'); return
-            reply('⬆️ '+esc(self.ctrl.run_job('update', self.updater.install))+'\nNEXAR si riavvia da solo: ti scrivo quando è tornato.')
-        elif a in ('opt', 'pulizia', 'ottimizza'):
-            import optimizer
-            rep = optimizer.analyze(10); self.ctrl.optimize_report = rep
-            h = optimizer.human
-            safe = sum(i['bytes'] for i in rep['items'] if i['key'] in SAFE_CLEAN and not i['note'].startswith('chiudi'))
-            rows = '\n'.join(f"{'🧹' if i['key'] in SAFE_CLEAN else ('🗑' if i['permanent'] else '🛡')} {esc(i['name'])}: <b>{h(i['bytes'])}</b>"
-                             + (f" <i>({esc(i['note'])})</i>" if i['note'] else '') for i in rep['items'] if i['bytes'])
-            disks = '\n'.join(f"💽 {d['drive']} {h(d['free'])} liberi su {h(d['total'])}" for d in optimizer.disks())
-            reply(f"🧹 <b>Ottimizza</b>\n\n{disks}\n\n{rows or 'Niente da pulire.'}\n\n"
-                  "<i>🧹 pulibile da qui · 🛡 serve l'app sul PC · 🗑 cestino solo dal PC</i>",
-                  {'inline_keyboard':([[{'text':f'🧹 Pulisci {h(safe)}','callback_data':'opt_clean'}]] if safe else [])
-                   + [[{'text':'🌐 Svuota cache DNS','callback_data':'opt_dns'}], self.back()]})
-        elif a == 'opt_clean':
-            import optimizer
-            res = optimizer.clean(SAFE_CLEAN)
-            reply('🧹 Liberati <b>'+optimizer.human(res['freed'])+'</b>'+(('\n'+esc(' · '.join(res['notes']))) if res['notes'] else ''),
-                  {'inline_keyboard':[[{'text':'🔄 Analizza di nuovo','callback_data':'opt'}], self.back()]})
-            self.ctrl.log_event('Pulizia da Telegram: liberati '+optimizer.human(res['freed']))
-        elif a == 'opt_dns':
-            import optimizer
-            reply('🌐 '+esc(optimizer.flush_dns()), {'inline_keyboard':[[{'text':'🧹 Ottimizza','callback_data':'opt'}], self.back()]})
-        elif a == 'app':
-            if self.webapp_url: reply('📱 Tocca il pulsante per aprire la dashboard.', {'inline_keyboard':self.app_row()+[self.back()]})
-            else: reply('📱 App non ancora disponibile: sul PC apri Collegamenti → App Telegram.')
-        else:
-            reply('Comando non riconosciuto.')
+        if a in ('accendi', 'wake'):
+            text = '🟢 Il PC è già acceso.\n<i>Quando è spento, /accendi lo riceve il relay su Umbrel.</i>'
+        else: text = self.home_text()
+        if message_id: self.edit(chat, message_id, text, self.menu())
+        else: self.send(chat, text, self.menu())
 
     def run(self, stop: threading.Event):
         logging.info('Bot Telegram: servizio in attesa di configurazione')
@@ -411,7 +207,7 @@ class TelegramBot:
                             if self.ctrl.accept_telegram_pair(candidate,actor):
                                 self.user_id=actor
                                 self.menu_synced=None
-                                self.send(actor,'✅ <b>NEXAR collegato.</b> Ora solo tu puoi comandare il PC.',self.menu())
+                                self.send(actor,'✅ <b>NEXAR collegato.</b> Qui ti arrivano gli avvisi del PC; con 📱 apri la dashboard.',self.menu())
                         continue
                     if actor != self.user_id or chat.get('type') != 'private' or chat.get('id') != self.user_id:
                         logging.warning('Telegram accesso ignorato (non autorizzato)')

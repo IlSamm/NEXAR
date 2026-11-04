@@ -20,6 +20,8 @@ def _env(name, default=''):
 LOCAL = _env('LOCALAPPDATA', Path.home() / 'AppData' / 'Local')
 WINDIR = _env('WINDIR', r'C:\Windows')
 DAY = 86400
+# Pulizia rapida/automatica: mai cestino né cartelle di Windows (niente admin, niente perdite).
+SAFE_CLEAN = ('temp', 'shader', 'thumbs', 'crash', 'browser')
 BROWSERS = {'msedge.exe': LOCAL / 'Microsoft' / 'Edge' / 'User Data', 'chrome.exe': LOCAL / 'Google' / 'Chrome' / 'User Data',
             'brave.exe': LOCAL / 'BraveSoftware' / 'Brave-Browser' / 'User Data'}
 BROWSER_CACHES = ('Cache', 'Code Cache', 'GPUCache', 'Service Worker/CacheStorage')
@@ -228,3 +230,151 @@ def human(b):
     for unit in ('B', 'KB', 'MB', 'GB', 'TB'):
         if b < 1024 or unit == 'TB': return f'{b:.0f} {unit}' if unit in ('B', 'KB') else f'{b:.1f} {unit}'.replace('.', ',')
         b /= 1024
+
+# ---------- programmi pesanti adesso (CPU e RAM, per nome) ----------
+NEVER_CLOSE = {'system', 'registry', 'smss.exe', 'csrss.exe', 'wininit.exe', 'winlogon.exe', 'services.exe', 'lsass.exe',
+               'svchost.exe', 'explorer.exe', 'dwm.exe', 'sihost.exe', 'fontdrvhost.exe', 'ctfmon.exe', 'searchhost.exe',
+               'startmenuexperiencehost.exe', 'shellexperiencehost.exe', 'runtimebroker.exe', 'taskhostw.exe', 'conhost.exe',
+               'audiodg.exe', 'nexar.exe', 'msmpeng.exe', 'memcompression', 'system idle process', 'msedgewebview2.exe',
+               'textinputhost.exe', 'securityhealthservice.exe', 'spoolsv.exe', 'wudfhost.exe', 'lsaiso.exe', 'secure system',
+               'openrgb.exe', 'fancontrol.exe', 'librehardwaremonitor.exe', 'cloudflared.exe'}
+_cpu_seen = {}
+
+def processes(n=12):
+    """I programmi che pesano di più ora: CPU (% di tutto il processore) e RAM, sommati per nome."""
+    cores = psutil.cpu_count() or 1
+    me = psutil.Process().username() if os.name == 'nt' else None
+    agg, now, alive = {}, time.monotonic(), set()
+    for p in psutil.process_iter(['name', 'memory_info', 'username', 'cpu_times']):
+        try:
+            alive.add(p.pid)
+            name = p.info['name'] or '?'
+            if name.lower() in ('system idle process', 'idle'): continue
+            t = p.info['cpu_times']; total = (t.user + t.system) if t else 0.0
+            prev = _cpu_seen.get(p.pid)
+            cpu = max(0.0, (total - prev[0]) / max(0.5, now - prev[1]) * 100 / cores) if prev else 0.0
+            _cpu_seen[p.pid] = (total, now)
+            a = agg.setdefault(name, {'name': name, 'cpu': 0.0, 'bytes': 0, 'count': 0, 'mine': False})
+            a['cpu'] += cpu; a['bytes'] += p.info['memory_info'].rss if p.info['memory_info'] else 0; a['count'] += 1
+            a['mine'] = a['mine'] or (bool(me) and p.info['username'] == me)
+        except (psutil.Error, AttributeError, TypeError): continue
+    for pid in list(_cpu_seen):
+        if pid not in alive: _cpu_seen.pop(pid, None)
+    for a in agg.values():
+        a['cpu'] = round(a['cpu'], 1); a['closable'] = a['mine'] and a['name'].lower() not in NEVER_CLOSE
+    vm = psutil.virtual_memory()
+    return {'cpu_total': psutil.cpu_percent(None), 'ram': {'used': vm.used, 'total': vm.total, 'percent': vm.percent},
+            'by_cpu': sorted(agg.values(), key=lambda a: -a['cpu'])[:n], 'by_ram': sorted(agg.values(), key=lambda a: -a['bytes'])[:n],
+            'count': sum(a['count'] for a in agg.values())}
+
+def close_app(name: str):
+    """Chiusura gentile (come la X): un programma con lavoro non salvato può chiedere di salvare e restare aperto."""
+    name = str(name)
+    if not name.lower().endswith('.exe') or name.lower() in NEVER_CLOSE or any(c in name for c in '\\/:*?"<>|'):
+        raise ValueError('Questo programma non si può chiudere da qui')
+    procs = [p for p in psutil.process_iter(['name']) if (p.info['name'] or '').lower() == name.lower()]
+    if not procs: return f'{name[:-4]} non è più aperto'
+    subprocess.run(['taskkill', '/im', name], capture_output=True, creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+    gone, alive = psutil.wait_procs(procs, timeout=6)
+    return f'{name[:-4]} chiuso' if not alive else f'{name[:-4]}: chiesto di chiudersi (potrebbe chiedere di salvare)'
+
+# ---------- file grandi nelle cartelle personali (solo elenco: si apre la cartella o si sposta nel Cestino) ----------
+SKIP_DIRS = {'appdata', 'node_modules', '.git', '$recycle.bin', 'windows', '.venv', 'venv', '__pycache__', 'steamapps', 'program files'}
+CLOUD_ONLY = 0x400000 | 0x40000 | 0x1000   # OneDrive "solo online": non occupano spazio sul disco
+
+def personal_folders():
+    home = Path.home(); out = []
+    for base in [home] + [Path(os.environ[k]) for k in ('OneDrive', 'OneDriveConsumer') if os.environ.get(k)]:
+        for sub in ('Downloads', 'Desktop', 'Documents', 'Videos', 'Pictures', 'Music', 'Documenti', 'Immagini', 'Video', 'Musica'):
+            d = base / sub
+            try:
+                if d.is_dir() and d.resolve() not in {x.resolve() for x in out}: out.append(d)
+            except OSError: continue
+    return out
+
+def large_files(min_bytes=300 * 2**20, limit=40, budget=20.0, roots=None):
+    found, start = [], time.monotonic()
+    def walk(d, depth):
+        if depth > 7 or time.monotonic() - start > budget: return
+        try: entries = list(os.scandir(d))
+        except OSError: return
+        for e in entries:
+            try:
+                if e.is_symlink(): continue
+                if e.is_dir(follow_symlinks=False):
+                    if e.name.lower() not in SKIP_DIRS and not e.name.startswith('.'): walk(e.path, depth + 1)
+                    continue
+                st = e.stat(follow_symlinks=False)
+                if st.st_size < min_bytes or getattr(st, 'st_file_attributes', 0) & CLOUD_ONLY: continue
+                found.append({'path': e.path, 'name': e.name, 'folder': str(Path(e.path).parent), 'bytes': st.st_size,
+                              'mtime': int(st.st_mtime), 'kind': Path(e.name).suffix.lower().lstrip('.')})
+            except OSError: continue
+    for root in roots or personal_folders(): walk(str(root), 0)
+    found.sort(key=lambda f: -f['bytes'])
+    return {'files': found[:limit], 'total': sum(f['bytes'] for f in found), 'count': len(found), 'at': int(time.time()),
+            'partial': time.monotonic() - start > budget}
+
+def to_recycle_bin(path: str):
+    """Sposta nel Cestino (recuperabile), come Elimina in Esplora file."""
+    class SHFILEOPSTRUCTW(ctypes.Structure):
+        _fields_ = [('hwnd', ctypes.c_void_p), ('wFunc', ctypes.c_uint), ('pFrom', ctypes.c_wchar_p), ('pTo', ctypes.c_wchar_p),
+                    ('fFlags', ctypes.c_ushort), ('fAnyOperationsAborted', ctypes.c_int), ('hNameMappings', ctypes.c_void_p),
+                    ('lpszProgressTitle', ctypes.c_wchar_p)]
+    # FO_DELETE con ALLOWUNDO (Cestino), senza finestre: NOCONFIRMATION, SILENT, NOERRORUI
+    op = SHFILEOPSTRUCTW(None, 3, path + '\0', None, 0x40 | 0x10 | 0x4 | 0x400, 0, None, None)
+    if ctypes.windll.shell32.SHFileOperationW(ctypes.byref(op)) or op.fAnyOperationsAborted or os.path.exists(path):
+        raise RuntimeError('Non sono riuscito a spostarlo nel Cestino (forse è aperto)')
+
+def reveal(path: str):
+    subprocess.Popen(['explorer.exe', '/select,', os.path.normpath(path)])
+
+# ---------- salute dei dischi (SMART di Windows) ----------
+DISK_PS = ("$r=@(); foreach($d in Get-PhysicalDisk){ $c=$null; try{ $c=$d | Get-StorageReliabilityCounter -ErrorAction Stop }catch{}; "
+           "$r += [pscustomobject]@{name=$d.FriendlyName; media=[string]$d.MediaType; bus=[string]$d.BusType; health=[string]$d.HealthStatus; "
+           "status=[string]($d.OperationalStatus -join ','); size=[int64]$d.Size; temp=$(if($c){$c.Temperature}else{$null}); "
+           "wear=$(if($c){$c.Wear}else{$null}); hours=$(if($c){$c.PowerOnHours}else{$null})} }; $r | ConvertTo-Json -Compress")
+
+def disk_health():
+    import json as _json
+    flags = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
+    r = subprocess.run(['powershell', '-NoProfile', '-Command', DISK_PS], capture_output=True, text=True, errors='replace',
+                       timeout=40, creationflags=flags)
+    try: data = _json.loads(r.stdout or '[]')
+    except ValueError: return []
+    data = data if isinstance(data, list) else [data]
+    for d in data:
+        d['media'] = {'SSD': 'SSD', 'HDD': 'HDD'}.get(d.get('media'), 'Disco')
+        d['ok'] = d.get('health') == 'Healthy'
+    return data
+
+# ---------- rete: latenza verso router, internet e DNS ----------
+def _ping(host, count=4):
+    import re as _re
+    flags = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
+    r = subprocess.run(['ping', '-n', str(count), '-w', '1000', host], capture_output=True, text=True, errors='replace',
+                       timeout=count * 2 + 5, creationflags=flags)
+    times = [int(x) for x in _re.findall(r'[=<](\d+)\s*ms\b', r.stdout)]
+    return {'host': host, 'ms': round(sum(times) / len(times)) if times else None, 'loss': round((count - len(times)) / count * 100)}
+
+def default_gateway():
+    flags = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
+    r = subprocess.run(['powershell', '-NoProfile', '-Command',
+                        "(Get-NetRoute -DestinationPrefix '0.0.0.0/0' | Sort-Object RouteMetric | Select-Object -First 1).NextHop"],
+                       capture_output=True, text=True, errors='replace', timeout=20, creationflags=flags)
+    gw = (r.stdout or '').strip()
+    return gw if gw and gw != '0.0.0.0' else None
+
+def network_check():
+    import socket
+    from concurrent.futures import ThreadPoolExecutor
+    gw = default_gateway()
+    hosts = ([('router', gw)] if gw else []) + [('internet', '1.1.1.1'), ('google', '8.8.8.8')]
+    with ThreadPoolExecutor(4) as ex: res = dict(zip([k for k, _ in hosts], ex.map(lambda h: _ping(h[1]), hosts)))
+    t = time.perf_counter()
+    try: socket.getaddrinfo('www.microsoft.com', 443); dns = round((time.perf_counter() - t) * 1000)
+    except OSError: dns = None
+    net = res.get('internet') or {}
+    ms = net.get('ms')
+    quality = ('offline' if ms is None else 'ottima' if ms < 25 and not net['loss']
+               else 'buona' if ms < 60 and net['loss'] <= 25 else 'lenta')
+    return {'at': int(time.time()), 'router': res.get('router'), 'internet': net, 'google': res.get('google'), 'dns_ms': dns, 'quality': quality}

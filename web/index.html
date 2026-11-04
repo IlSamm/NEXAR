@@ -68,11 +68,11 @@
   <nav class="rail-nav" aria-label="Menu principale">
    <button data-view="home" class="active"><svg class="i"><use href="#i-home"/></svg>Panoramica</button>
    <button data-view="gaming"><svg class="i"><use href="#i-game"/></svg>Gaming</button>
+   <button data-view="optimize"><svg class="i"><use href="#i-clean"/></svg>Ottimizza</button>
    <button data-view="energy"><svg class="i"><use href="#i-plug"/></svg>Consumi</button>
    <button data-view="lights"><svg class="i"><use href="#i-bulb"/></svg>Luci</button>
    <button data-view="cooling"><svg class="i"><use href="#i-fan"/></svg>Ventole</button>
    <button data-view="power"><svg class="i"><use href="#i-power"/></svg>Accensione</button>
-   <button data-view="optimize"><svg class="i"><use href="#i-clean"/></svg>Ottimizza</button>
    <div class="rail-sep"></div>
    <button data-view="links"><svg class="i"><use href="#i-link"/></svg>Collegamenti<i class="badge" id="links-badge" hidden></i></button>
    <button data-view="settings"><svg class="i"><use href="#i-sliders"/></svg>Impostazioni</button>
@@ -95,8 +95,8 @@
 
    <!-- PANORAMICA -->
    <section class="page active" id="page-home">
-    <div class="hero-grid">
-     <section class="card gauge-card">
+    <section class="card home-hero">
+     <button class="hh-power" type="button" data-view="energy" aria-label="Apri Consumi">
       <div class="gauge" id="gauge">
        <svg viewBox="0 0 200 200" aria-hidden="true">
         <defs><linearGradient id="gauge-grad" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#34d399"/><stop offset=".6" stop-color="#38bdf8"/><stop offset="1" stop-color="#fbbf24"/></linearGradient></defs>
@@ -110,22 +110,23 @@
        <div><span>Mese</span><b id="h-month">—</b><small id="h-month-cost">—</small></div>
        <div><span>Previsione</span><b id="h-forecast">—</b><small id="h-forecast-cost">—</small></div>
       </div>
-     </section>
-
-     <section class="card mode-card" id="mode-card">
+     </button>
+     <div class="hh-mode" id="mode-card">
       <div class="card-head"><div><h3>Modalità</h3><p id="mode-desc">—</p></div></div>
       <div class="mode-switch">
-       <button class="mode-opt eco" data-action="eco"><svg class="i"><use href="#i-leaf"/></svg><b>AI ECO</b><small>Consuma meno, l'AI continua</small></button>
+       <button class="mode-opt eco" data-action="eco"><svg class="i"><use href="#i-leaf"/></svg><b>AI ECO</b><small>Consuma meno</small></button>
        <button class="mode-opt normal" data-action="normal"><svg class="i"><use href="#i-bolt"/></svg><b>Normale</b><small>Piano di Windows</small></button>
        <button class="mode-opt gaming" data-action="gaming"><svg class="i"><use href="#i-game"/></svg><b>Gaming</b><small>Massime prestazioni</small></button>
       </div>
-      <div class="agents">
-       <div class="agent"><span class="agent-ico codex">⌘</span><div><b>Codex</b><small id="codex-state">—</small></div><i class="dot off" id="codex-dot"></i></div>
-       <div class="agent"><span class="agent-ico claude">✳</span><div><b>Claude</b><small id="claude-state">—</small></div><i class="dot off" id="claude-dot"></i></div>
+      <div class="hh-auto">
+       <div class="agents">
+        <div class="agent"><span class="agent-ico codex">⌘</span><div><b>Codex</b><small id="codex-state">—</small></div><i class="dot off" id="codex-dot"></i></div>
+        <div class="agent"><span class="agent-ico claude">✳</span><div><b>Claude</b><small id="claude-state">—</small></div><i class="dot off" id="claude-dot"></i></div>
+       </div>
+       <div class="switch-row"><div><b>Automazione AI</b><small id="auto-note">—</small></div><button class="toggle" id="auto-toggle" role="switch" aria-checked="false" aria-label="Automazione AI ECO"><span></span></button></div>
       </div>
-      <div class="switch-row"><div><b>Automazione AI</b><small id="auto-note">—</small></div><button class="toggle" id="auto-toggle" role="switch" aria-checked="false" aria-label="Automazione AI ECO"><span></span></button></div>
-     </section>
-    </div>
+     </div>
+    </section>
 
     <div class="tiles">
      <article class="tile"><div class="tile-head"><span class="tile-ico c-cpu"><svg class="i"><use href="#i-cpu"/></svg></span><div><b>Processore</b><small id="cpu-name">—</small></div><span class="temp" id="cpu-temp">—</span></div><strong class="tile-val" id="cpu-val">—</strong><div class="bar"><span id="cpu-bar"></span></div><small class="tile-sub" id="cpu-sub">—</small></article>
@@ -134,15 +135,36 @@
      <article class="tile"><div class="tile-head"><span class="tile-ico c-fan"><svg class="i"><use href="#i-fan"/></svg></span><div><b>Ventole</b><small id="fan-profile">—</small></div></div><strong class="tile-val" id="fan-val">—</strong><div class="bar"><span id="fan-bar"></span></div><small class="tile-sub">giri medi del case</small></article>
     </div>
 
+    <div class="zone-row">
+     <article class="zone-card zc-gaming" id="zc-gaming" data-view="gaming" tabindex="0">
+      <div class="zc-art" id="zc-gaming-art"></div>
+      <div class="zc-body">
+       <span class="zone-tag"><i></i>GAMING</span>
+       <b id="zc-gaming-title">I tuoi giochi</b>
+       <small id="zc-gaming-sub">Libreria, Gaming automatico e partite</small>
+      </div>
+      <button class="btn primary small" type="button" id="zc-gaming-btn"><svg class="i"><use href="#i-play"/></svg><span>Apri</span></button>
+     </article>
+     <article class="zone-card zc-opt" id="zc-opt" data-view="optimize" tabindex="0">
+      <div class="zc-ring"><svg viewBox="0 0 120 120" aria-hidden="true"><circle class="h-track" cx="60" cy="60" r="50" pathLength="100"/><circle class="h-fill" id="zc-opt-ring" cx="60" cy="60" r="50" pathLength="100"/></svg><b id="zc-opt-score">—</b></div>
+      <div class="zc-body">
+       <span class="zone-tag"><i></i>OTTIMIZZA</span>
+       <b id="zc-opt-title">Stato del PC</b>
+       <small id="zc-opt-sub">Pulizia, programmi, dischi e rete</small>
+      </div>
+      <button class="btn primary small" type="button" id="zc-opt-btn"><svg class="i"><use href="#i-clean"/></svg><span>Ottimizza</span></button>
+     </article>
+    </div>
+
     <section class="card">
      <div class="card-head"><div><h3>Azioni rapide</h3><p>Il PC continua a lavorare</p></div></div>
-     <div class="actions">
-      <button class="act" data-action="screen"><svg class="i"><use href="#i-monitor"/></svg>Spegni monitor</button>
-      <button class="act" data-action="rgb-eco" id="q-rgb-off"><svg class="i"><use href="#i-bulb"/></svg>LED spenti</button>
-      <button class="act" data-action="rgb-normal" id="q-rgb-on"><svg class="i"><use href="#i-palette"/></svg>LED accesi</button>
-      <button class="act" data-action="fans-eco" id="q-fans-eco"><svg class="i"><use href="#i-fan"/></svg>Ventole silenziose</button>
-      <button class="act" data-action="fans-normal" id="q-fans-normal"><svg class="i"><use href="#i-fan"/></svg>Ventole normali</button>
-      <button class="act danger" data-view="power"><svg class="i"><use href="#i-power"/></svg>Spegni PC</button>
+     <div class="quick">
+      <button class="qa" data-action="screen"><svg class="i"><use href="#i-monitor"/></svg>Spegni monitor</button>
+      <button class="qa" data-action="rgb-eco" id="q-rgb-off"><svg class="i"><use href="#i-bulb"/></svg>LED spenti</button>
+      <button class="qa" data-action="rgb-normal" id="q-rgb-on"><svg class="i"><use href="#i-palette"/></svg>LED accesi</button>
+      <button class="qa" data-action="fans-eco" id="q-fans-eco"><svg class="i"><use href="#i-fan"/></svg>Ventole silenziose</button>
+      <button class="qa" data-action="fans-normal" id="q-fans-normal"><svg class="i"><use href="#i-fan"/></svg>Ventole normali</button>
+      <button class="qa danger" data-view="power"><svg class="i"><use href="#i-power"/></svg>Spegni PC</button>
      </div>
     </section>
 
@@ -336,35 +358,68 @@
 
    <!-- OTTIMIZZA -->
    <section class="page" id="page-optimize">
-    <section class="card opt-hero">
-     <div class="health">
-      <svg viewBox="0 0 120 120" aria-hidden="true"><circle class="h-track" cx="60" cy="60" r="50" pathLength="100"/><circle class="h-fill" id="opt-score-ring" cx="60" cy="60" r="50" pathLength="100"/></svg>
+    <section class="opt-hero2" id="opt-hero">
+     <div class="opt-hero-art" aria-hidden="true"></div>
+     <div class="health" id="opt-health">
+      <svg viewBox="0 0 120 120" aria-hidden="true">
+       <defs><linearGradient id="opt-grad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#22d3ee"/><stop offset="1" stop-color="#34d399"/></linearGradient></defs>
+       <circle class="h-track" cx="60" cy="60" r="50" pathLength="100"/>
+       <circle class="h-fill" id="opt-score-ring" cx="60" cy="60" r="50" pathLength="100"/>
+       <circle class="h-scan" cx="60" cy="60" r="50" pathLength="100"/>
+      </svg>
       <div class="health-center"><strong id="opt-score">—</strong><span id="opt-score-label">Stato del PC</span></div>
      </div>
      <div class="opt-hero-main">
-      <div class="opt-stats">
-       <div><span>Recuperabile</span><b id="opt-st-junk">—</b></div>
-       <div><span>Disco C libero</span><b id="opt-st-disk">—</b></div>
-       <div><span>App all'avvio</span><b id="opt-st-startup">—</b></div>
-       <div><span>RAM in uso</span><b id="opt-st-ram">—</b></div>
-      </div>
+      <span class="zone-tag"><i></i>ZONA OTTIMIZZA</span>
+      <h2 id="opt-title">Controllo il PC…</h2>
       <ul class="opt-tips" id="opt-tips"></ul>
-      <div class="btn-row"><button class="btn primary big-btn" type="button" id="opt-quick"><svg class="i"><use href="#i-clean"/></svg><span id="opt-quick-label">Ottimizza ora</span></button><button class="btn" type="button" id="opt-scan"><svg class="i"><use href="#i-refresh"/></svg>Analizza</button></div>
+      <div class="btn-row">
+       <button class="btn primary big-btn" type="button" id="opt-quick"><svg class="i"><use href="#i-clean"/></svg><span id="opt-quick-label">Ottimizza ora</span></button>
+       <button class="btn glass big-btn" type="button" id="opt-scan"><svg class="i"><use href="#i-refresh"/></svg>Analizza</button>
+      </div>
+      <ol class="opt-steps" id="opt-steps" hidden></ol>
+     </div>
+     <div class="opt-freed">
+      <small>Liberati con NEXAR</small><b id="opt-freed">—</b><span id="opt-freed-sub">—</span>
      </div>
     </section>
 
-    <div class="tabs" id="opt-tabs" role="tablist">
-     <button class="selected" data-panel="clean" role="tab"><svg class="i"><use href="#i-clean"/></svg>Pulizia</button>
-     <button data-panel="startup" role="tab"><svg class="i"><use href="#i-power"/></svg>Avvio</button>
-     <button data-panel="system" role="tab"><svg class="i"><use href="#i-ram"/></svg>Dischi e RAM</button>
-     <button data-panel="tools" role="tab"><svg class="i"><use href="#i-sliders"/></svg>Strumenti</button>
+    <div class="opt-stats2">
+     <button class="ostat c-cyan" type="button" data-go="clean"><span class="tile-ico"><svg class="i"><use href="#i-clean"/></svg></span><div><small>Da pulire</small><b id="opt-st-junk">—</b><span id="opt-st-junk-sub">file inutili</span></div></button>
+     <button class="ostat c-teal" type="button" data-go="disks"><span class="tile-ico"><svg class="i"><use href="#i-disk"/></svg></span><div><small>Disco C libero</small><b id="opt-st-disk">—</b><span id="opt-st-disk-sub">—</span></div></button>
+     <button class="ostat c-violet" type="button" data-go="startup"><span class="tile-ico"><svg class="i"><use href="#i-power"/></svg></span><div><small>App all'avvio</small><b id="opt-st-startup">—</b><span>partono con Windows</span></div></button>
+     <button class="ostat c-amber" type="button" data-go="apps"><span class="tile-ico"><svg class="i"><use href="#i-ram"/></svg></span><div><small>RAM in uso</small><b id="opt-st-ram">—</b><span id="opt-st-ram-sub">—</span></div></button>
     </div>
 
-    <section class="card opt-panel" data-panel="clean">
-     <div class="card-head"><div><h3>Pulizia</h3><p id="opt-clean-sub">File temporanei e cache che Windows e i programmi ricreano</p></div></div>
-     <div class="clean-list" id="opt-clean"><p class="muted">Premi Analizza per vedere quanto spazio puoi recuperare.</p></div>
-     <div class="clean-foot"><span id="opt-selected">—</span><button class="btn primary" type="button" id="opt-run" disabled><svg class="i"><use href="#i-clean"/></svg>Pulisci</button></div>
-     <p class="fineprint">Mai documenti, foto o download. I file in uso vengono saltati, i temporanei solo se hanno più di un giorno. Le voci con lo scudo chiedono la conferma da amministratore sul PC.</p>
+    <div class="tabs opt-tabs" id="opt-tabs" role="tablist">
+     <button class="selected" data-panel="clean" role="tab"><svg class="i"><use href="#i-clean"/></svg>Pulizia<em id="tb-clean"></em></button>
+     <button data-panel="apps" role="tab"><svg class="i"><use href="#i-cpu"/></svg>Programmi</button>
+     <button data-panel="startup" role="tab"><svg class="i"><use href="#i-power"/></svg>Avvio<em id="tb-startup"></em></button>
+     <button data-panel="large" role="tab"><svg class="i"><use href="#i-search"/></svg>File grandi<em id="tb-large"></em></button>
+     <button data-panel="disks" role="tab"><svg class="i"><use href="#i-disk"/></svg>Dischi</button>
+     <button data-panel="net" role="tab"><svg class="i"><use href="#i-wave"/></svg>Rete</button>
+    </div>
+
+    <div class="opt-panel two-col wide-left" data-panel="clean">
+     <section class="card">
+      <div class="card-head"><div><h3>Pulizia</h3><p id="opt-clean-sub">File temporanei e cache che Windows e i programmi ricreano</p></div></div>
+      <div class="clean-list" id="opt-clean"><p class="muted">Analizzo il PC…</p></div>
+      <div class="clean-foot"><span id="opt-selected">—</span><button class="btn primary" type="button" id="opt-run" disabled><svg class="i"><use href="#i-clean"/></svg>Pulisci</button></div>
+      <p class="fineprint">Mai documenti, foto o download. I file in uso vengono saltati, i temporanei solo se hanno più di un giorno. Le voci con lo scudo chiedono la conferma da amministratore sul PC.</p>
+     </section>
+     <section class="card">
+      <div class="card-head"><div><h3>Pulizia automatica</h3><p id="opt-auto-sub">Una volta a settimana, quando il PC è tranquillo</p></div><button class="toggle" type="button" id="opt-auto" role="switch" aria-label="Pulizia automatica"><span></span></button></div>
+      <div class="sub-head"><b>Ultime pulizie</b></div>
+      <div class="opt-history" id="opt-history"><p class="muted">Ancora nessuna pulizia.</p></div>
+     </section>
+    </div>
+
+    <section class="card opt-panel" data-panel="apps" hidden>
+     <div class="card-head"><div><h3>Programmi che pesano adesso</h3><p id="opt-apps-sub">Aggiornato ogni pochi secondi</p></div>
+      <div class="seg3" id="apps-sort"><button type="button" class="selected" data-sort="by_cpu">Processore</button><button type="button" data-sort="by_ram">Memoria</button></div></div>
+     <div class="apps-meters"><div><small>Processore</small><b id="opt-cpu-now">—</b><div class="bar"><span id="opt-cpu-bar"></span></div></div><div><small>Memoria</small><b id="opt-ram-now">—</b><div class="bar"><span id="opt-ram-bar"></span></div></div></div>
+     <div class="proc-list" id="opt-apps"><p class="muted">Caricamento…</p></div>
+     <p class="fineprint">"Chiudi" è gentile, come la X della finestra: se c'è lavoro da salvare il programma lo chiede. I programmi di Windows non si possono chiudere da qui.</p>
     </section>
 
     <section class="card opt-panel" data-panel="startup" hidden>
@@ -373,24 +428,30 @@
      <p class="fineprint">Si disattivano come in Gestione attività: niente viene disinstallato e puoi riattivarli quando vuoi.</p>
     </section>
 
-    <div class="opt-panel two-col" data-panel="system" hidden>
+    <section class="card opt-panel" data-panel="large" hidden>
+     <div class="card-head"><div><h3>File grandi</h3><p id="opt-large-sub">Download, Desktop, Documenti, Video, Immagini e Musica (anche su OneDrive)</p></div>
+      <button class="btn" type="button" id="opt-large-scan"><svg class="i"><use href="#i-search"/></svg>Cerca</button></div>
+     <div class="large-list" id="opt-large"><p class="muted">Premi Cerca per trovare i file più grandi di 300 MB.</p></div>
+     <p class="fineprint">NEXAR non cancella niente da sola: puoi aprire la cartella o spostare il file nel Cestino (si recupera). I file di OneDrive solo online non occupano spazio e non compaiono.</p>
+    </section>
+
+    <div class="opt-panel two-col" data-panel="disks" hidden>
      <section class="card">
-      <div class="card-head"><div><h3>Dischi</h3><p>Spazio libero su ogni unità</p></div></div>
+      <div class="card-head"><div><h3>Spazio</h3><p>Libero su ogni unità</p></div></div>
       <div class="disk-list" id="opt-disks"><p class="muted">Caricamento…</p></div>
+      <div class="btn-row"><button class="btn local-only" type="button" id="opt-trim"><svg class="i"><use href="#i-disk"/></svg>Ottimizza SSD (TRIM)</button></div>
      </section>
      <section class="card">
-      <div class="card-head"><div><h3>Memoria RAM</h3><p id="opt-mem-sub">—</p></div></div>
-      <div class="mem-list" id="opt-mem"></div>
+      <div class="card-head"><div><h3>Salute dei dischi</h3><p id="opt-health-sub">Lo stato SMART che Windows legge dai dischi</p></div>
+       <button class="btn" type="button" id="opt-health-btn"><svg class="i"><use href="#i-check"/></svg>Controlla</button></div>
+      <div class="health-list" id="opt-health-list"><p class="muted">Premi Controlla.</p></div>
      </section>
     </div>
 
-    <section class="card opt-panel" data-panel="tools" hidden>
-     <div class="card-head"><div><h3>Strumenti</h3><p>Interventi rapidi e sicuri</p></div></div>
-     <div class="actions tools">
-      <button class="act" type="button" id="opt-dns"><svg class="i"><use href="#i-wave"/></svg>Svuota cache DNS</button>
-      <button class="act local-only" type="button" id="opt-trim"><svg class="i"><use href="#i-disk"/></svg>Ottimizza SSD (TRIM)</button>
-      <button class="act" type="button" data-view="gaming"><svg class="i"><use href="#i-game"/></svg>Zona Gaming</button>
-     </div>
+    <section class="card opt-panel" data-panel="net" hidden>
+     <div class="card-head"><div><h3>Rete</h3><p id="opt-net-sub">Quanto ci mette il PC a raggiungere router, internet e DNS</p></div>
+      <div class="btn-row tight"><button class="btn" type="button" id="opt-dns"><svg class="i"><use href="#i-wave"/></svg>Svuota DNS</button><button class="btn primary" type="button" id="opt-net-btn"><svg class="i"><use href="#i-refresh"/></svg>Prova la rete</button></div></div>
+     <div class="net-grid" id="opt-net"><p class="muted">Premi Prova la rete: 5 secondi.</p></div>
     </section>
    </section>
 
@@ -458,7 +519,7 @@
    <!-- ALTRO (telefono) -->
    <section class="page" id="page-more">
     <div class="more-list">
-     <button data-view="optimize"><span class="more-ico c-cyan"><svg class="i"><use href="#i-clean"/></svg></span><div><b>Ottimizza</b><small>Pulizia, avvio, dischi e memoria</small></div><svg class="i chev"><use href="#i-chev"/></svg></button>
+     <button data-view="energy"><span class="more-ico c-cyan"><svg class="i"><use href="#i-plug"/></svg></span><div><b>Consumi</b><small>Watt alla presa, kWh e costi</small></div><svg class="i chev"><use href="#i-chev"/></svg></button>
      <button data-view="power"><span class="more-ico c-red"><svg class="i"><use href="#i-power"/></svg></span><div><b>Accensione</b><small>Spegni, riavvia, sospendi, timer</small></div><svg class="i chev"><use href="#i-chev"/></svg></button>
      <button data-view="links"><span class="more-ico c-cyan"><svg class="i"><use href="#i-link"/></svg></span><div><b>Collegamenti</b><small id="more-links">Programmi collegati</small></div><svg class="i chev"><use href="#i-chev"/></svg></button>
      <button data-view="settings"><span class="more-ico c-violet"><svg class="i"><use href="#i-sliders"/></svg></span><div><b>Impostazioni</b><small>AI ECO, energia, Telegram, registro</small></div><svg class="i chev"><use href="#i-chev"/></svg></button>
@@ -470,7 +531,7 @@
  <nav class="tabbar" aria-label="Navigazione">
   <button data-view="home" class="active"><svg class="i"><use href="#i-home"/></svg>Home</button>
   <button data-view="gaming"><svg class="i"><use href="#i-game"/></svg>Gaming</button>
-  <button data-view="energy"><svg class="i"><use href="#i-plug"/></svg>Consumi</button>
+  <button data-view="optimize"><svg class="i"><use href="#i-clean"/></svg>Ottimizza</button>
   <button data-view="lights"><svg class="i"><use href="#i-bulb"/></svg>Luci</button>
   <button data-view="cooling"><svg class="i"><use href="#i-fan"/></svg>Ventole</button>
   <button data-view="more"><svg class="i"><use href="#i-grid"/></svg>Altro</button>

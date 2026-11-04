@@ -191,6 +191,43 @@ class Control:
     def save_state(self):
         with self.lock: json_save(STATE_FILE, self.state)
 
+    # ---------- Ottimizza: storico e pulizia automatica ----------
+    def record_clean(self, freed, kind):
+        """Ogni pulizia finisce nello storico: la pagina mostra quanto spazio NEXAR ha liberato in tutto."""
+        with self.lock:
+            h = self.state.setdefault('optimize_history', [])
+            h.insert(0, {'at': int(time.time()), 'freed': int(freed), 'kind': kind}); del h[30:]
+            self.state['optimize_freed_total'] = int(self.state.get('optimize_freed_total', 0)) + int(freed)
+            if kind == 'automatica': self.state['optimize_last_auto'] = int(time.time())
+            json_save(STATE_FILE, self.state)
+
+    def optimize_extra(self):
+        o = self.config.get('optimize', {})
+        last = int(self.state.get('optimize_last_auto') or 0)
+        return {'history': list(self.state.get('optimize_history') or [])[:12], 'freed_total': int(self.state.get('optimize_freed_total', 0)),
+                'auto': bool(o.get('auto')), 'auto_last': last or None, 'auto_next': (last + 7 * 86400) if o.get('auto') and last else None,
+                'large': getattr(self, 'large_report', None), 'health': getattr(self, 'disk_report', None), 'net': getattr(self, 'net_report', None)}
+
+    def set_optimize_auto(self, enabled):
+        with self.lock:
+            self.config.setdefault('optimize', {})['auto'] = bool(enabled)
+            json_save(CONFIG_FILE, self.config)
+        return 'Pulizia automatica ' + ('attiva: una volta a settimana, quando il PC è tranquillo' if enabled else 'spenta')
+
+    def optimize_loop(self, stop_event):
+        """Pulizia automatica (se attiva): una volta a settimana, con il PC poco carico e mai durante il Gaming."""
+        import optimizer
+        while not stop_event.wait(1800):
+            try:
+                if not self.config.get('optimize', {}).get('auto') or self.booster.active: continue
+                if time.time() - int(self.state.get('optimize_last_auto') or 0) < 7 * 86400: continue
+                if psutil.cpu_percent(interval=2) > 35: continue
+                res = optimizer.clean(optimizer.SAFE_CLEAN)
+                self.record_clean(res['freed'], 'automatica')
+                msg = '🧹 Pulizia automatica della settimana: liberati ' + optimizer.human(res['freed'])
+                self.log_event(msg); self.notify(msg)
+            except Exception: logging.exception('Pulizia automatica')
+
     def boost_loop(self, stop_event):
         """Ogni 5 s: trova il gioco aperto, accende/spegne Gaming da solo (se attivo) e cura le priorità.
         Se NEXAR riparte in Gaming riattiva il boost."""

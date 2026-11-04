@@ -10,10 +10,10 @@ const titles={
  cooling:['Ventole','Temperature e profili di raffreddamento.'],
  power:['Accensione','Spegni, riavvia, sospendi o programma.'],
  gaming:['Gaming','I tuoi giochi, il PC pronto a giocare e le statistiche di ogni partita.'],
- optimize:['Ottimizza','Pulizia, programmi all’avvio, dischi e memoria.'],
+ optimize:['Ottimizza','Pulizia, programmi pesanti, file grandi, dischi e rete.'],
  links:['Collegamenti','Programmi trovati e collegati da soli.'],
  settings:['Impostazioni','AI ECO, energia, Telegram e registro.'],
- more:['Altro','Accensione, collegamenti e impostazioni.'],
+ more:['Altro','Consumi, accensione, collegamenti e impostazioni.'],
 };
 let key=sessionStorage.getItem('pc_eco_key')||'';
 const initialHash=location.hash.match(/^#access=([A-Za-z0-9_-]{28,})$/);
@@ -96,7 +96,7 @@ function navigate(view){
  if(view==='lights')loadRgbDevices();
  if(view==='optimize')loadOptimize();
  if(view==='gaming')loadGaming(false,true);
- const tab=['power','links','settings','optimize'].includes(view)?'more':view;
+ const tab=['power','links','settings','energy','lights'].includes(view)&&!document.querySelector(`.tabbar [data-view="${view}"]`)?'more':view;
  document.querySelectorAll('.rail-nav [data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===view));
  document.querySelectorAll('.tabbar [data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===tab));
  document.querySelectorAll('.page').forEach(p=>p.classList.toggle('active',p.id==='page-'+view));
@@ -174,6 +174,9 @@ function render(s){
  renderUpdate(s.version,s.update||{},s.jobs?.update);
  watchOptimizeJobs(s.jobs||{});
  renderGamingLive(s);
+ // Schede delle zone in Home: dati di Ottimizza e libreria giochi letti una volta all'avvio.
+ if(!render.zones){render.zones=true;loadOptimize(true);loadGaming();}
+ renderZones();
  hideSplash();
 }
 function renderUpdate(version,u,job){
@@ -437,13 +440,39 @@ $('login-form').addEventListener('submit',async e=>{
 $('refresh-events').addEventListener('click',loadEvents);
 /* ---------- ottimizza ---------- */
 const bytes=b=>{if(typeof b!=='number')return '—';const u=['B','KB','MB','GB','TB'];let i=0;while(b>=1024&&i<4){b/=1024;i++;}return (i<2?Math.round(b):b.toFixed(1).replace('.',','))+' '+u[i];};
-let optData=null,boostData=null;const optSeen={};
+let optData=null,procData=null,procSort='by_cpu',optTab='clean',autoScanned=false;const optSeen={};
+const OPT_JOBS=['optimize-scan','optimize-clean','trim','optimize-large','optimize-health','optimize-net'];
+const QUICK_STEPS=['File temporanei','Cache dei giochi','Anteprime delle immagini','Rapporti di errore','Cache dei browser','Cache DNS','Nuova analisi'];
+const CLEAN_ICO={temp:'clean',shader:'game',thumbs:'palette',crash:'x',browser:'link',wintemp:'grid',wupdate:'refresh',recycle:'disk'};
+const KIND_ICO=k=>/^(mp4|mkv|avi|mov|wmv|webm)$/.test(k)?['🎬','#a78bfa']:/^(zip|rar|7z|tar|gz)$/.test(k)?['📦','#fbbf24']:/^(iso|vmdk|vhd|vhdx|img|ova)$/.test(k)?['💽','#38bdf8']:/^(exe|msi)$/.test(k)?['⚙️','#fb923c']:['📄','#94a3b8'];
+let stepTimer=null;
+function quickProgress(running,result){
+ // Mentre "Ottimizza ora" lavora, i passi si spuntano uno dopo l'altro; alla fine tutti verdi con il risultato.
+ const box=$('opt-steps');
+ if(running){
+  if(!box.hidden&&stepTimer)return;
+  box.hidden=false;box.replaceChildren(...QUICK_STEPS.map(t=>el('li','',t)));let i=0;
+  const tick=()=>{const li=box.children;[...li].forEach((x,k)=>{x.classList.toggle('done',k<i);x.classList.toggle('now',k===i);});if(i<li.length-1)i++;};
+  tick();clearInterval(stepTimer);stepTimer=setInterval(tick,750);return;
+ }
+ if(!stepTimer)return;clearInterval(stepTimer);stepTimer=null;
+ [...box.children].forEach(x=>{x.classList.remove('now');x.classList.add('done');});
+ if(result)box.append(el('li','result',result));
+ setTimeout(()=>{box.hidden=true;},6000);
+}
 function watchOptimizeJobs(jobs){
- // A fine analisi o pulizia ricarica la pagina, se è aperta.
- ['optimize-scan','optimize-clean','trim'].forEach(n=>{const j=jobs[n];if(!j)return;
-  const busy=j.state==='running';
-  if(n!=='trim'){$('opt-scan').disabled=busy;$('opt-quick').disabled=busy;$('opt-quick-label').textContent=busy?'Ottimizzo…':'Ottimizza ora';$('opt-run').disabled=busy||!selectedKeys().length;}
-  if(!busy&&optSeen[n]!==undefined&&optSeen[n]!==j.at&&$('page-optimize').classList.contains('active'))loadOptimize();optSeen[n]=j.at;});
+ // A fine analisi/pulizia/ricerca ricarica la pagina (se aperta) e aggiorna la scheda in Home.
+ const scan=jobs['optimize-scan']?.state==='running',clean=jobs['optimize-clean']?.state==='running';
+ $('opt-scan').disabled=scan||clean;$('opt-quick').disabled=scan||clean;$('opt-quick-label').textContent=clean?'Ottimizzo…':'Ottimizza ora';
+ $('opt-health').classList.toggle('scanning',scan||clean);$('opt-run').disabled=clean||!selectedKeys().length;
+ [['optimize-large','opt-large-scan','Cerco…','Cerca'],['optimize-health','opt-health-btn','Controllo…','Controlla'],['optimize-net','opt-net-btn','Provo…','Prova la rete']].forEach(([j,id,on,off])=>{
+  const b=$(id),r=jobs[j]?.state==='running';b.disabled=r;b.lastChild.textContent=r?on:off;});
+ if(optSeen.quick&&!clean&&jobs['optimize-clean'])quickProgress(false,jobs['optimize-clean'].message);
+ if(clean&&optSeen.quick)quickProgress(true);
+ let reload=false;
+ OPT_JOBS.forEach(n=>{const j=jobs[n];if(!j)return;if(j.state!=='running'&&optSeen[n]!==undefined&&optSeen[n]!==j.at)reload=true;optSeen[n]=j.at;});
+ if(!clean)optSeen.quick=false;
+ if(reload)loadOptimize(true);
 }
 function selectedKeys(){return [...document.querySelectorAll('#opt-clean input:checked')].map(c=>c.value);}
 function updateSelected(){
@@ -454,83 +483,220 @@ function updateSelected(){
 const DEMO_OPT={report:{total:6.1e9,at:'2026-11-04T08:30:00',items:[
   {key:'temp',name:'File temporanei',desc:'Cartella Temp',bytes:1.2e9,files:3496,admin:false,permanent:false,note:''},
   {key:'shader',name:'Cache shader dei giochi',desc:'DirectX, NVIDIA e AMD',bytes:2.3e9,files:390,admin:false,permanent:false,note:''},
+  {key:'browser',name:'Cache dei browser',desc:'Edge, Chrome, Brave, Opera',bytes:4.1e8,files:2100,admin:false,permanent:false,note:'chiudi i browser'},
+  {key:'wupdate',name:'Aggiornamenti di Windows scaricati',desc:'Già installati',bytes:8e8,files:120,admin:true,permanent:false,note:''},
   {key:'recycle',name:'Cestino',desc:'Svuota il cestino',bytes:2.4e9,files:42,admin:false,permanent:true,note:''}]},
  disks:[{drive:'C:',total:5e11,used:4.7e11,free:3e10,percent:94},{drive:'D:',total:1e12,used:3e11,free:7e11,percent:30}],
- memory:{percent:51,used:1.6e10,total:3.2e10,top:[{name:'chatgpt.exe',bytes:2.6e9},{name:'claude.exe',bytes:2.4e9}]},
- startup:[{id:'a',name:'Discord',scope:'utente',enabled:true,admin:false},{id:'b',name:'Steam',scope:'utente',enabled:false,admin:false}]};
-async function loadOptimize(){
+ memory:{percent:51,used:1.6e10,total:3.2e10,top:[]},
+ startup:[{id:'a',name:'Discord',scope:'utente',enabled:true,admin:false},{id:'b',name:'Steam',scope:'utente',enabled:false,admin:false},{id:'c',name:'OneDrive',scope:'utente',enabled:true,admin:false}],
+ history:[{at:Date.now()/1000-3600,freed:2.1e9,kind:'rapida'},{at:Date.now()/1000-86400*6,freed:3.4e9,kind:'automatica'}],freed_total:1.24e10,auto:true,auto_last:Date.now()/1000-86400*6,auto_next:Date.now()/1000+86400,
+ large:{files:[{path:'C:/x/a.vmdk',name:'Debian 10.x 64-bit.vmdk',folder:'C:\\Users\\samue\\Documents\\Virtual Machines',bytes:1.6e10,mtime:1720000000,kind:'vmdk'},
+  {path:'C:/x/b.mp4',name:'Clip partita.mp4',folder:'C:\\Users\\samue\\Videos',bytes:2.2e9,mtime:1760000000,kind:'mp4'}],total:1.82e10,count:2,at:Date.now()/1000},
+ health:{at:Date.now()/1000,disks:[{name:'Sabrent',media:'SSD',bus:'NVMe',health:'Healthy',size:1.02e12,ok:true,temp:41,wear:3},{name:'WDC WD10EARS',media:'Disco',bus:'SATA',health:'Healthy',size:1e12,ok:true}]},
+ net:{at:Date.now()/1000,router:{host:'192.168.0.1',ms:1,loss:0},internet:{host:'1.1.1.1',ms:21,loss:0},google:{host:'8.8.8.8',ms:22,loss:0},dns_ms:35,quality:'ottima'}};
+const DEMO_PROC={cpu_total:14,ram:{used:1.6e10,total:3.2e10,percent:51},count:312,
+ by_cpu:[{name:'chrome.exe',cpu:6.2,bytes:1.9e9,count:24,closable:true},{name:'Discord.exe',cpu:2.1,bytes:6e8,count:6,closable:true},{name:'svchost.exe',cpu:1.3,bytes:1.6e9,count:80,closable:false}],
+ by_ram:[{name:'ChatGPT.exe',cpu:.4,bytes:2.6e9,count:9,closable:true},{name:'chrome.exe',cpu:6.2,bytes:1.9e9,count:24,closable:true},{name:'svchost.exe',cpu:1.3,bytes:1.6e9,count:80,closable:false}]};
+async function loadOptimize(quiet=false){
  if(demo){renderOptimize(DEMO_OPT);return;}
- try{renderOptimize(await req('/api/optimize'));}catch(ex){notify('Ottimizza: '+ex.message,true);}
+ try{
+  const d=await req('/api/optimize');renderOptimize(d);
+  // Prima apertura senza analisi: la fa da sola (solo lettura, 10-25 s).
+  if(!d.report&&!autoScanned&&current?.jobs?.['optimize-scan']?.state!=='running'){autoScanned=true;req('/api/optimize/scan','POST',{}).catch(()=>{});}
+ }catch(ex){if(!quiet)notify('Ottimizza: '+ex.message,true);}
 }
 function healthScore(d){
  // Punteggio semplice e spiegabile: ogni problema toglie punti e diventa un consiglio.
  let score=100;const tips=[];const rep=d.report;const c=(d.disks||[]).find(x=>/^C/i.test(x.drive))||(d.disks||[])[0];
- if(rep){const gb=rep.total/2**30;if(gb>=0.5){score-=Math.min(25,Math.round(gb*4));tips.push(`${bytes(rep.total)} di file inutili da pulire`);}}
- else tips.push('Premi Analizza per misurare i file inutili');
- if(c){const free=c.free/c.total;if(free<0.1){score-=30;tips.push(`Disco ${c.drive} quasi pieno: ${bytes(c.free)} liberi`);}else if(free<0.2){score-=15;tips.push(`Disco ${c.drive} con poco spazio (${bytes(c.free)} liberi)`);}}
- const on=(d.startup||[]).filter(i=>i.enabled).length;if(on>8){score-=Math.min(20,(on-8)*2);tips.push(`${on} programmi partono con Windows: spegni quelli che non usi`);}
- const ram=d.memory?.percent||0;if(ram>80){score-=15;tips.push(`RAM al ${Math.round(ram)}%: chiudi qualcosa o usa Gaming Boost`);}else if(ram>65)score-=6;
- return {score:Math.max(0,Math.min(100,score)),tips:tips.slice(0,3),c,on,ram};
+ if(rep){const gb=rep.total/2**30;if(gb>=0.5){score-=Math.min(25,Math.round(gb*4));tips.push(['clean',`${bytes(rep.total)} di file inutili da pulire`,'clean']);}}
+ else tips.push(['refresh','Sto misurando i file inutili…','clean']);
+ if(c){const free=c.free/c.total;if(free<0.1){score-=30;tips.push(['disk',`Disco ${c.drive} quasi pieno: ${bytes(c.free)} liberi`,'large']);}
+  else if(free<0.2){score-=15;tips.push(['disk',`Disco ${c.drive} con poco spazio (${bytes(c.free)} liberi)`,'large']);}}
+ const on=(d.startup||[]).filter(i=>i.enabled).length;if(on>8){score-=Math.min(20,(on-8)*2);tips.push(['power',`${on} programmi partono con Windows`,'startup']);}
+ const ram=d.memory?.percent||0;if(ram>80){score-=15;tips.push(['ram',`RAM al ${Math.round(ram)}%: chiudi qualche programma`,'apps']);}else if(ram>65)score-=6;
+ const bad=(d.health?.disks||[]).filter(x=>!x.ok);if(bad.length){score-=25;tips.unshift(['disk',`Disco da controllare: ${bad[0].name}`,'disks']);}
+ const up=current?.pc?.uptime_s||0;if(up>7*86400){score-=5;tips.push(['restart',`Acceso da ${Math.floor(up/86400)} giorni: un riavvio rinfresca Windows`,'']);}
+ if(d.net?.quality==='lenta'){score-=5;tips.push(['wave','Rete lenta: guarda la scheda Rete','net']);}
+ return {score:Math.max(0,Math.min(100,score)),tips:tips.slice(0,4),c,on,ram};
 }
+function optTabGo(name){const b=document.querySelector(`#opt-tabs [data-panel="${name}"]`);if(b)b.click();}
 function renderOptimize(d){
  optData=d;
  const h=healthScore(d);
  countUp($('opt-score'),h.score,v=>Math.round(v));$('opt-score-ring').style.strokeDasharray=`${h.score} 100`;
  $('opt-score-label').textContent=h.score>=85?'Ottimo':h.score>=65?'Buono':'Da migliorare';
- $('opt-score-ring').closest('.health').className='health'+(h.score<65?' low':h.score<85?' mid':'');
- $('opt-st-junk').textContent=d.report?bytes(d.report.total):'—';$('opt-st-disk').textContent=h.c?bytes(h.c.free):'—';
- $('opt-st-startup').textContent=(d.startup||[]).length?`${h.on} attive`:'—';$('opt-st-ram').textContent=d.memory?Math.round(h.ram)+'%':'—';
- $('opt-tips').replaceChildren(...(h.tips.length?h.tips.map(t=>el('li','',t)):[el('li','ok','Tutto in ordine')]));
- const dk=$('opt-disks');dk.replaceChildren();
- (d.disks||[]).forEach(x=>{const c=el('div','disk'+(x.free<0.1*x.total?' low':''));const top=el('div','disk-top');top.append(el('b','',x.drive),el('small','',`${bytes(x.free)} liberi su ${bytes(x.total)}`));
-  const bar=el('div','bar');const f=el('span');f.style.width=x.percent+'%';bar.append(f);c.append(top,bar);dk.append(c);});
- const box=$('opt-clean');const rep=d.report;
- if(rep){
-  box.replaceChildren();
-  $('opt-clean-sub').textContent=`${bytes(rep.total)} recuperabili · analisi delle ${rep.at.slice(11,16)}`;
-  rep.items.forEach(i=>{
-   const row=el('label','clean-row'+(i.bytes?'':' empty'));const cb=el('input');cb.type='checkbox';cb.value=i.key;
-   const blocked=(i.admin&&current?.remote)||i.note.startsWith('chiudi');
-   cb.checked=i.bytes>0&&!i.permanent&&!i.admin&&!blocked;cb.disabled=!i.bytes||blocked;cb.addEventListener('change',updateSelected);
-   const t=el('div');const name=el('b','',i.name);
-   if(i.permanent)name.append(el('em','pill warn','definitivo'));if(i.admin)name.append(el('em','pill admin','🛡 admin'));
-   t.append(name,el('small','',i.note||i.desc));row.append(cb,t,el('strong','',i.bytes?bytes(i.bytes):'pulito'));box.append(row);
-  });
-  updateSelected();
- }
- const st=$('opt-startup');st.replaceChildren();const items=d.startup||[];
+ $('opt-health').className='health'+(h.score<65?' low':h.score<85?' mid':'')+($('opt-health').classList.contains('scanning')?' scanning':'');
+ swapIn($('opt-title'),!d.report?'Controllo il PC…':h.score>=85?'Il PC è in ottima forma':h.score>=65?'Va bene, ma si può fare meglio':'Il PC ha bisogno di una pulita');
+ $('opt-tips').replaceChildren(...(h.tips.length?h.tips.map(([ic,t,go])=>{const li=el('li');li.append(icon(ic),document.createTextNode(t));
+  if(go){li.classList.add('link');li.addEventListener('click',()=>optTabGo(go));}return li;}):[(()=>{const li=el('li','ok');li.append(icon('check'),document.createTextNode('Tutto in ordine'));return li;})()]));
+ countUp($('opt-freed'),d.freed_total||0,v=>bytes(v));
+ const last=(d.history||[])[0];$('opt-freed-sub').textContent=last?`ultima pulizia ${ago(last.at)}`+(d.auto&&d.auto_next?` · prossima automatica ${ago2(d.auto_next)}`:''):d.auto?'pulizia automatica attiva':'nessuna pulizia ancora';
+ // statistiche
+ $('opt-st-junk').textContent=d.report?bytes(d.report.total):'—';$('opt-st-junk-sub').textContent=d.report?`analisi delle ${d.report.at.slice(11,16)}`:'analisi in corso';
+ $('opt-st-disk').textContent=h.c?bytes(h.c.free):'—';$('opt-st-disk-sub').textContent=h.c?`su ${bytes(h.c.total)} (${Math.round(100-h.c.percent)}% libero)`:'—';
+ $('opt-st-startup').textContent=(d.startup||[]).length?`${h.on} attive`:'—';
+ $('opt-st-ram').textContent=d.memory?Math.round(h.ram)+'%':'—';$('opt-st-ram-sub').textContent=d.memory?.total?`${bytes(d.memory.used)} di ${bytes(d.memory.total)}`:'—';
+ $('tb-clean').textContent=d.report?bytes(d.report.total):'';$('tb-startup').textContent=h.on||'';$('tb-large').textContent=d.large?.count||'';
+ renderClean(d);renderStartup(d.startup||[]);renderDisks(d);renderLarge(d.large);renderNet(d.net);renderOptHistory(d);
+ renderZones();
+}
+function ago2(ts){const d=(ts-Date.now()/1000)/86400;return d<=0?'a breve':d<1?'oggi':d<2?'domani':`tra ${Math.round(d)} giorni`;}
+function renderClean(d){
+ const box=$('opt-clean');const rep=d.report;if(!rep)return;
+ box.replaceChildren();
+ $('opt-clean-sub').textContent=`${bytes(rep.total)} recuperabili · analisi delle ${rep.at.slice(11,16)}`;
+ const max=Math.max(1,...rep.items.map(i=>i.bytes));
+ rep.items.forEach((i,k)=>{
+  const row=el('label','clean-row'+(i.bytes?'':' empty'));row.style.setProperty('--i',k);const cb=el('input');cb.type='checkbox';cb.value=i.key;
+  const blocked=(i.admin&&current?.remote)||i.note.startsWith('chiudi');
+  cb.checked=i.bytes>0&&!i.permanent&&!i.admin&&!blocked;cb.disabled=!i.bytes||blocked;cb.addEventListener('change',updateSelected);
+  const ico=el('span','clean-ico');ico.append(icon(CLEAN_ICO[i.key]||'clean'));
+  const t=el('div');const name=el('b','',i.name);
+  if(i.permanent)name.append(el('em','pill warn','definitivo'));if(i.admin)name.append(el('em','pill admin','🛡 admin'));
+  const bar=el('div','bar mini');const f=el('span');f.style.width=(i.bytes/max*100)+'%';bar.append(f);
+  t.append(name,el('small','',i.note||i.desc),bar);row.append(cb,ico,t,el('strong','',i.bytes?bytes(i.bytes):'pulito'));box.append(row);
+ });
+ updateSelected();
+ $('opt-auto').setAttribute('aria-checked',d.auto?'true':'false');
+ $('opt-auto-sub').textContent=d.auto?(d.auto_next?`Prossima ${ago2(d.auto_next)}: solo file temporanei e cache`:'Parte alla prossima occasione tranquilla'):'Una volta a settimana, quando il PC è tranquillo';
+}
+function renderOptHistory(d){
+ const box=$('opt-history');const list=d.history||[];box.replaceChildren();
+ if(!list.length){box.append(el('p','muted','Ancora nessuna pulizia.'));return;}
+ const KIND={rapida:['bolt','Ottimizza ora'],manuale:['clean','Pulizia scelta'],automatica:['clock','Automatica']};
+ list.slice(0,8).forEach(h=>{const r=el('div','oh-row');const k=KIND[h.kind]||KIND.manuale;const ic=el('span','oh-ico');ic.append(icon(k[0]));
+  const t=el('div');t.append(el('b','',k[1]),el('small','',new Date(h.at*1000).toLocaleString('it-IT',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})));
+  r.append(ic,t,el('strong','',h.freed?'+'+bytes(h.freed):'già pulito'));box.append(r);});
+}
+function renderStartup(items){
+ const st=$('opt-startup');st.replaceChildren();
  $('opt-startup-sub').textContent=`${items.filter(i=>i.enabled).length} attivi su ${items.length}: meno programmi = Windows parte prima`;
  items.forEach(i=>{
-  const row=el('div','startup-row');const t=el('div');t.append(el('b','',i.name),el('small','',i.scope+(i.admin?' · serve admin':'')));
+  const row=el('div','startup-row');const ic=el('span','app-ico',initials(i.name));ic.style.setProperty('--h',hue(i.name));
+  const t=el('div');t.append(el('b','',i.name),el('small','',i.scope+(i.admin?' · serve admin':'')));
   const tg=el('button','toggle');tg.type='button';tg.setAttribute('role','switch');tg.setAttribute('aria-checked',i.enabled?'true':'false');tg.setAttribute('aria-label','Avvio di '+i.name);tg.append(el('span'));
   tg.disabled=i.admin&&!!current?.remote;
   tg.addEventListener('click',async()=>{if(demo){notify('Anteprima: comando non attivo.');return;}
    try{const r=await req('/api/optimize/startup','POST',{id:i.id,enabled:!i.enabled});notify('✓ '+r.message);loadOptimize();}catch(ex){notify('⚠ '+ex.message,true);}});
-  row.append(t,tg);st.append(row);
+  row.append(ic,t,tg);st.append(row);
  });
- const m=d.memory||{};$('opt-mem-sub').textContent=m.total?`${bytes(m.used)} usati su ${bytes(m.total)} (${Math.round(m.percent)}%)`:'—';
- const mm=$('opt-mem');mm.replaceChildren();const max=Math.max(1,...(m.top||[]).map(x=>x.bytes));
- (m.top||[]).forEach(x=>{const r=el('div','mem-row');const bar=el('div','bar');const f=el('span');f.style.width=(x.bytes/max*100)+'%';bar.append(f);
-  r.append(el('span','',x.name.replace(/\.exe$/i,'')),el('b','',bytes(x.bytes)),bar);mm.append(r);});
+}
+function renderDisks(d){
+ const dk=$('opt-disks');dk.replaceChildren();
+ (d.disks||[]).forEach(x=>{const c=el('div','disk'+(x.free<0.1*x.total?' low':''));const top=el('div','disk-top');top.append(el('b','',x.drive),el('small','',`${bytes(x.free)} liberi su ${bytes(x.total)}`));
+  const bar=el('div','bar');const f=el('span');f.style.width=x.percent+'%';bar.append(f);c.append(top,bar);dk.append(c);});
+ const hl=$('opt-health-list');const hd=d.health;if(!hd)return;hl.replaceChildren();
+ $('opt-health-sub').textContent=`Controllato ${ago(hd.at)} alle ${new Date(hd.at*1000).toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'})}`;
+ hd.disks.forEach(x=>{const r=el('div','hd-row'+(x.ok?'':' bad'));const ic=el('span','hd-ico');ic.append(icon(x.ok?'check':'x'));
+  const t=el('div');t.append(el('b','',x.name),el('small','',[x.media,x.bus,x.size?bytes(x.size):''].filter(Boolean).join(' · ')));
+  const chips=el('div','hd-chips');chips.append(el('span',x.ok?'ok':'bad',x.ok?'In salute':x.health||'Da controllare'));
+  if(x.temp!=null)chips.append(el('span','',x.temp+' °C'));if(x.wear!=null)chips.append(el('span','',`usura ${x.wear}%`));
+  r.append(ic,t,chips);hl.append(r);});
+}
+function renderLarge(L){
+ const box=$('opt-large');if(!L)return;box.replaceChildren();
+ $('opt-large-sub').textContent=L.count?`${L.count} file oltre 300 MB · ${bytes(L.total)} in tutto · ricerca ${ago(L.at)}`+(L.partial?' (parziale)':''):'Nessun file oltre 300 MB nelle cartelle personali';
+ const max=Math.max(1,...L.files.map(f=>f.bytes));const local=!current?.remote&&!demo;
+ L.files.forEach((f,k)=>{
+  const r=el('div','lf-row');r.style.setProperty('--i',k);const [emo,col]=KIND_ICO(f.kind);const ic=el('span','lf-ico',emo);ic.style.setProperty('--c',col);
+  const t=el('div');t.append(el('b','',f.name),el('small','',f.folder.replace(/^C:\\Users\\[^\\]+\\/i,'').replace(/\\/g,' › ')+' · '+new Date(f.mtime*1000).toLocaleDateString('it-IT',{month:'short',year:'numeric'})));
+  const bar=el('div','bar mini');const fl=el('span');fl.style.width=(f.bytes/max*100)+'%';bar.append(fl);t.append(bar);
+  const acts=el('div','lf-acts');acts.append(el('strong','',bytes(f.bytes)));
+  if(local){
+   const o=el('button','icon-btn small');o.type='button';o.title='Apri la cartella';o.setAttribute('aria-label',o.title);o.append(icon('link'));
+   o.addEventListener('click',()=>post('/api/optimize/large/reveal',{path:f.path}));
+   const del=el('button','icon-btn small danger');del.type='button';del.title='Sposta nel Cestino';del.setAttribute('aria-label',del.title);del.append(icon('x'));
+   del.addEventListener('click',async()=>{if(!await ask('Spostare nel Cestino?',`${f.name} (${bytes(f.bytes)}). Potrai recuperarlo dal Cestino finché non lo svuoti.`,{ico:'clean',yes:'Sposta nel Cestino'}))return;
+    try{const res=await req('/api/optimize/large/recycle','POST',{path:f.path});notify('✓ '+res.message);r.classList.add('gone');setTimeout(()=>loadOptimize(true),400);}catch(ex){notify('⚠ '+ex.message,true);}});
+   acts.append(o,del);
+  }
+  r.append(ic,t,acts);box.append(r);
+ });
+}
+function renderNet(n){
+ const box=$('opt-net');if(!n)return;box.replaceChildren();
+ const Q={ottima:['Ottima','ok'],buona:['Buona','mid'],lenta:['Lenta','low'],offline:['Non connesso','low']}[n.quality]||['—',''];
+ $('opt-net-sub').textContent=`Prova ${ago(n.at)} alle ${new Date(n.at*1000).toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'})}`;
+ const big=el('div','net-big '+Q[1]);big.append(el('small','','Connessione'),el('b','',Q[0]),el('span','',n.internet?.ms!=null?`${n.internet.ms} ms verso internet`:'internet non raggiungibile'));box.append(big);
+ [['Router di casa',n.router,10],['Internet (Cloudflare)',n.internet,60],['Google',n.google,60]].forEach(([label,x,good])=>{if(!x)return;
+  const c=el('div','net-m');const ms=x.ms;c.append(el('small','',label),el('b','',ms!=null?ms+' ms':'—'),el('span','',x.loss?`${x.loss}% pacchetti persi`:x.host));
+  const bar=el('div','bar');const f=el('span');f.style.width=(ms==null?100:Math.min(100,ms/(good*2)*100))+'%';f.className=ms==null||ms>good*1.5?'bad':ms>good*.6?'mid':'';bar.append(f);c.append(bar);box.append(c);});
+ const dn=el('div','net-m');dn.append(el('small','','DNS'),el('b','',n.dns_ms!=null?n.dns_ms+' ms':'—'),el('span','','tempo per trovare un sito'));box.append(dn);
+}
+async function loadProcs(){
+ if(demo){renderProcs(DEMO_PROC);return;}
+ try{renderProcs(await req('/api/optimize/processes'));}catch(ex){}
+}
+function renderProcs(d){
+ procData=d;const box=$('opt-apps');box.replaceChildren();
+ $('opt-cpu-now').textContent=pct(d.cpu_total);setBar('opt-cpu-bar',d.cpu_total);
+ $('opt-ram-now').textContent=`${pct(d.ram.percent)} · ${bytes(d.ram.used)}`;setBar('opt-ram-bar',d.ram.percent);
+ $('opt-apps-sub').textContent=`${d.count} processi aperti · aggiornato ogni 4 secondi`;
+ const list=d[procSort]||[];const max=Math.max(.1,...list.map(a=>procSort==='by_cpu'?a.cpu:a.bytes));
+ list.forEach(a=>{
+  const r=el('div','proc-row');const ic=el('span','app-ico',initials(a.name.replace(/\.exe$/i,'')));ic.style.setProperty('--h',hue(a.name));
+  const t=el('div');t.append(el('b','',a.name.replace(/\.exe$/i,'')),el('small','',`${a.count>1?a.count+' processi · ':''}CPU ${nf(a.cpu,1)}% · ${bytes(a.bytes)}`));
+  const bar=el('div','bar mini');const f=el('span');f.style.width=((procSort==='by_cpu'?a.cpu:a.bytes)/max*100)+'%';bar.append(f);t.append(bar);
+  const v=el('strong','',procSort==='by_cpu'?nf(a.cpu,1)+'%':bytes(a.bytes));
+  const btn=el('button','btn small'+(a.closable?'':' ghost'),a.closable?'Chiudi':'Sistema');btn.type='button';btn.disabled=!a.closable;
+  btn.addEventListener('click',async()=>{if(!await ask(`Chiudere ${a.name.replace(/\.exe$/i,'')}?`,'Come premere la X: se c\'è lavoro non salvato il programma te lo chiede.',{ico:'x',yes:'Chiudi'}))return;
+   if(demo){notify('Anteprima: comando non attivo.');return;}
+   try{const res=await req('/api/optimize/close','POST',{name:a.name});notify('✓ '+res.message);setTimeout(loadProcs,800);}catch(ex){notify('⚠ '+ex.message,true);}});
+  r.append(ic,t,v,btn);box.append(r);
+ });
+}
+setInterval(()=>{if(!document.hidden&&optTab==='apps'&&$('page-optimize').classList.contains('active'))loadProcs();},4000);
+function renderZones(){
+ // Schede delle due zone in Home: lo stato in breve e un pulsante per l'azione principale.
+ const d=optData;
+ if(d){const h=healthScore(d);countUp($('zc-opt-score'),h.score,v=>Math.round(v));$('zc-opt-ring').style.strokeDasharray=`${h.score} 100`;
+  $('zc-opt').classList.toggle('low',h.score<65);$('zc-opt').classList.toggle('mid',h.score>=65&&h.score<85);
+  $('zc-opt-title').textContent=h.score>=85?'PC in ottima forma':h.score>=65?'Si può migliorare':'Da sistemare';
+  $('zc-opt-sub').textContent=d.report?`${bytes(d.report.total)} da liberare · ${h.on} app all’avvio`:'Analisi in corso…';}
+ const g=gameData,b=current?.boost||{};
+ const ses=b.session,run=b.running,last=(g?.games||[]).find(x=>!x.hidden&&x.last);
+ const title=b.active&&(ses?.game||run)?(ses?.game||run.name):last?last.name:'I tuoi giochi';
+ $('zc-gaming-title').textContent=title;
+ $('zc-gaming-sub').textContent=b.active?(ses?`In gioco da ${duration(ses.elapsed)}`:'Gaming attivo'):last?`Ultima partita ${ago(last.last)} · ${(g.games||[]).filter(x=>!x.hidden).length} giochi`:'Libreria, Gaming automatico e partite';
+ $('zc-gaming').classList.toggle('live',!!b.active);
+ const btn=$('zc-gaming-btn');btn.querySelector('span').textContent=b.active?'Apri':last?'Gioca':'Apri';btn.dataset.gid=!b.active&&last?last.id:'';
+ const gid=(b.active&&(ses?.gid||run?.id))||last?.id||'';const art=$('zc-gaming-art');
+ if(art.dataset.gid!==gid){art.dataset.gid=gid;art.style.backgroundImage='';art.style.setProperty('--h',hue(gid||'x'));
+  if(gid.startsWith('steam-'))coverUrl(gid,'hero').then(u=>{if(u&&art.dataset.gid===gid)art.style.backgroundImage=`url("${u}")`;});}
 }
 document.querySelectorAll('#opt-tabs button').forEach(b=>b.addEventListener('click',()=>{
+ optTab=b.dataset.panel;
  document.querySelectorAll('#opt-tabs button').forEach(x=>x.classList.toggle('selected',x===b));
  document.querySelectorAll('.opt-panel').forEach(p=>p.hidden=p.dataset.panel!==b.dataset.panel);
+ if(optTab==='apps')loadProcs();
+ b.scrollIntoView({block:'nearest',inline:'center',behavior:'smooth'});
 }));
+document.querySelectorAll('.ostat[data-go]').forEach(b=>b.addEventListener('click',()=>{optTabGo(b.dataset.go);$('opt-tabs').scrollIntoView({block:'start',behavior:'smooth'});}));
+document.querySelectorAll('#apps-sort button').forEach(b=>b.addEventListener('click',()=>{procSort=b.dataset.sort;
+ document.querySelectorAll('#apps-sort button').forEach(x=>x.classList.toggle('selected',x===b));if(procData)renderProcs(procData);}));
 $('opt-scan').addEventListener('click',()=>post('/api/optimize/scan',{}));
-$('opt-quick').addEventListener('click',async()=>{
+async function quickOptimize(){
  const est=optData?.report?.items?.filter(i=>['temp','shader','thumbs','crash','browser'].includes(i.key)).reduce((a,i)=>a+i.bytes,0);
  if(!await ask('Ottimizzare adesso?',`Pulisco file temporanei, cache dei giochi, anteprime, rapporti di errore e cache dei browser chiusi${est?' (circa '+bytes(est)+')':''}, poi svuoto la cache DNS. Cestino e documenti non vengono toccati.`,{danger:false,ico:'clean',yes:'Ottimizza'}))return;
- post('/api/optimize/quick',{});
-});
+ if(demo){quickProgress(true);setTimeout(()=>quickProgress(false,'Ottimizzazione fatta: liberati 3,9 GB · DNS svuotata'),4500);return;}
+ optSeen.quick=true;quickProgress(true);post('/api/optimize/quick',{});
+}
+$('opt-quick').addEventListener('click',quickOptimize);
 $('opt-run').addEventListener('click',async()=>{
  const keys=selectedKeys();if(!keys.length)return;
  const perm=keys.includes('recycle');
  if(!await ask('Pulire adesso?',`${$('opt-selected').textContent}.`+(perm?' Il cestino verrà svuotato: quei file non si potranno più recuperare.':' Sono solo file temporanei e cache.'),{danger:perm,ico:'clean',yes:'Pulisci'}))return;
  post('/api/optimize/clean',{keys});
 });
+$('opt-auto').addEventListener('click',()=>post('/api/optimize/auto',{enabled:$('opt-auto').getAttribute('aria-checked')!=='true'}).then(()=>loadOptimize(true)));
+$('opt-large-scan').addEventListener('click',()=>post('/api/optimize/large/scan',{}));
+$('opt-health-btn').addEventListener('click',()=>post('/api/optimize/health',{}));
+$('opt-net-btn').addEventListener('click',()=>post('/api/optimize/net',{}));
 $('opt-dns').addEventListener('click',()=>post('/api/optimize/dns',{}));
 $('opt-trim').addEventListener('click',()=>post('/api/optimize/trim',{}));
+$('zc-opt-btn').addEventListener('click',e=>{e.stopPropagation();navigate('optimize');setTimeout(quickOptimize,350);});
+$('zc-gaming-btn').addEventListener('click',e=>{e.stopPropagation();const gid=$('zc-gaming-btn').dataset.gid;const g=(gameData?.games||[]).find(x=>x.id===gid);if(g)launchGame(g);else navigate('gaming');});
+document.querySelectorAll('.zone-card').forEach(c=>c.addEventListener('keydown',e=>{if(e.key==='Enter')navigate(c.dataset.view);}));
 /* ---------- animazioni ---------- */
 const calm=matchMedia('(prefers-reduced-motion: reduce)');
 let lastMode=null,fxQuiet=0;

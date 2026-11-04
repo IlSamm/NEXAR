@@ -55,17 +55,22 @@ def test_power_schedule_and_cancel(monkeypatch):
     try: c.power_action('lock', minutes=5); assert False
     except ValueError: pass
 
-def test_bot_power_needs_confirmation():
+def test_bot_only_opens_dashboard():
+    # Il bot non comanda il PC a pulsanti: qualunque comando (anche /spegni) mostra solo la dashboard.
     from telegram_bot import TelegramBot
     class Fake:
         config = {}
-        def pc_info(self): return {'uptime_s': 3600, 'pending': None, 'hibernate': False}
-        def power_action(self, *a, **k): raise AssertionError('spento senza conferma')
+        def status(self): raise RuntimeError('non serve')
+        def power_action(self, *a, **k): raise AssertionError('spento da Telegram')
     bot = TelegramBot(Fake()); sent = []
+    bot.webapp_url = 'https://pc.example.org/'
     bot.send = lambda chat, text, markup=None: sent.append((text, markup))
-    bot.dispatch('/spegni', 1)
-    buttons = [b['callback_data'] for row in sent[-1][1]['inline_keyboard'] for b in row]
-    assert buttons == ['pwx:shutdown', 'pw']
+    for cmd in ('/start', '/spegni', 'eco', 'pwx:shutdown', '/qualcosa'): bot.dispatch(cmd, 1)
+    for text, markup in sent:
+        buttons = [b for row in markup['inline_keyboard'] for b in row]
+        assert buttons == [{'text': '📱 Apri la dashboard', 'web_app': {'url': 'https://pc.example.org/'}}]
+    bot.webapp_url = ''; bot.dispatch('/start', 1)
+    assert sent[-1][1] == {'inline_keyboard': []} and 'collegamento esterno' in sent[-1][0]
 
 def test_led_count_ignores_resized_headers_and_wireless():
     import core
@@ -85,22 +90,6 @@ def test_rgb_palette_and_exclusion(tmp_path, monkeypatch):
     import pytest
     with pytest.raises(ValueError): c.set_rgb_palette(['rosso'])
     with pytest.raises(ValueError): c.set_rgb_palette(['#000000'] * 19)
-
-def test_bot_palette_buttons_and_save():
-    from telegram_bot import TelegramBot
-    class Fake:
-        config = {}
-        pal = ['#ff8800']
-        def rgb_palette(self): return list(self.pal)
-        def set_rgb_palette(self, colors): self.pal = colors; return colors
-    f = Fake(); bot = TelegramBot(f); sent = []
-    bot.send = lambda chat, text, markup=None: sent.append((text, markup))
-    bot.dispatch('/salva', 1, arg='#00aaff')
-    assert f.pal == ['#ff8800', '#00aaff']
-    data = [b['callback_data'] for row in sent[-1][1]['inline_keyboard'] for b in row]
-    assert 'c:#00aaff' in data
-    bot.dispatch('/togli', 1, arg='#ff8800')
-    assert f.pal == ['#00aaff']
 
 def test_gaming_plan_and_back_to_normal(tmp_path, monkeypatch):
     import core
