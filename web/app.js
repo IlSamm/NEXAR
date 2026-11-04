@@ -95,7 +95,7 @@ function navigate(view){
  if(view==='settings'&&!demo){loadSettings();loadEvents();}
  if(view==='lights')loadRgbDevices();
  if(view==='optimize')loadOptimize();
- if(view==='gaming')loadGaming();
+ if(view==='gaming')loadGaming(false,true);
  const tab=['power','links','settings','optimize'].includes(view)?'more':view;
  document.querySelectorAll('.rail-nav [data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===view));
  document.querySelectorAll('.tabbar [data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===tab));
@@ -119,6 +119,7 @@ function push(arr,v){if(typeof v==='number'){arr.push(v);if(arr.length>60)arr.sh
 /* ---------- rendering ---------- */
 function render(s){
  current=s;
+ modeFx(s.mode);
  const eco=s.mode==='eco';
  document.querySelectorAll('.mode-opt').forEach(b=>b.classList.toggle('selected',b.classList.contains(s.mode)));
  $('mode-desc').textContent=eco?`CPU al ${s.eco_cpu_max_percent??'—'}%, monitor spento dopo ${Math.round((s.monitor_timeout_seconds||60)/60)} min`
@@ -201,12 +202,12 @@ function renderFans(fans){
 }
 function renderPower(p,e){
  const fill=$('gauge-fill');
- if(!p||typeof p.total!=='number'){$('g-watts').textContent='—';$('e-watts').textContent='—';fill.style.strokeDasharray='0 100';}
+ if(!p||typeof p.total!=='number'){countUp($('g-watts'),null,()=>'—');$('e-watts').textContent='—';fill.style.strokeDasharray='0 100';}
  else{
   // Arco di 270° (75 su 100): scala fino al 60% dell'alimentatore, oltre un PC da scrivania non va quasi mai.
   const scale=Math.max(300,(p.psu_watts||750)*.6);
   fill.style.strokeDasharray=`${Math.min(75,p.total/scale*75).toFixed(1)} 100`;
-  $('g-watts').textContent=Math.round(p.total);$('g-amps').textContent=`${nf(p.amps,2)} A · ${p.voltage} V`;
+  countUp($('g-watts'),p.total,v=>Math.round(v));$('g-amps').textContent=`${nf(p.amps,2)} A · ${p.voltage} V`;
   $('e-watts').textContent=Math.round(p.total);
   $('e-range').textContent=`Tra ${p.low} e ${p.high} W (±${p.margin}%)`+(p.monitor_watts?(p.monitor_on?' · monitor incluso':' · monitor spento'):' · monitor escluso');
   $('e-amps').textContent=nf(p.amps,2)+' A';$('e-volts').textContent=`a ${p.voltage} V`;
@@ -474,7 +475,7 @@ function healthScore(d){
 function renderOptimize(d){
  optData=d;
  const h=healthScore(d);
- $('opt-score').textContent=h.score;$('opt-score-ring').style.strokeDasharray=`${h.score} 100`;
+ countUp($('opt-score'),h.score,v=>Math.round(v));$('opt-score-ring').style.strokeDasharray=`${h.score} 100`;
  $('opt-score-label').textContent=h.score>=85?'Ottimo':h.score>=65?'Buono':'Da migliorare';
  $('opt-score-ring').closest('.health').className='health'+(h.score<65?' low':h.score<85?' mid':'');
  $('opt-st-junk').textContent=d.report?bytes(d.report.total):'—';$('opt-st-disk').textContent=h.c?bytes(h.c.free):'—';
@@ -530,6 +531,53 @@ $('opt-run').addEventListener('click',async()=>{
 });
 $('opt-dns').addEventListener('click',()=>post('/api/optimize/dns',{}));
 $('opt-trim').addEventListener('click',()=>post('/api/optimize/trim',{}));
+/* ---------- animazioni ---------- */
+const calm=matchMedia('(prefers-reduced-motion: reduce)');
+let lastMode=null,fxQuiet=0;
+function countUp(node,value,fmt){
+ // Il numero scorre dal valore precedente al nuovo (niente salti secchi ogni 4 secondi).
+ if(typeof value!=='number'||!Number.isFinite(value)){node._v=undefined;node.textContent=fmt(value);return;}
+ const from=typeof node._v==='number'?node._v:(calm.matches?value:0);node._v=value;
+ cancelAnimationFrame(node._raf);
+ if(calm.matches||Math.abs(from-value)<0.5){node.textContent=fmt(value);return;}
+ const t0=performance.now(),dur=from===0?900:600;
+ const step=t=>{const k=Math.min(1,(t-t0)/dur),e=1-Math.pow(1-k,3);node.textContent=fmt(from+(value-from)*e);if(k<1)node._raf=requestAnimationFrame(step);};
+ node._raf=requestAnimationFrame(step);
+}
+function swapIn(node,text){if(node.textContent===text)return;node.textContent=text;if(calm.matches)return;node.classList.remove('swap');void node.offsetWidth;node.classList.add('swap');}
+function fx(kind,title,sub,img){
+ // Effetto a schermo intero di 2 secondi: non blocca i clic.
+ if(calm.matches||document.hidden)return;
+ document.querySelectorAll('.gfx').forEach(x=>x.remove());
+ const box=el('div','gfx '+kind+(img?' img':''));if(img)box.style.setProperty('--img',`url("${img}")`);
+ const rings=el('div','gfx-rings');rings.append(el('i'),el('i'),el('i'));
+ const core=el('div','gfx-core');core.append(icon(kind==='off'?'check':kind==='launch'?'play':'game'));
+ box.append(el('div','gfx-bg'),rings,core,el('b','',title));if(sub)box.append(el('small','',sub));
+ document.body.append(box);setTimeout(()=>box.remove(),2000);
+}
+function modeFx(mode){
+ if(lastMode&&mode&&lastMode!==mode&&Date.now()>fxQuiet){
+  if(mode==='gaming')fx('on','GAMING ON',current?.boost?.running?.name?'Si gioca a '+current.boost.running.name:'Massime prestazioni');
+  else if(lastMode==='gaming')fx('off','GAMING OFF','Tutto come prima');
+ }
+ lastMode=mode;
+}
+function particles(){
+ const box=$('game-particles');if(!box||box.childElementCount)return;
+ const cols=['#ec4899','#a78bfa','#22d3ee','#f472b6'];
+ for(let i=0;i<22;i++){const p=el('span');const s=2+Math.random()*3;
+  p.style.cssText=`left:${Math.random()*100}%;--s:${s}px;--c:${cols[i%4]};--d:${6+Math.random()*8}s;--w:${-Math.random()*12}s;--dx:${(Math.random()-.5)*120}px`;box.append(p);}
+}
+function tilt(card){
+ card.addEventListener('pointermove',e=>{
+  if(e.pointerType!=='mouse'||calm.matches)return;
+  const r=card.getBoundingClientRect(),x=(e.clientX-r.left)/r.width,y=(e.clientY-r.top)/r.height;
+  card.classList.add('tilting');
+  card.style.setProperty('--ry',((x-.5)*10).toFixed(2)+'deg');card.style.setProperty('--rx',((.5-y)*8).toFixed(2)+'deg');
+  card.style.setProperty('--mx',(x*100).toFixed(1)+'%');card.style.setProperty('--my',(y*100).toFixed(1)+'%');
+ });
+ card.addEventListener('pointerleave',()=>{card.classList.remove('tilting');card.style.setProperty('--rx','0deg');card.style.setProperty('--ry','0deg');});
+}
 /* ---------- gaming ---------- */
 let gameData=null,libStore='',showHidden=false,heroArt=null;const covers=new Map();
 const STORE_COLORS={Steam:'#66c0f4',Epic:'#e5e7eb',Riot:'#ff6b75',GOG:'#c79cff'};
@@ -564,11 +612,11 @@ function coverUrl(id,kind){
    return r.ok?URL.createObjectURL(await r.blob()):'';}catch(e){return '';}})();
  covers.set(k,p);return p;
 }
-async function loadGaming(refresh=false){
- if(demo){renderGaming(DEMO_GAMING);return;}
- try{renderGaming(await req('/api/gaming'+(refresh?'?refresh=true':'')));}catch(ex){notify('Gaming: '+ex.message,true);}
+async function loadGaming(refresh=false,animate=false){
+ if(demo){renderGaming(DEMO_GAMING,animate);return;}
+ try{renderGaming(await req('/api/gaming'+(refresh?'?refresh=true':'')),animate);}catch(ex){notify('Gaming: '+ex.message,true);}
 }
-function renderGaming(d){
+function renderGaming(d,animate=false){
  gameData=d;const s=d.boost?.settings||{};
  document.querySelectorAll('[data-boost]').forEach(t=>t.setAttribute('aria-checked',s[t.dataset.boost]?'true':'false'));
  document.querySelectorAll('#game-fans [data-fans]').forEach(b=>{b.classList.toggle('selected',b.dataset.fans===d.fans);b.disabled=!d.fans_enabled;});
@@ -579,15 +627,15 @@ function renderGaming(d){
   b.addEventListener('click',()=>saveGaming({rgb_color:c}));sw.append(b);});
  sw.querySelectorAll('button').forEach(b=>b.disabled=!d.rgb_enabled);
  $('game-rgb-note').textContent=!d.rgb_enabled?'OpenRGB non collegato':d.rgb_color?'Uscendo torna il colore normale':'Le luci restano come sono';
- renderLibrary();renderBoostApps(d);renderHistory(d.history||[]);
+ renderLibrary(animate);renderBoostApps(d);renderHistory(d.history||[]);
  renderGamingLive(current||statusDemo);
 }
-function renderLibrary(){
+function renderLibrary(animate=false){
  const d=gameData;if(!d)return;const games=d.games||[];const q=$('lib-search').value.trim().toLowerCase();
  const stores=[...new Set(games.filter(g=>!g.hidden).map(g=>g.store))];if(libStore&&!stores.includes(libStore))libStore='';
  const seg=$('lib-stores');seg.hidden=stores.length<2;
  seg.replaceChildren(...['',...stores].map(st=>{const b=el('button',st===libStore?'selected':'',st||'Tutti');b.type='button';
-  b.addEventListener('click',()=>{libStore=st;renderLibrary();});return b;}));
+  b.addEventListener('click',()=>{libStore=st;renderLibrary(true);});return b;}));
  const hiddenN=games.filter(g=>g.hidden).length;
  const list=games.filter(g=>(showHidden||!g.hidden)&&(!libStore||g.store===libStore)&&(!q||g.name.toLowerCase().includes(q)));
  const running=(current?.boost||d.boost)?.running?.id;
@@ -595,9 +643,10 @@ function renderLibrary(){
  const lh=$('lib-hidden');lh.hidden=!hiddenN;lh.textContent=showHidden?'Nascondi i programmi esclusi':`Mostra ${hiddenN} ${hiddenN>1?'esclusi':'escluso'}`;
  const grid=$('game-grid');grid.replaceChildren();
  if(!list.length){grid.append(el('p','muted',games.length?'Nessun gioco corrisponde alla ricerca.':'Non ho trovato giochi di Steam, Epic, Riot o GOG su questo PC.'));return;}
- list.forEach(g=>{
+ list.forEach((g,i)=>{
   const playing=g.id===running;
-  const card=el('article','game-card'+(g.hidden?' is-hidden':'')+(playing?' playing':''));
+  const card=el('article','game-card'+(g.hidden?' is-hidden':'')+(playing?' playing':'')+(animate?' enter':''));
+  card.style.setProperty('--i',Math.min(i,16));tilt(card);
   const cov=el('div','game-cover');cov.style.setProperty('--h',hue(g.name));cov.append(el('span','initials',initials(g.name)));
   const badge=el('span','store-badge',g.store);badge.style.setProperty('--sc',STORE_COLORS[g.store]||'#94a3b8');cov.append(badge);
   if(playing)cov.append(el('span','now-badge','IN GIOCO'));
@@ -651,7 +700,7 @@ function setHeroArt(gid){
  art.style.setProperty('--h',hue(gid||'nexar'));
  if(!gid?.startsWith('steam-'))return;
  coverUrl(gid,'hero').then(u=>{if(u&&heroArt===gid){art.style.backgroundImage=`url("${u}")`;art.classList.add('img');}});
- coverUrl(gid,'logo').then(u=>{if(u&&heroArt===gid){logo.onload=()=>{logo.hidden=false;hero.classList.add('with-logo');};logo.src=u;}});
+ coverUrl(gid,'logo').then(u=>{if(u&&heroArt===gid){logo.onload=()=>{logo.hidden=false;hero.classList.add('with-logo');logo.classList.remove('swap');void logo.offsetWidth;logo.classList.add('swap');};logo.src=u;}});
 }
 function setHeroBtn(id,spec){
  const b=$(id);b.hidden=!spec;if(!spec)return;const [label,ic,act]=spec;
@@ -673,14 +722,15 @@ function renderGamingLive(s){
   main=['Gioca','play','launch:'+last.id];second=['Solo Gaming','game','on'];}
  else{state='PRONTO';title='Pronto a giocare';sub='Apri un gioco: NEXAR attiva Gaming da sola e rimette tutto com’era quando lo chiudi.';main=['Attiva Gaming','game','on'];}
  $('game-hero').classList.toggle('live',on);
- $('game-state').lastElementChild.textContent=state;$('game-title').textContent=title;$('game-sub').textContent=sub;
+ particles();
+ $('game-state').lastElementChild.textContent=state;swapIn($('game-title'),title);swapIn($('game-sub'),sub);
  $('game-timer').textContent=on&&ses?'⏱ '+duration(ses.elapsed):'';
  setHeroBtn('game-main',main);setHeroBtn('game-second',second);setHeroArt(gid);
  // statistiche dal vivo (con i massimi della partita in corso)
  const mx=(v,k)=>on&&ses&&ses[k]!=null?` · max ${Math.round(ses[k])}°`:'';
- $('gs-cpu').textContent=deg(s.cpu_temp);$('gs-cpu-sub').textContent=`${pct(s.cpu)} di carico`+mx(s.cpu_temp,'cpu_temp_max');setBar('gs-cpu-bar',s.cpu_temp);
- $('gs-gpu').textContent=deg(s.gpu_temp);$('gs-gpu-sub').textContent=`${pct(s.gpu)} di carico`+mx(s.gpu_temp,'gpu_temp_max');setBar('gs-gpu-bar',s.gpu_temp);
- const pw=s.power||{};$('gs-power').textContent=typeof pw.total==='number'?Math.round(pw.total)+' W':'—';
+ countUp($('gs-cpu'),s.cpu_temp,deg);$('gs-cpu').closest('.gstat').classList.toggle('hot',(s.cpu_temp||0)>=85);$('gs-cpu-sub').textContent=`${pct(s.cpu)} di carico`+mx(s.cpu_temp,'cpu_temp_max');setBar('gs-cpu-bar',s.cpu_temp);
+ countUp($('gs-gpu'),s.gpu_temp,deg);$('gs-gpu').closest('.gstat').classList.toggle('hot',(s.gpu_temp||0)>=83);$('gs-gpu-sub').textContent=`${pct(s.gpu)} di carico`+mx(s.gpu_temp,'gpu_temp_max');setBar('gs-gpu-bar',s.gpu_temp);
+ const pw=s.power||{};countUp($('gs-power'),pw.total,v=>typeof v==='number'?Math.round(v)+' W':'—');
  $('gs-power-sub').textContent=on&&ses?`${nf(ses.kwh,2)} kWh in questa partita`:typeof pw.amps==='number'?`${nf(pw.amps,2)} A alla presa`:'—';
  setBar('gs-power-bar',pw.total,pw.psu_watts||750);
  const lvl=s.fans_level||'normal',fans=(s.fans||[]).filter(f=>f.rpm>0);
@@ -689,6 +739,8 @@ function renderGamingLive(s){
  if(gameData&&(gameData.boost?.running?.id||'')!==(run?.id||'')){gameData.boost={...gameData.boost,running:run};renderLibrary();}
 }
 async function launchGame(g){
+ fxQuiet=Date.now()+15000;
+ fx('launch','AVVIO',g.name,g.cover?await coverUrl(g.id,'hero'):'');
  if(demo){notify('Anteprima: comando non attivo.');return;}
  try{const r=await req('/api/gaming/launch','POST',{id:g.id});notify('🎮 '+r.message);await refresh();}catch(ex){notify('⚠ '+ex.message,true);}
 }
@@ -707,7 +759,7 @@ document.querySelectorAll('#game-fans [data-fans]').forEach(b=>b.addEventListene
 $('game-main').addEventListener('click',()=>heroAction($('game-main').dataset.act));
 $('game-second').addEventListener('click',()=>heroAction($('game-second').dataset.act));
 $('lib-search').addEventListener('input',renderLibrary);
-$('lib-reload').addEventListener('click',()=>loadGaming(true));
+$('lib-reload').addEventListener('click',()=>loadGaming(true,true));
 $('lib-hidden').addEventListener('click',()=>{showHidden=!showHidden;renderLibrary();});
 $('boost-reload').addEventListener('click',()=>loadGaming());
 $('upd-check').addEventListener('click',()=>post('/api/update/check',{}));

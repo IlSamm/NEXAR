@@ -637,3 +637,123 @@ a.btn{text-decoration:none;color:var(--text)}
  .tiles,.fan-list{grid-template-columns:minmax(0,1fr)}
  .kwh-cards,.temps{grid-template-columns:minmax(0,1fr)}
 }
+
+/* ================= animazioni ================= */
+@property --spin{syntax:'<angle>';inherits:false;initial-value:0deg}
+@keyframes rise{from{opacity:0;transform:translateY(16px) scale(.985)}to{opacity:1;transform:none}}
+@keyframes spin{to{--spin:360deg}}
+/* ingresso a cascata: sezioni della pagina, poi riquadri e statistiche */
+.page.active>*,.page.active .tiles>*,.page.active .game-stats>*,.page.active .power-grid>*{animation:rise .6s cubic-bezier(.2,.8,.2,1) backwards}
+.page.active>*:nth-child(2),.page.active .tiles>*:nth-child(2),.page.active .game-stats>*:nth-child(2){animation-delay:.06s}
+.page.active>*:nth-child(3),.page.active .tiles>*:nth-child(3),.page.active .game-stats>*:nth-child(3){animation-delay:.12s}
+.page.active>*:nth-child(4),.page.active .tiles>*:nth-child(4),.page.active .game-stats>*:nth-child(4){animation-delay:.18s}
+.page.active>*:nth-child(5){animation-delay:.24s}.page.active>*:nth-child(6){animation-delay:.3s}.page.active>*:nth-child(n+7){animation-delay:.36s}
+.card,.tile,.gstat{transition:border-color .25s,box-shadow .25s,transform .25s}
+.tile:hover,.gstat:hover{border-color:var(--line2);transform:translateY(-2px)}
+.btn{transition:background .15s,border-color .15s,transform .12s,filter .15s}
+.btn:active:not(:disabled),.act:active,.mode-opt:active,.icon-btn:active{transform:scale(.96)}
+.toggle span{transition:transform .28s cubic-bezier(.3,1.5,.5,1)}
+.swatch.selected{animation:swatch-pop .35s cubic-bezier(.3,1.6,.5,1)}
+@keyframes swatch-pop{from{transform:scale(.8)}}
+
+/* modalità: Gaming selezionata ha un bordo al neon che gira */
+.mode-opt{position:relative}
+.mode-opt.gaming.selected::before,.mode-pill.gaming::before{content:"";position:absolute;inset:-1px;border-radius:inherit;padding:1.5px;pointer-events:none;
+ background:conic-gradient(from var(--spin),transparent 0 55%,#ec4899,#8b5cf6,#22d3ee,transparent 92%);
+ -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;animation:spin 3.2s linear infinite}
+.mode-pill{position:relative}
+.mode-opt.selected .i{animation:ico-pop .5s cubic-bezier(.3,1.6,.5,1)}
+@keyframes ico-pop{0%{transform:scale(.6) rotate(-12deg)}100%{transform:none}}
+
+/* ---------- zona Gaming ---------- */
+.game-hero-art{animation:kenburns 28s ease-in-out infinite alternate;transform-origin:65% 40%}
+@keyframes kenburns{from{transform:scale(1.03)}to{transform:scale(1.12) translate(-1.5%,1%)}}
+.game-hero::before{content:"";position:absolute;inset:0;border-radius:inherit;padding:1.5px;pointer-events:none;z-index:3;opacity:0;transition:opacity .6s;
+ background:conic-gradient(from var(--spin),transparent 0 50%,var(--g2),var(--g1),#22d3ee,transparent 90%);
+ -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;animation:spin 4s linear infinite}
+.game-hero.live::before{opacity:1}
+.game-hero::after{content:"";position:absolute;inset:0;pointer-events:none;z-index:1;background:linear-gradient(105deg,transparent 38%,rgba(255,255,255,.07) 48%,rgba(255,255,255,.12) 50%,transparent 62%);
+ transform:translateX(-120%);animation:sweep 7s ease-in-out 1.2s infinite}
+@keyframes sweep{0%{transform:translateX(-120%)}35%,100%{transform:translateX(120%)}}
+.game-hero-body,.game-auto{position:relative;z-index:2}
+.game-particles{position:absolute;inset:0;z-index:0;overflow:hidden;pointer-events:none;opacity:.55;transition:opacity .6s}
+.game-hero.live .game-particles{opacity:1}
+.game-particles span{position:absolute;bottom:-12px;width:var(--s);height:var(--s);border-radius:50%;background:var(--c);box-shadow:0 0 10px 2px var(--c);
+ animation:float var(--d) linear var(--w) infinite;opacity:0}
+@keyframes float{0%{transform:translate(0,0);opacity:0}12%{opacity:.85}100%{transform:translate(var(--dx),-360px);opacity:0}}
+.game-hero h2.swap,.game-logo.swap,.game-hero p.swap{animation:title-in .7s cubic-bezier(.2,.8,.2,1)}
+@keyframes title-in{from{opacity:0;transform:translateY(12px);filter:blur(8px)}to{opacity:1;transform:none;filter:none}}
+.game-hero .btn.primary:not(.exit){animation:glow 2.8s ease-in-out infinite}
+@keyframes glow{50%{box-shadow:0 0 0 4px rgba(236,72,153,.12),0 12px 36px -6px rgba(236,72,153,.85)}}
+.game-hero .btn.primary{position:relative;overflow:hidden}
+.game-hero .btn.primary::after,.game-card .btn.primary::after{content:"";position:absolute;inset:0;background:linear-gradient(110deg,transparent 30%,rgba(255,255,255,.35) 50%,transparent 70%);transform:translateX(-120%)}
+.game-hero .btn.primary:hover::after,.game-card:hover .btn.primary::after{animation:shine .9s ease}
+@keyframes shine{to{transform:translateX(120%)}}
+/* equalizzatore nello stato quando si gioca */
+.eq{display:none;align-items:flex-end;gap:2px;height:10px}
+.eq s{width:3px;border-radius:2px;background:var(--pink);animation:eq .9s ease-in-out infinite}
+.eq s:nth-child(2){animation-delay:-.3s}.eq s:nth-child(3){animation-delay:-.6s}
+@keyframes eq{0%,100%{height:3px}50%{height:10px}}
+.game-hero.live .eq{display:inline-flex}.game-hero.live .game-state>i{display:none}
+.game-timer{transition:opacity .3s}
+
+/* statistiche: barra con riflesso, allarme se scalda */
+.gstat .bar span{position:relative;overflow:hidden}
+.gstat .bar span::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,.45),transparent);transform:translateX(-100%);animation:bar-run 2.6s ease-in-out infinite}
+@keyframes bar-run{60%,100%{transform:translateX(100%)}}
+.gstat.hot{border-color:rgba(248,113,113,.5);animation:hot 1.4s ease-in-out infinite}
+.gstat.hot b{color:#fecaca}
+@keyframes hot{50%{box-shadow:0 0 0 3px rgba(248,113,113,.12),0 10px 30px -10px rgba(248,113,113,.6)}}
+
+/* copertine: entrata a cascata, inclinazione 3D e riflesso che segue il mouse */
+.game-card{position:relative;transform:perspective(900px) rotateX(var(--rx,0deg)) rotateY(var(--ry,0deg)) translateY(var(--ty,0px));transition:transform .2s ease-out,border-color .2s,box-shadow .2s}
+.game-card:hover{transform:perspective(900px) rotateX(var(--rx,0deg)) rotateY(var(--ry,0deg)) translateY(-4px)}
+.game-card.tilting{transition:transform .06s linear,border-color .2s,box-shadow .2s}
+.game-card::after{content:"";position:absolute;inset:0;pointer-events:none;border-radius:inherit;opacity:0;transition:opacity .25s;
+ background:radial-gradient(260px circle at var(--mx,50%) var(--my,0%),rgba(255,255,255,.16),transparent 60%)}
+.game-card:hover::after{opacity:1}
+.game-card.enter{animation:card-in .6s cubic-bezier(.2,.8,.2,1) backwards;animation-delay:calc(var(--i,0) * 50ms)}
+@keyframes card-in{from{opacity:0;transform:perspective(900px) translateY(22px) rotateX(10deg) scale(.95)}}
+.game-card.playing .game-cover::after{content:"";position:absolute;inset:0;box-shadow:inset 0 0 0 2px rgba(236,72,153,.9);animation:hot 1.6s ease-in-out infinite}
+.game-cover img{transform:scale(1.001)}
+.hist-row,.boost-app{transition:border-color .2s,transform .2s}
+.hist-row:hover,.boost-app:hover{border-color:var(--line2);transform:translateX(3px)}
+
+/* ---------- effetto a schermo intero: Gaming ON / OFF / avvio gioco ---------- */
+.gfx{position:fixed;inset:0;z-index:80;display:grid;place-items:center;align-content:center;gap:10px;pointer-events:none;color:#fff;text-align:center;
+ animation:gfx-life 1.9s ease forwards}
+.gfx-bg{position:absolute;inset:0;background:radial-gradient(circle at 50% 50%,rgba(236,72,153,.38),rgba(139,92,246,.22) 35%,rgba(5,6,12,.92) 75%);backdrop-filter:blur(6px);background-size:cover;background-position:center}
+.gfx.img .gfx-bg{background-image:linear-gradient(rgba(5,6,12,.55),rgba(5,6,12,.85)),var(--img)}
+.gfx.off .gfx-bg{background:radial-gradient(circle at 50% 50%,rgba(56,189,248,.3),rgba(52,211,153,.12) 35%,rgba(5,6,12,.9) 75%)}
+.gfx-rings{position:absolute;left:50%;top:50%;width:0;height:0}
+.gfx-rings i{position:absolute;left:-90px;top:-90px;width:180px;height:180px;border-radius:50%;border:2px solid rgba(244,114,182,.9);box-shadow:0 0 30px rgba(236,72,153,.7),inset 0 0 30px rgba(139,92,246,.5);
+ animation:ring 1.3s cubic-bezier(.15,.7,.3,1) backwards}
+.gfx-rings i:nth-child(2){animation-delay:.12s;border-color:rgba(167,139,250,.9)}.gfx-rings i:nth-child(3){animation-delay:.24s;border-color:rgba(34,211,238,.8)}
+.gfx.off .gfx-rings i{border-color:rgba(56,189,248,.8);box-shadow:0 0 30px rgba(56,189,248,.5)}
+@keyframes ring{from{transform:scale(.2);opacity:1}to{transform:scale(4.2);opacity:0}}
+.gfx-core{position:relative;width:96px;height:96px;border-radius:28px;display:grid;place-items:center;background:linear-gradient(135deg,#8b5cf6,#ec4899);
+ box-shadow:0 0 60px rgba(236,72,153,.7);animation:core .8s cubic-bezier(.3,1.6,.5,1) backwards}
+.gfx.off .gfx-core{background:linear-gradient(135deg,#0ea5e9,#34d399);box-shadow:0 0 60px rgba(56,189,248,.6)}
+.gfx-core .i{width:52px;height:52px;stroke-width:1.6}
+@keyframes core{from{transform:scale(0) rotate(-35deg);opacity:0}}
+.gfx b{position:relative;font:900 44px/1 var(--font-d);letter-spacing:.32em;padding-left:.32em;margin-top:14px;text-shadow:0 0 24px rgba(236,72,153,.8);animation:gfx-title .9s cubic-bezier(.2,.8,.2,1) .15s backwards}
+.gfx.off b{text-shadow:0 0 24px rgba(56,189,248,.7)}
+.gfx small{position:relative;color:#e5e7eb;font-size:15px;font-weight:600;animation:rise .6s .35s backwards}
+@keyframes gfx-title{from{letter-spacing:1.1em;opacity:0;filter:blur(10px)}}
+.gfx::after{content:"";position:absolute;left:0;right:0;height:2px;top:0;background:linear-gradient(90deg,transparent,#fff,transparent);box-shadow:0 0 18px #ec4899;animation:scan 1.1s ease-in .1s backwards}
+@keyframes scan{from{transform:translateY(0);opacity:1}to{transform:translateY(100vh);opacity:0}}
+@keyframes gfx-life{0%{opacity:0}10%{opacity:1}72%{opacity:1}100%{opacity:0}}
+
+/* numeri che salgono: niente salti di larghezza */
+.gstat b,.tile-val,.health-center strong,.gauge-center strong{font-variant-numeric:tabular-nums}
+
+@media (max-width:640px){
+ .gfx b{font-size:30px}
+ .gfx-core{width:76px;height:76px;border-radius:22px}.gfx-core .i{width:40px;height:40px}
+ .game-card{transform:none}
+}
+/* Windows con "Effetti animazione" spenti: niente movimento */
+@media (prefers-reduced-motion:reduce){
+ *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;animation-delay:0s!important;transition-duration:.01ms!important}
+ .gfx,.game-particles{display:none!important}
+}
