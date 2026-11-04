@@ -51,7 +51,19 @@
 </svg>
 
 <div class="aurora" aria-hidden="true"><i></i><i></i><i></i></div>
-<div class="splash" id="splash" aria-hidden="true"><img src="/assets/logo.png" alt=""><b>NEXAR</b><div class="splash-bar"><i></i></div></div>
+<div class="splash" id="splash" aria-hidden="true">
+ <svg class="splash-logo" viewBox="0 0 512 512">
+  <defs>
+   <filter id="brush-edge" x="-20%" y="-20%" width="140%" height="140%"><feTurbulence type="fractalNoise" baseFrequency="0.035 0.09" numOctaves="3" seed="7" result="n"/><feDisplacementMap in="SourceGraphic" in2="n" scale="34" xChannelSelector="R" yChannelSelector="G"/></filter>
+   <mask id="brush-mask" maskUnits="userSpaceOnUse" x="0" y="0" width="512" height="512">
+    <path class="brush-stroke" d="M24 478 L120 300 L206 142 L262 208 L320 274 L392 170 L488 34" fill="none" stroke="#fff" stroke-width="150" stroke-linecap="round" stroke-linejoin="round" pathLength="1" filter="url(#brush-edge)"/>
+   </mask>
+  </defs>
+  <image class="splash-paint" href="/assets/logo.png" width="512" height="512" mask="url(#brush-mask)"/>
+  <image class="splash-full" href="/assets/logo.png" width="512" height="512"/>
+ </svg>
+ <b>NEXAR</b>
+</div>
 
 <section class="login" id="auth-screen" hidden>
  <div class="login-card">
@@ -539,8 +551,8 @@
     </div>
     <section class="card">
      <div class="card-head"><div><h3>Aggiornamenti</h3><p id="upd-text">—</p></div><span class="tag" id="upd-version">v—</span></div>
-     <div class="switch-row upd-row"><div><b>Aggiorna da solo</b><small>Controlla GitHub ogni 6 ore, installa e riparte</small></div><button class="toggle" id="upd-auto" role="switch" aria-checked="true" aria-label="Aggiornamenti automatici"><span></span></button></div>
-     <div class="btn-row"><button class="btn" type="button" id="upd-check"><svg class="i"><use href="#i-refresh"/></svg>Controlla ora</button><button class="btn primary" type="button" id="upd-install" hidden>Installa aggiornamento</button><a class="btn" id="upd-page" href="https://github.com/IlSamm/NEXAR/releases" target="_blank" rel="noopener noreferrer">Novità su GitHub</a></div>
+     <div class="switch-row upd-row"><div><b>Aggiorna da solo</b><small>Controlla ogni 6 ore, installa e riparte</small></div><button class="toggle" id="upd-auto" role="switch" aria-checked="true" aria-label="Aggiornamenti automatici"><span></span></button></div>
+     <div class="btn-row"><button class="btn" type="button" id="upd-check"><svg class="i"><use href="#i-refresh"/></svg>Controlla ora</button><button class="btn primary" type="button" id="upd-install" hidden>Installa aggiornamento</button></div>
     </section>
     <section class="card hw">
      <div><span>Scheda madre</span><b id="hw-mb">—</b></div><div><span>Processore</span><b id="hw-cpu-name">—</b></div><div><span>Scheda video</span><b id="hw-gpu-name">—</b></div><div><span>Dissipatore</span><b id="hw-cooler">—</b></div>

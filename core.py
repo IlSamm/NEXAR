@@ -143,6 +143,12 @@ def collect_sensors(url: str):
             'cpu_power': cpu_power[0] if cpu_power else None}
 
 HIGH_PERFORMANCE = '8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c'
+USB_SUSPEND = ('2a737441-1930-4402-8d77-b2bebba308a3', '48e6b7a6-50f5-4782-a5d4-53bb8f07e226')
+WIFI_SAVING = ('19cbb8fa-5279-450e-9fac-8a3d5fedd0c1', '12bbebe6-58d6-4636-95bb-3217ef867c1a')
+ECO_EXTRA = (('SUB_PROCESSOR', 'PERFBOOSTMODE', 0), ('SUB_PROCESSOR', 'PERFEPP', 80), ('SUB_PROCESSOR', 'CPMINCORES', 25),
+             ('SUB_PCIEXPRESS', 'ASPM', 2), ('SUB_DISK', 'DISKIDLE', 600), (*USB_SUSPEND, 1), (*WIFI_SAVING, 3))
+GAMING_EXTRA = (('SUB_PROCESSOR', 'PERFBOOSTMODE', 2), ('SUB_PROCESSOR', 'PERFEPP', 0), ('SUB_PCIEXPRESS', 'ASPM', 0),
+                ('SUB_DISK', 'DISKIDLE', 0), (*USB_SUSPEND, 0), (*WIFI_SAVING, 0))
 FAN_LEVEL_NAMES = {'off': 'spente', 'eco': 'silenziose', 'normal': 'normali', 'max': 'al massimo'}
 MODES = {'eco': 'AI ECO', 'normal': 'Normale', 'gaming': 'Gaming'}
 ARGB_HEADER_GUESS = 16
@@ -387,6 +393,11 @@ class Control:
         if parking is not None:
             try: power('/setacvalueindex', guid, 'SUB_PROCESSOR', 'CPMINCORES',parking)
             except RuntimeError: pass  # impostazione nascosta su alcuni PC
+        # Risparmio vero in AI ECO (turbo spento, PCIe/USB/Wi-Fi a risparmio, dischi meccanici fermi dopo 10 min);
+        # in Gaming il contrario. Alcune voci mancano su certi PC: si saltano.
+        for sub, setting, value in (ECO_EXTRA if mode == 'eco' else GAMING_EXTRA):
+            try: power('/setacvalueindex', guid, sub, setting, value)
+            except RuntimeError: pass
         power('/setacvalueindex', guid, 'SUB_VIDEO', 'VIDEOIDLE',timeout)
         power('/setacvalueindex', guid, 'SUB_SLEEP', 'STANDBYIDLE',0)
         power('/setacvalueindex', guid, 'SUB_SLEEP', 'HIBERNATEIDLE',0)

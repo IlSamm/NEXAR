@@ -288,7 +288,7 @@ def power_wol():
 @app.post('/api/update/check',dependencies=[Depends(authorized)])
 def update_check():
     try: return {'ok':True,'message':updater.check()['message'],'update':updater.info()}
-    except Exception as ex: raise HTTPException(502,'GitHub non raggiungibile: '+str(ex)[:150])
+    except Exception as ex: raise HTTPException(502,'Server degli aggiornamenti non raggiungibile: '+str(ex)[:150])
 
 @app.post('/api/update/install',dependencies=[Depends(authorized)])
 def update_install():

@@ -125,8 +125,8 @@ function render(s){
  modeFx(s.mode);
  const eco=s.mode==='eco';
  document.querySelectorAll('.mode-opt').forEach(b=>b.classList.toggle('selected',b.classList.contains(s.mode)));
- $('mode-desc').textContent=eco?`CPU al ${s.eco_cpu_max_percent??'—'}%, monitor spento dopo ${Math.round((s.monitor_timeout_seconds||60)/60)} min`
-  :s.mode==='gaming'?'CPU sempre al massimo, monitor mai spento, LED accesi':'Piano energetico originale di Windows';
+ $('mode-desc').textContent=eco?`Turbo spento, CPU al ${s.eco_cpu_max_percent??'—'}%, dischi e USB a risparmio, monitor spento dopo ${Math.round((s.monitor_timeout_seconds||60)/60)} min`
+  :s.mode==='gaming'?'Turbo al massimo, CPU sempre pronta, monitor mai spento':'Piano energetico originale di Windows';
  const mp=$('mode-pill');mp.className='mode-pill '+(s.mode||'normal');mp.querySelector('span').textContent={eco:'AI ECO',gaming:'Gaming'}[s.mode]||'Normale';
  // Componenti
  const p=s.power||{};const w=k=>(p.items||[]).find(i=>i.key===k)?.watts;
@@ -195,7 +195,7 @@ function renderUpdate(version,u,job){
 let splashGone=false;
 function hideSplash(){
  if(splashGone)return;splashGone=true;
- setTimeout(()=>{$('splash').classList.add('gone');setTimeout(()=>$('splash').remove(),600);},Math.max(0,1100-performance.now()));
+ setTimeout(()=>{$('splash').classList.add('gone');setTimeout(()=>$('splash').remove(),600);},Math.max(0,2100-performance.now()));   // il tempo di vedere la N dipinta
 }
 function renderFans(fans){
  const box=$('fan-list');box.replaceChildren();
@@ -579,16 +579,22 @@ function renderOptHistory(d){
   r.append(ic,t,el('strong','',h.freed?'+'+bytes(h.freed):'già pulito'));box.append(r);});
 }
 function renderStartup(items){
- const st=$('opt-startup');st.replaceChildren();
+ const st=$('opt-startup');const keep=st.scrollTop;st.replaceChildren();
+ requestAnimationFrame(()=>{st.scrollTop=keep;});
  $('opt-startup-sub').textContent=`${items.filter(i=>i.enabled).length} attivi su ${items.length}: meno programmi = Windows parte prima`;
  items.forEach(i=>{
   const row=el('div','startup-row');const ic=el('span','app-ico',initials(i.name));ic.style.setProperty('--h',hue(i.name));
   const t=el('div');t.append(el('b','',i.name),el('small','',i.scope+(i.admin?' · serve admin':'')));
   const tg=el('button','toggle');tg.type='button';tg.setAttribute('role','switch');tg.setAttribute('aria-checked',i.enabled?'true':'false');tg.setAttribute('aria-label','Avvio di '+i.name);tg.append(el('span'));
   tg.disabled=i.admin&&!!current?.remote;
-  tg.addEventListener('click',async()=>{if(demo){notify('Anteprima: comando non attivo.');return;}
-   try{const r=await req('/api/optimize/startup','POST',{id:i.id,enabled:!i.enabled});notify('✓ '+r.message);loadOptimize();}catch(ex){notify('⚠ '+ex.message,true);}});
-  row.append(ic,t,tg);st.append(row);
+  tg.addEventListener('click',async e=>{e.stopPropagation();if(demo){notify('Anteprima: comando non attivo.');return;}
+   if(tg.dataset.busy)return;tg.dataset.busy='1';tg.disabled=true;const want=!i.enabled;
+   tg.setAttribute('aria-checked',want?'true':'false');   // si vede subito sulla riga premuta
+   try{const r=await req('/api/optimize/startup','POST',{id:i.id,enabled:want});i.enabled=want;notify('✓ '+r.message);
+    $('opt-startup-sub').textContent=`${items.filter(x=>x.enabled).length} attivi su ${items.length}: meno programmi = Windows parte prima`;}
+   catch(ex){tg.setAttribute('aria-checked',i.enabled?'true':'false');notify('⚠ '+ex.message,true);}
+   finally{delete tg.dataset.busy;tg.disabled=i.admin&&!!current?.remote;}});
+  row.dataset.id=i.id;row.append(ic,t,tg);st.append(row);
  });
 }
 function renderDisks(d){
@@ -779,7 +785,7 @@ function tilt(card){
  card.addEventListener('pointerleave',()=>{card.classList.remove('tilting');card.style.setProperty('--rx','0deg');card.style.setProperty('--ry','0deg');});
 }
 /* ---------- scene: Liquido o Discreto (scelta in Impostazioni → Animazioni) ---------- */
-const MODE_FX={eco:{t:'AI ECO',s:'Consuma meno, l’AI continua a lavorare',i:'leaf'},normal:{t:'Normale',s:'Piano energetico di Windows',i:'bolt'},gaming:{t:'Gaming',s:'Massime prestazioni',i:'game'}};
+const MODE_FX={eco:{t:'AI ECO',s:'Turbo spento e tutto a risparmio: l’AI continua a lavorare',i:'leaf'},normal:{t:'Normale',s:'Piano energetico di Windows',i:'bolt'},gaming:{t:'Gaming',s:'Massime prestazioni',i:'game'}};
 const NOTE_LABEL=[[/^energia/i,'Energia'],[/^luci gaming/i,'Luci'],[/^rgb/i,'Luci'],[/^ventole/i,'Ventole'],[/^gaming boost/i,'Gaming Boost'],[/^integrazione non applicata/i,'Errore']];
 const LQ_COL={eco:['#047857','#34d399'],normal:['#1d4ed8','#60a5fa'],gaming:['#be185d','#a855f7'],clean:['#0e7490','#22d3ee']};
 const EASE={spring:'cubic-bezier(.2,.9,.25,1.12)',out:'cubic-bezier(.16,1,.3,1)',io:'cubic-bezier(.65,0,.35,1)',drain:'cubic-bezier(.5,0,.75,0)'};

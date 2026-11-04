@@ -422,10 +422,15 @@ input[type=range]{accent-color:var(--green);width:100%}
 .splash{position:fixed;inset:0;z-index:100;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;
  background:radial-gradient(600px 400px at 50% 45%,rgba(40,110,255,.18),transparent 70%),#05070d;transition:opacity .45s ease,visibility .45s}
 .splash.gone{opacity:0;visibility:hidden}
-.splash img{width:170px;height:170px;animation:sp-pop .9s cubic-bezier(.2,.9,.2,1.2) both,sp-glow 2.4s ease-in-out .9s infinite}
-.splash b{color:#eaf2ff;font:800 30px var(--font-d);letter-spacing:.42em;padding-left:.42em;animation:sp-fade .8s .3s both}
-.splash-bar{width:200px;height:3px;border-radius:3px;background:#122038;overflow:hidden;animation:sp-fade .6s .5s both}
-.splash-bar i{display:block;width:40%;height:100%;border-radius:3px;background:linear-gradient(90deg,#1f6bff,#5ad1ff,#fff);animation:sp-run 1.1s ease-in-out infinite}
+/* la N si dipinge come una pennellata: il logo vero compare lungo il percorso del pennello */
+.splash-logo{width:190px;height:190px;overflow:visible}
+.brush-stroke{stroke-dasharray:1;stroke-dashoffset:1;animation:sp-paint 1.15s cubic-bezier(.55,.05,.25,1) .2s forwards}
+@keyframes sp-paint{to{stroke-dashoffset:0}}
+.splash-full{opacity:0;animation:sp-settle .55s ease 1.25s forwards}
+@keyframes sp-settle{to{opacity:1}}
+.splash-logo{animation:sp-glow 2.6s ease-in-out 1.5s infinite}
+.splash b{color:#eaf2ff;font:800 30px var(--font-d);letter-spacing:.42em;padding-left:.42em;animation:sp-word .8s cubic-bezier(.16,1,.3,1) 1.15s both}
+@keyframes sp-word{from{opacity:0;letter-spacing:.9em;filter:blur(6px)}to{opacity:1;letter-spacing:.42em;filter:none}}
 @keyframes sp-pop{from{opacity:0;transform:scale(.6) rotate(-8deg)}to{opacity:1;transform:none}}
 @keyframes sp-glow{50%{filter:drop-shadow(0 0 24px rgba(70,140,255,.75)) brightness(1.12)}}
 @keyframes sp-fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
