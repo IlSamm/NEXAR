@@ -519,7 +519,7 @@
        <label>Avviso temperatura CPU<span class="suffix"><input type="number" id="cfg-cpu-alert" min="70" max="99" required><i>°C</i></span></label>
        <label>Avviso temperatura GPU<span class="suffix"><input type="number" id="cfg-gpu-alert" min="60" max="94" required><i>°C</i></span></label>
        <label>Ventole in Gaming<select id="cfg-gaming-fans"><option value="normal">Normali (curva BIOS)</option><option value="max">Al massimo</option></select></label>
-       <label>Animazioni<span class="anim-pick"><select id="cfg-anim"><option value="liquid">Liquido: il colore riempie lo schermo</option><option value="discreet">Discreto: isola in alto</option><option value="off">Spente</option></select><button class="btn small" type="button" id="cfg-anim-try">Prova</button></span></label>
+       <label>Animazioni<span class="anim-pick"><select id="cfg-anim"><option value="liquid">Liquido</option><option value="discreet">Discreto</option><option value="off">Spente</option></select><button class="btn small" type="button" id="cfg-anim-try">Prova</button></span></label>
        <label class="check"><input type="checkbox" id="cfg-alerts"><span>Avvisi Telegram per temperatura alta</span></label>
       </div>
      </section>
@@ -542,7 +542,7 @@
       <p class="muted small-text" id="tg-help">Usa il tuo bot: token da <a href="https://t.me/BotFather" target="_blank" rel="noopener noreferrer">@BotFather</a> (/mybots → il bot → API Token), incollalo qui e abbina il telefono con il codice temporaneo.</p>
       <div class="inline-form local-only"><input type="password" id="bot-token" autocomplete="off" placeholder="Token: 123456789:AA…" aria-label="Token del bot Telegram"><button class="btn primary" type="button" id="tg-pair-start">Collega</button></div>
       <div id="tg-pair-code" hidden><p class="muted small-text">Apri <strong id="tg-pair-name"></strong> e invia entro 10 minuti:</p><div class="inline-form"><code class="pair-command" id="tg-pair-command"></code><button type="button" class="btn" id="tg-pair-copy">Copia</button></div></div>
-      <p class="fineprint">Nel bot: /menu /consumo /eco /normal /luci /accensione /spegni /annulla</p>
+      <p class="fineprint">Nel bot: <b>/start</b> apre la dashboard. Gli avvisi del PC (temperature, partite, pulizie, aggiornamenti) arrivano da soli.</p>
      </section>
      <section class="card">
       <div class="card-head"><div><h3>Registro</h3><p>Ultime operazioni</p></div><button class="icon-btn" type="button" id="refresh-events" aria-label="Aggiorna"><svg class="i"><use href="#i-refresh"/></svg></button></div>

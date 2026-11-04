@@ -1328,3 +1328,76 @@ html{scrollbar-width:none}html::-webkit-scrollbar,body::-webkit-scrollbar{width:
  .opt-chips{justify-content:center}
 }
 .n-home{--c:#3b82f6}.n-gaming{--c:#ec4899}.n-optimize{--c:#14b8a6}.n-energy{--c:#f59e0b}.n-lights{--c:#a855f7}.n-cooling{--c:#22c55e}.n-power{--c:#ef4444}.n-links{--c:#06b6d4}.n-settings{--c:#64748b}
+
+/* ================= rifinitura 1.0.22: più arrotondato, spazi coerenti, dettagli ================= */
+:root{--r:24px;--r-s:16px;--r-xs:12px}
+.page.active{gap:18px}
+/* contenitori grandi */
+.card,.tile,.gstat,.ostat,.pwr,.zone-card,.chk,.sg,.stats-card{border-radius:var(--r)!important}
+.card{padding:22px}
+.home-hero,.opt-hero2,.game-hero{border-radius:28px!important}
+.game-card{border-radius:20px}
+.game-auto,.opt-freed,.apps-meters>div,.net-big,.net-m{border-radius:var(--r-s)!important}
+/* righe, voci di elenco e riquadri interni */
+.clean-row,.startup-row,.proc-row,.lf-row,.hd-row,.oh-row,.boost-app,.hist-row,.agent,.link-row,.fan,.disk,.mrow,.rec,.st-extra div,
+.mode-opt,.act,.kwh-row>div,.hh-power .kwh-row>div,.hh-auto .switch-row,.boost-opts .switch-row,.breakdown>*,.mem-row{border-radius:var(--r-s)!important}
+/* comandi */
+.btn{height:42px;border-radius:14px;padding:0 18px}
+.btn.small{height:34px;border-radius:11px;padding:0 13px}
+.btn.big-btn{height:48px;border-radius:16px}
+.icon-btn{border-radius:14px}
+.icon-btn.small{border-radius:10px}
+.qa{border-radius:14px;height:44px}
+.tabs{border-radius:18px;padding:6px}
+.tabs button{border-radius:13px;height:40px}
+.tabs .tab-ink{top:6px;height:40px;border-radius:13px}
+.seg3{border-radius:13px;padding:4px}.seg3 button{border-radius:10px}
+.seg3.wide button{height:40px}
+.seg,.seg4{border-radius:16px}
+.pill,.tag,.store-badge,.now-badge,.chk em{border-radius:999px}
+.suffix,.fields select,.search,.login input{border-radius:13px!important;height:42px}
+.swatch{border-radius:12px}
+.toast{border-radius:16px}
+.sheet{border-radius:28px}
+.sheet .btn{border-radius:16px}
+.nav-ico{border-radius:9px}
+.rail-nav button{border-radius:13px}
+.tile-ico,.opt-ico,.chk-ico,.clean-ico,.oh-ico,.hd-ico,.app-ico,.rec-ico,.lf-ico,.more-ico{border-radius:12px}
+/* titoli delle carte più leggibili */
+.card-head h3{font-size:17px;font-weight:700}
+.card-head p{font-size:13px}
+/* mini-grafici dietro ai riquadri: più bassi e tenui, il testo resta pulito */
+.tile{padding-bottom:18px}
+.spark{height:30%;opacity:.55}
+.tile-sub{position:relative;z-index:2;text-shadow:0 1px 6px rgba(0,0,0,.6)}
+/* tastiera: contorno visibile solo quando serve */
+:focus-visible{outline:2px solid color-mix(in srgb,var(--za2,#22d3ee) 80%,transparent);outline-offset:2px}
+button:focus:not(:focus-visible){outline:none}
+/* campi e menu coerenti */
+.fields select{padding:0 12px;cursor:pointer}
+.fields select:focus,.suffix:focus-within{border-color:color-mix(in srgb,var(--za2,#22d3ee) 70%,transparent)}
+.anim-pick select{min-width:0;max-width:220px}
+.fields label{min-height:42px}
+/* intestazioni che vanno a capo bene su schermi stretti */
+.card-head{flex-wrap:wrap;row-gap:10px}
+.card-head>div:first-child{min-width:0;flex:1 1 220px}
+.legend-mini{align-self:center}
+/* separatori più morbidi */
+.card,.tile,.gstat,.ostat,.zone-card,.chk{border-color:rgba(255,255,255,.07)}
+.tabs{background:rgba(14,17,24,.7);border-color:rgba(255,255,255,.07)}
+@media (max-width:640px){
+ :root{--r:22px;--r-s:14px}
+ .card{padding:18px}
+ .home-hero,.opt-hero2,.game-hero{border-radius:24px!important}
+ .page.active{gap:14px}
+ .btn{height:44px}
+ .tabbar{border-radius:22px 22px 0 0}
+ .anim-pick select{max-width:none}
+ .fields label{flex-wrap:wrap}
+}
+@media (max-width:640px){
+ .lib-tools{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;width:100%}
+ .lib-tools .search{grid-column:1/-1}
+ .lib-tools .seg3{display:flex;min-width:0;overflow-x:auto;scrollbar-width:none}
+ .lib-tools .seg3 button{flex:1;white-space:nowrap}
+}
