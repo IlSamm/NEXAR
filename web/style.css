@@ -963,3 +963,92 @@ a.btn{text-decoration:none;color:var(--text)}
  .card-head:has(.seg3),.card-head:has(.btn-row.tight),.card-head:has(#opt-large-scan),.card-head:has(#opt-health-btn){flex-wrap:wrap}
 }
 @media (max-width:380px){ .tiles{grid-template-columns:repeat(2,minmax(0,1fr))!important} }
+
+/* ================= tema 2: sfondo vivo, vetro, colori per zona ================= */
+:root{--za1:#3b82f6;--za2:#22d3ee;--za3:#8b5cf6;--glass:rgba(20,25,35,.48);--glass2:rgba(12,15,21,.58);--edge:rgba(255,255,255,.075)}
+body[data-zone=gaming]{--za1:#ec4899;--za2:#a78bfa;--za3:#22d3ee}
+body[data-zone=optimize]{--za1:#06b6d4;--za2:#34d399;--za3:#3b82f6}
+body[data-zone=eco]{--za1:#10b981;--za2:#34d399;--za3:#22d3ee}
+html{background:var(--bg)}body{background:transparent!important}
+/* aurora: tre luci sfocate che si muovono piano e cambiano colore con la sezione */
+.aurora{position:fixed;inset:0;z-index:-1;pointer-events:none;overflow:hidden}
+.aurora i{position:absolute;width:70vmax;height:70vmax;border-radius:50%;opacity:.7;will-change:transform;transition:background 1.2s ease;
+ animation:aurora-move 30s ease-in-out infinite alternate}
+.aurora i:nth-child(1){left:-22vmax;top:-30vmax;background:radial-gradient(circle,color-mix(in srgb,var(--za1) 62%,transparent),transparent 62%)}
+.aurora i:nth-child(2){right:-28vmax;top:5vh;background:radial-gradient(circle,color-mix(in srgb,var(--za2) 42%,transparent),transparent 62%);animation-duration:38s;animation-delay:-9s}
+.aurora i:nth-child(3){left:15vw;bottom:-42vmax;background:radial-gradient(circle,color-mix(in srgb,var(--za3) 40%,transparent),transparent 62%);animation-duration:46s;animation-delay:-20s}
+@keyframes aurora-move{0%{transform:translate(0,0) scale(1)}50%{transform:translate(6vmax,4vmax) scale(1.12)}100%{transform:translate(-4vmax,7vmax) scale(.95)}}
+/* grana leggera: toglie l'effetto "piatto" del digitale */
+.aurora::after{content:"";position:absolute;inset:0;opacity:.07;mix-blend-mode:overlay;
+ background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
+
+/* vetro: carte semitrasparenti con riflesso in alto e luce che segue il mouse */
+.card,.tile,.gstat,.ostat,.pwr,.zone-card{background:linear-gradient(180deg,var(--glass),var(--glass2));border-color:var(--edge);
+ box-shadow:inset 0 1px 0 rgba(255,255,255,.07),0 24px 48px -28px rgba(0,0,0,.85);backdrop-filter:blur(18px) saturate(150%);-webkit-backdrop-filter:blur(18px) saturate(150%)}
+.card,.tile,.gstat,.ostat,.pwr{position:relative}
+.card::after,.tile::after,.gstat::after,.ostat::after,.pwr::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;opacity:0;transition:opacity .3s;
+ background:radial-gradient(420px circle at var(--mx,50%) var(--my,0%),rgba(255,255,255,.055),transparent 45%)}
+.card:hover::after,.tile:hover::after,.gstat:hover::after,.ostat:hover::after,.pwr:hover::after{opacity:1}
+.card:hover,.tile:hover,.gstat:hover,.ostat:hover{border-color:rgba(255,255,255,.13)}
+.clean-row,.startup-row,.proc-row,.lf-row,.hd-row,.oh-row,.boost-app,.hist-row,.agent,.switch-row.boxed,.qa,.mode-opt,.act,.net-m,.apps-meters>div,.disk,.fan{background:rgba(8,10,14,.45)}
+
+/* barra laterale e barra in basso in vetro, voce attiva luminosa nel colore della zona */
+.rail{background:rgba(10,12,17,.55);backdrop-filter:blur(22px) saturate(140%);border-right-color:var(--edge)}
+.brand img{filter:drop-shadow(0 0 14px color-mix(in srgb,var(--za1) 60%,transparent));transition:filter 1s}
+.brand span{color:var(--za2);transition:color 1s}
+.rail-nav button.active{background:linear-gradient(90deg,color-mix(in srgb,var(--za1) 20%,transparent),transparent);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--za1) 28%,transparent);color:#fff}
+.rail-nav button.active .i{color:var(--za2);filter:drop-shadow(0 0 6px var(--za2))}
+.rail-nav button.active::before{content:"";position:absolute;left:-14px;top:9px;bottom:9px;width:3px;border-radius:0 3px 3px 0;background:linear-gradient(var(--za1),var(--za2));box-shadow:0 0 14px var(--za1)}
+.rail-nav button{transition:background .2s,color .2s}
+.rail-nav button:hover:not(.active){background:rgba(255,255,255,.04)}
+.tabbar{background:rgba(9,11,15,.72)!important;backdrop-filter:blur(22px) saturate(150%)!important;border-top-color:var(--edge)!important}
+.tabbar button{position:relative;transition:color .2s}
+.tabbar button.active .i{color:var(--za2)!important;filter:drop-shadow(0 0 8px var(--za2))}
+.tabbar button.active::before{content:"";position:absolute;top:-7px;left:50%;width:26px;height:3px;margin-left:-13px;border-radius:0 0 3px 3px;background:linear-gradient(90deg,var(--za1),var(--za2));box-shadow:0 0 12px var(--za1)}
+
+/* titoli: sfumatura nel colore della zona */
+.top h1{background:linear-gradient(100deg,#fff 35%,var(--za2) 75%,var(--za1));-webkit-background-clip:text;background-clip:text;color:transparent;font-size:28px;font-weight:800}
+.card-head h3{letter-spacing:-.015em}
+.top{position:relative}
+
+/* pulsanti principali: luce che scorre e bagliore */
+.btn.primary{position:relative;overflow:hidden;box-shadow:0 10px 24px -12px color-mix(in srgb,var(--za1) 80%,transparent)}
+.btn.primary::after{content:"";position:absolute;inset:0;background:linear-gradient(110deg,transparent 30%,rgba(255,255,255,.32) 50%,transparent 70%);transform:translateX(-120%);pointer-events:none}
+.btn.primary:hover::after{animation:shine .9s ease}
+.icon-btn,.btn:not(.primary){backdrop-filter:blur(6px)}
+
+/* Home: misuratore con bagliore, modalità che si illuminano */
+.gauge::before{content:"";position:absolute;inset:18%;border-radius:50%;background:radial-gradient(circle,color-mix(in srgb,var(--za2) 16%,transparent),transparent 70%);animation:breath-g 4s ease-in-out infinite}
+@keyframes breath-g{50%{transform:scale(1.12);opacity:.6}}
+.gauge .g-fill{filter:drop-shadow(0 0 9px rgba(56,189,248,.55))}
+.gauge-center strong{background:linear-gradient(180deg,#fff,#b9d7ff);-webkit-background-clip:text;background-clip:text;color:transparent}
+.mode-opt.eco.selected{box-shadow:0 0 0 1px rgba(52,211,153,.35),0 16px 40px -18px rgba(52,211,153,.7)}
+.mode-opt.normal.selected{box-shadow:0 0 0 1px rgba(56,189,248,.35),0 16px 40px -18px rgba(56,189,248,.7)}
+.mode-opt.gaming.selected{box-shadow:0 0 0 1px rgba(236,72,153,.35),0 16px 40px -18px rgba(236,72,153,.7)}
+.mode-opt.selected .i{filter:drop-shadow(0 0 8px currentColor)}
+/* riquadri con mini-grafico dal vivo sul fondo */
+.tile{overflow:hidden}
+.spark{position:absolute;left:0;right:0;bottom:0;height:46%;width:100%;pointer-events:none;opacity:.9}
+.tile>*:not(.spark){position:relative;z-index:1}
+.tile-val{background:linear-gradient(180deg,#fff,color-mix(in srgb,var(--tc,#fff) 55%,#fff));-webkit-background-clip:text;background-clip:text;color:transparent}
+.tile:has(.c-cpu){--tc:var(--cyan)}.tile:has(.c-gpu){--tc:var(--violet)}.tile:has(.c-ram){--tc:var(--teal)}.tile:has(.c-fan){--tc:var(--green)}
+.tile .temp.hot{animation:hot 1.4s ease-in-out infinite}
+.tile-ico,.opt-ico,.more-ico{box-shadow:0 0 18px -6px var(--c)}
+
+/* zone: anelli che girano intorno al punteggio */
+.opt-hero2 .health::after,.zc-ring::after{content:"";position:absolute;inset:-9px;border-radius:50%;border:1px dashed rgba(94,234,212,.28);animation:rot 40s linear infinite;pointer-events:none}
+.opt-hero2 .health::before{content:"";position:absolute;inset:-9px;border-radius:50%;background:conic-gradient(from 0deg,transparent 0 92%,#67e8f9 97%,transparent);
+ -webkit-mask:radial-gradient(circle,transparent calc(50% - 2px),#000 calc(50% - 1px));mask:radial-gradient(circle,transparent calc(50% - 2px),#000 calc(50% - 1px));animation:rot 6s linear infinite;pointer-events:none}
+@keyframes rot{to{transform:rotate(360deg)}}
+.health-center strong{background:linear-gradient(180deg,#fff,#a7f3d0);-webkit-background-clip:text;background-clip:text;color:transparent}
+.health.low .health-center strong{background:linear-gradient(180deg,#fff,#fecaca);-webkit-background-clip:text;background-clip:text}
+.health.mid .health-center strong{background:linear-gradient(180deg,#fff,#fde68a);-webkit-background-clip:text;background-clip:text}
+.opt-hero2,.game-hero{box-shadow:inset 0 1px 0 rgba(255,255,255,.07),0 40px 80px -40px color-mix(in srgb,var(--za1) 60%,transparent)}
+.zone-card{backdrop-filter:blur(8px)}
+
+@media (max-width:640px){
+ .top h1{font-size:22px}
+ .aurora i{opacity:.45}
+ .rail-nav button.active::before{display:none}
+}
+@media (prefers-reduced-motion:reduce){.aurora i{animation:none!important}}

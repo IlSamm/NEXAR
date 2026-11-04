@@ -32,7 +32,7 @@ if(tgInit){
  document.head.append(sc);
 }
 let current=null,busy=false,rgbTouched=false,schedKind='shutdown';
-const hist={cpu:[],gpu:[],power:[]};
+const hist={cpu:[],gpu:[],power:[],ram:[],fan:[]};let curView='home';
 const COMP={cpu:'#38bdf8',gpu:'#a78bfa',board:'#94a3b8',ram:'#2dd4bf',disks:'#fbbf24',cooling:'#34d399',rgb:'#f472b6',usb:'#fb923c',monitor:'#e2e8f0'};
 const statusDemo={connected:true,version:'1.0.0',update:{supported:true,auto:true,available:false,checked_at:'2026-11-03T21:10:00'},mode:'gaming',fans_level:'max',fans_levels_ready:true,cpu:12,cpu_temp:46,gpu:6,gpu_temp:38,gpu_watts:24,ram:34,ram_used:10.9,ram_total:31.1,eco_cpu_max_percent:90,
  fans:[{name:'CPU Fan',rpm:930},{name:'System Fan #1',rpm:0},{name:'System Fan #2',rpm:740},{name:'System Fan #3',rpm:750},{name:'Pump Fan',rpm:2400}],
@@ -100,6 +100,7 @@ function navigate(view){
  document.querySelectorAll('.rail-nav [data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===view));
  document.querySelectorAll('.tabbar [data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===tab));
  document.querySelectorAll('.page').forEach(p=>p.classList.toggle('active',p.id==='page-'+view));
+ curView=view;setZone();
  $('page-title').textContent=titles[view][0];$('page-desc').textContent=titles[view][1];
  window.scrollTo({top:0});
 }
@@ -167,7 +168,8 @@ function render(s){
  document.querySelectorAll('.local-only').forEach(e=>e.hidden=!!s.remote);
  renderPower(s.power,s.energy);
  renderPc(s.pc||{});
- push(hist.cpu,s.cpu);push(hist.gpu,s.gpu);push(hist.power,s.power?.total);
+ push(hist.cpu,s.cpu);push(hist.gpu,s.gpu);push(hist.power,s.power?.total);push(hist.ram,s.ram);push(hist.fan,avg??0);
+ spark('cpu-val',hist.cpu,100,COMP.cpu);spark('gpu-val',hist.gpu,100,COMP.gpu);spark('ram-val',hist.ram,100,COMP.ram);spark('fan-val',hist.fan,1800,COMP.cooling);setZone();
  chart('chart-load',[{data:hist.cpu,color:COMP.cpu},{data:hist.gpu,color:COMP.gpu}],100,'%');
  chart('chart-power',[{data:hist.power,color:'#34d399'}],0,' W');
  renderLinks(s.integrations||[],s.jobs||{});
@@ -698,6 +700,29 @@ $('zc-opt-btn').addEventListener('click',e=>{e.stopPropagation();navigate('optim
 $('zc-gaming-btn').addEventListener('click',e=>{e.stopPropagation();const gid=$('zc-gaming-btn').dataset.gid;const g=(gameData?.games||[]).find(x=>x.id===gid);if(g)launchGame(g);else navigate('gaming');});
 document.querySelectorAll('.zone-card').forEach(c=>c.addEventListener('keydown',e=>{if(e.key==='Enter')navigate(c.dataset.view);}));
 /* ---------- animazioni ---------- */
+function setZone(){
+ // Il colore di sfondo, titoli e menu segue la sezione (in Home segue la modalità).
+ const z=curView==='gaming'||curView==='optimize'?curView:curView==='home'&&current?.mode&&current.mode!=='normal'?current.mode:'';
+ if(document.body.dataset.zone!==z)document.body.dataset.zone=z;
+}
+function spark(valId,data,max,color){
+ // Mini-grafico dal vivo sul fondo dei riquadri della Home.
+ const tile=$(valId)?.closest('.tile');if(!tile)return;
+ let svg=tile.querySelector('.spark');
+ if(!svg){svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('class','spark');svg.setAttribute('viewBox','0 0 100 40');
+  svg.setAttribute('preserveAspectRatio','none');svg.setAttribute('aria-hidden','true');tile.prepend(svg);}
+ const pts=data.length>1?data:[0,0];const top=max||Math.max(1,...pts)*1.2;
+ const line=pts.map((v,i)=>[i*100/(pts.length-1),38-Math.min(1,Math.max(0,v/top))*34]).map((p,i)=>(i?'L':'M')+p[0].toFixed(1)+','+p[1].toFixed(1)).join(' ');
+ const id='sg-'+valId;
+ svg.innerHTML=`<defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${color}" stop-opacity=".3"/><stop offset="1" stop-color="${color}" stop-opacity="0"/></linearGradient></defs>`+
+  `<path d="${line} L100,40 L0,40 Z" fill="url(#${id})"/><path d="${line}" fill="none" stroke="${color}" stroke-width="1.6" stroke-opacity=".75" vector-effect="non-scaling-stroke"/>`;
+}
+// Luce che segue il mouse sulle carte (solo mouse, niente su telefono).
+document.addEventListener('pointermove',e=>{
+ if(e.pointerType!=='mouse')return;const c=e.target.closest?.('.card,.tile,.gstat,.ostat,.pwr');if(!c)return;
+ const r=c.getBoundingClientRect();c.style.setProperty('--mx',(e.clientX-r.left)+'px');c.style.setProperty('--my',(e.clientY-r.top)+'px');
+},{passive:true});
+
 const calm=matchMedia('(prefers-reduced-motion: reduce)');
 let lastMode=null,fxQuiet=0;
 function countUp(node,value,fmt){
