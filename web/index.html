@@ -115,6 +115,7 @@
    <section class="page active" id="page-home">
     <section class="hm-hero" id="hm-hero">
      <div class="hm-glow" aria-hidden="true"></div>
+     <div class="ph-chart" id="hm-chart" aria-hidden="true"></div>
      <div class="hm-main">
       <span class="hm-eyebrow"><i class="hm-dot"></i><span id="hm-pc">Il tuo PC</span></span>
       <h2 id="hm-status">Tutto sotto controllo</h2>
@@ -128,6 +129,7 @@
      </div>
      <button class="hm-power" type="button" data-view="energy" aria-label="Apri Consumi">
       <div class="gauge" id="gauge">
+       <i class="g-ticks" aria-hidden="true"></i>
        <svg viewBox="0 0 200 200" aria-hidden="true">
         <defs><linearGradient id="gauge-grad" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#34d399"/><stop offset=".6" stop-color="#38bdf8"/><stop offset="1" stop-color="#fbbf24"/></linearGradient></defs>
         <circle class="g-track" cx="100" cy="100" r="86" pathLength="100"/>
@@ -276,23 +278,33 @@
 
    <!-- CONSUMI -->
    <section class="page" id="page-energy">
-    <section class="card energy-card">
-     <div class="energy-top">
-      <div class="energy-main"><span class="eyebrow">Consumo alla presa</span><div class="big"><strong id="e-watts">—</strong><span>W</span></div><p class="muted" id="e-range">—</p></div>
-      <div class="energy-stats">
-       <div><span>Corrente</span><b id="e-amps">—</b><small id="e-volts">—</small></div>
-       <div><span>Alimentatore</span><b id="e-psu">—</b><small id="e-eff">—</small></div>
-       <div><span>Potenza apparente</span><b id="e-va">—</b><small id="e-pf">—</small></div>
-       <div><span>Misurato dai sensori</span><b id="e-measured">—</b><small>il resto è stimato</small></div>
+    <section class="phero ph-energy" id="e-hero">
+     <div class="hm-glow" aria-hidden="true"></div>
+     <div class="ph-chart" id="e-chart" aria-hidden="true"></div>
+     <div class="ph-main">
+      <span class="ph-tag"><i><svg class="i"><use href="#i-plug"/></svg></i>Consumo alla presa</span>
+      <div class="ph-big"><strong id="e-watts">—</strong><span>watt</span></div>
+      <p class="ph-sub" id="e-range">—</p>
+      <div class="ph-stats">
+       <div><small>Corrente</small><b id="e-amps">—</b><span id="e-volts">—</span></div>
+       <div><small>Alimentatore</small><b id="e-psu">—</b><span id="e-eff">—</span></div>
+       <div><small>Potenza apparente</small><b id="e-va">—</b><span id="e-pf">—</span></div>
+       <div><small>Misurato</small><b id="e-measured">—</b><span>il resto è stimato</span></div>
       </div>
      </div>
-     <div class="stack" id="e-stack"></div>
-     <div class="breakdown" id="e-list"></div>
+     <div class="donut-wrap">
+      <svg class="donut" id="e-stack" viewBox="0 0 200 200" aria-label="Ripartizione dei consumi"></svg>
+      <div class="donut-c"><small id="e-donut-sub">—</small><b id="e-donut-top">—</b><span id="e-donut-w">—</span></div>
+     </div>
+    </section>
+    <section class="card e-where">
+     <div class="card-head"><div><h3>Dove va l'energia</h3><p>Componente per componente: misurato dai sensori o stimato</p></div></div>
+     <div class="brk-grid" id="e-list"></div>
     </section>
     <div class="kwh-cards">
-     <article class="card kwh"><span class="eyebrow">Oggi</span><b id="e-today">—</b><small id="e-today-cost">—</small></article>
-     <article class="card kwh"><span class="eyebrow">Questo mese</span><b id="e-month">—</b><small id="e-month-cost">—</small></article>
-     <article class="card kwh"><span class="eyebrow">Previsione fine mese</span><b id="e-forecast">—</b><small id="e-forecast-cost">—</small></article>
+     <article class="card kwh kc-today"><span class="kc-ico"><svg class="i"><use href="#i-clock"/></svg></span><div><span class="eyebrow">Oggi</span><b id="e-today">—</b><small id="e-today-cost">—</small></div></article>
+     <article class="card kwh kc-month"><span class="kc-ico"><svg class="i"><use href="#i-list"/></svg></span><div><span class="eyebrow">Questo mese</span><b id="e-month">—</b><small id="e-month-cost">—</small></div></article>
+     <article class="card kwh kc-fore"><span class="kc-ico"><svg class="i"><use href="#i-bolt"/></svg></span><div><span class="eyebrow">Previsione fine mese</span><b id="e-forecast">—</b><small id="e-forecast-cost">—</small></div></article>
     </div>
     <section class="card stats-card">
      <div class="card-head"><div><h3>Statistiche</h3><p id="st-since">Da quando usi NEXAR</p></div></div>
@@ -338,23 +350,31 @@
 
    <!-- LUCI -->
    <section class="page" id="page-lights">
-    <div class="two-col">
-     <section class="card">
-      <div class="card-head"><div><h3>Tutti i LED</h3><p id="rgb-label">—</p></div></div>
-      <div class="color-stage">
-       <div class="orb" id="rgb-orb"></div>
-       <div class="color-side">
-        <label class="color-input"><input type="color" id="rgb-color" value="#ffffff" aria-label="Colore LED"><span id="rgb-hex">#FFFFFF</span></label>
-        <div class="swatches" id="rgb-swatches"></div>
-        <div class="palette-tools"><button class="btn small" type="button" id="palette-save"><svg class="i"><use href="#i-check"/></svg>Salva colore</button><button class="btn small" type="button" id="palette-edit">Modifica</button></div>
-       </div>
+    <section class="phero ph-lights" id="rgb-hero">
+     <div class="hm-glow" aria-hidden="true"></div>
+     <div class="ph-main">
+      <span class="ph-tag"><i><svg class="i"><use href="#i-bulb"/></svg></i>Luci</span>
+      <h2 class="ph-title" id="rgb-title">LED</h2>
+      <p class="ph-sub" id="rgb-label">—</p>
+      <div class="ph-actions">
+       <button class="btn ph-primary" type="button" id="rgb-apply-all"><svg class="i"><use href="#i-check"/></svg>Applica a tutti</button>
+       <button class="btn glass" data-action="rgb-eco" id="rgb-eco"><svg class="i"><use href="#i-moon"/></svg>Spegni</button>
+       <button class="btn glass" data-action="rgb-normal" id="rgb-normal"><svg class="i"><use href="#i-bulb"/></svg>Riaccendi</button>
       </div>
-      <label class="range"><span>Luminosità</span><input type="range" id="rgb-bright" min="5" max="100" step="5" value="100"><b id="rgb-bright-val">100%</b></label>
-      <div class="btn-row"><button class="btn primary" type="button" id="rgb-apply-all">Applica a tutti</button><button class="btn" data-action="rgb-eco" id="rgb-eco">Spegni</button><button class="btn" data-action="rgb-normal" id="rgb-normal">Riaccendi</button></div>
+     </div>
+     <div class="orb-stage" aria-hidden="true"><i class="orb-ring"></i><i class="orb-ring r2"></i><i class="orb-ring r3"></i><div class="orb" id="rgb-orb"></div></div>
+    </section>
+    <div class="lights-grid">
+     <section class="card lc-color">
+      <div class="card-head"><div><h3>Colore</h3><p>Scegli, salva i preferiti e regola la luminosità</p></div></div>
+      <label class="color-input"><input type="color" id="rgb-color" value="#ffffff" aria-label="Colore LED"><span id="rgb-hex">#FFFFFF</span><small>tocca per scegliere</small></label>
+      <div class="swatches" id="rgb-swatches"></div>
+      <div class="palette-tools"><button class="btn small" type="button" id="palette-save"><svg class="i"><use href="#i-check"/></svg>Salva colore</button><button class="btn small" type="button" id="palette-edit">Modifica</button></div>
+      <label class="range lum"><span>Luminosità</span><input type="range" id="rgb-bright" min="5" max="100" step="5" value="100"><b id="rgb-bright-val">100%</b></label>
       <p class="fineprint">Il colore viene ricordato: dopo AI ECO i LED tornano così.</p>
      </section>
-     <section class="card">
-      <div class="card-head"><div><h3>Per dispositivo</h3><p>Un colore diverso per ogni componente</p></div><button class="icon-btn" type="button" id="rgb-reload" aria-label="Ricarica"><svg class="i"><use href="#i-refresh"/></svg></button></div>
+     <section class="card lc-devs">
+      <div class="card-head"><div><h3>Dispositivi</h3><p>Un colore diverso per ogni componente</p></div><button class="icon-btn" type="button" id="rgb-reload" aria-label="Ricarica"><svg class="i"><use href="#i-refresh"/></svg></button></div>
       <div class="rgb-devices" id="rgb-devices"><p class="muted">Caricamento…</p></div>
      </section>
     </div>
@@ -362,46 +382,62 @@
 
    <!-- VENTOLE -->
    <section class="page" id="page-cooling">
-    <div class="temps">
-     <article class="card temp-card"><span class="eyebrow">CPU</span><b id="hw-cpu">—</b><div class="bar"><span id="hw-cpu-bar"></span></div></article>
-     <article class="card temp-card"><span class="eyebrow">GPU</span><b id="hw-gpu">—</b><div class="bar"><span id="hw-gpu-bar"></span></div></article>
-     <article class="card temp-card"><span class="eyebrow">Pompa AIO</span><b class="ok-text">Protetta</b><small>sempre al BIOS</small></article>
-    </div>
-    <section class="card">
-     <div class="card-head"><div><h3>Ventole</h3><p>Massimo e Spente valgono per tutte: case, radiatore, pompa e scheda video</p></div></div>
-     <div class="seg2 seg4" id="fan-levels">
-      <button data-action="fans-off" id="fans-off"><svg class="i"><use href="#i-x"/></svg>Spente</button>
-      <button data-action="fans-eco" id="fans-eco"><svg class="i"><use href="#i-moon"/></svg>Silenziose</button>
-      <button data-action="fans-normal" id="fans-normal"><svg class="i"><use href="#i-fan"/></svg>Normali</button>
-      <button data-action="fans-max" id="fans-max"><svg class="i"><use href="#i-max"/></svg>Massimo</button>
+    <section class="phero ph-cool" id="cool-hero">
+     <div class="hm-glow" aria-hidden="true"></div>
+     <div class="ph-main">
+      <span class="ph-tag"><i><svg class="i"><use href="#i-fan"/></svg></i>Ventole</span>
+      <h2 class="ph-title" id="cool-title">—</h2>
+      <p class="ph-sub" id="cool-sub">—</p>
+      <div class="seg-ink fan-seg" id="fan-levels" role="group" aria-label="Profilo ventole">
+       <i class="si-ink" aria-hidden="true"></i>
+       <button data-action="fans-off" id="fans-off"><svg class="i"><use href="#i-x"/></svg><span>Spente</span></button>
+       <button data-action="fans-eco" id="fans-eco"><svg class="i"><use href="#i-moon"/></svg><span>Silenziose</span></button>
+       <button data-action="fans-normal" id="fans-normal"><svg class="i"><use href="#i-fan"/></svg><span>Normali</span></button>
+       <button data-action="fans-max" id="fans-max"><svg class="i"><use href="#i-max"/></svg><span>Massimo</span></button>
+      </div>
      </div>
-     <div class="notice" id="fans-upgrade" hidden><div><b id="fans-upgrade-title">Nuovi profili Spente e Massimo</b><small>Spente e Massimo su tutte le ventole, anche radiatore, pompa e scheda video. Si creano una volta in Fan Control: serve una conferma da amministratore.</small></div><button class="btn small primary" type="button" id="fans-upgrade-btn">Aggiorna profili</button></div>
-     <div class="fan-list" id="fan-list"></div>
+     <div class="tgauges">
+      <div class="tg" id="tg-cpu"><svg viewBox="0 0 120 120" aria-hidden="true"><circle class="tg-track" cx="60" cy="60" r="50" pathLength="100"/><circle class="tg-fill" id="hw-cpu-arc" cx="60" cy="60" r="50" pathLength="100"/></svg><div><b id="hw-cpu">—</b><small>Processore</small></div></div>
+      <div class="tg" id="tg-gpu"><svg viewBox="0 0 120 120" aria-hidden="true"><circle class="tg-track" cx="60" cy="60" r="50" pathLength="100"/><circle class="tg-fill" id="hw-gpu-arc" cx="60" cy="60" r="50" pathLength="100"/></svg><div><b id="hw-gpu">—</b><small>Scheda video</small></div></div>
+      <div class="tg pump"><svg viewBox="0 0 120 120" aria-hidden="true"><circle class="tg-track" cx="60" cy="60" r="50" pathLength="100"/><circle class="tg-fill ok" cx="60" cy="60" r="50" pathLength="100"/></svg><div><b>OK</b><small>Pompa AIO</small></div></div>
+     </div>
+    </section>
+    <div class="notice" id="fans-upgrade" hidden><div><b id="fans-upgrade-title">Nuovi profili Spente e Massimo</b><small>Spente e Massimo su tutte le ventole, anche radiatore, pompa e scheda video. Si creano una volta in Fan Control: serve una conferma da amministratore.</small></div><button class="btn small primary" type="button" id="fans-upgrade-btn">Aggiorna profili</button></div>
+    <section class="card">
+     <div class="card-head"><div><h3>Le tue ventole</h3><p>Giri al minuto in tempo reale</p></div><span class="tag" id="fan-free" hidden>—</span></div>
+     <div class="fan-grid" id="fan-list"></div>
      <p class="fineprint">Massimo: tutte al 100%. Spente: tutte ferme, con la scelta di tenere la pompa al minimo; con le ventole spente NEXAR controlla le temperature ogni 2 secondi e a 75 °C le riaccende. Silenziose: solo quelle del case. Sicurezza: con CPU sopra 80 °C (o GPU sopra 78 °C con le ventole spente) tornano da sole al profilo normale.</p>
     </section>
    </section>
 
    <!-- ACCENSIONE -->
    <section class="page" id="page-power">
-    <section class="card pc-state">
-     <div class="pc-on"><span class="pulse"></span><div><b>PC acceso</b><small id="pw-uptime">—</small></div></div>
-     <div class="pending" id="pw-pending" hidden>
-      <svg class="i"><use href="#i-clock"/></svg><div><b id="pw-pending-title">—</b><small id="pw-pending-sub">—</small></div>
-      <button class="btn danger" type="button" data-power="cancel">Annulla</button>
+    <section class="phero ph-power" id="pw-hero">
+     <div class="hm-glow" aria-hidden="true"></div>
+     <div class="ph-main">
+      <span class="ph-tag"><i><svg class="i"><use href="#i-power"/></svg></i>Accensione</span>
+      <h2 class="ph-title" id="pw-title">PC acceso</h2>
+      <p class="ph-sub" id="pw-uptime">—</p>
+      <div class="pending" id="pw-pending" hidden>
+       <svg class="i"><use href="#i-clock"/></svg><div><b id="pw-pending-title">—</b><small id="pw-pending-sub">—</small></div>
+       <button class="btn danger" type="button" data-power="cancel">Annulla</button>
+      </div>
      </div>
+     <div class="pw-orb" aria-hidden="true"><i></i><i></i><i></i><span><svg class="i"><use href="#i-power"/></svg></span></div>
     </section>
-    <div class="power-grid">
-     <button class="pwr" data-power="sleep"><svg class="i"><use href="#i-moon"/></svg><b>Sospendi</b><small>2–5 W, si riaccende subito</small></button>
-     <button class="pwr" data-power="restart"><svg class="i"><use href="#i-restart"/></svg><b>Riavvia</b><small>30 s per annullare</small></button>
-     <button class="pwr danger" data-power="shutdown"><svg class="i"><use href="#i-power"/></svg><b>Spegni</b><small>30 s per annullare</small></button>
-     <button class="pwr" data-power="hibernate" id="pw-hibernate" hidden><svg class="i"><use href="#i-disk"/></svg><b>Iberna</b><small>0 W, riprende da dove eri</small></button>
-     <button class="pwr" data-power="lock"><svg class="i"><use href="#i-lock"/></svg><b>Blocca</b><small>Schermata di accesso</small></button>
+    <div class="pact-grid">
+     <button class="pact pa-sleep" data-power="sleep"><span class="pa-ico"><svg class="i"><use href="#i-moon"/></svg></span><b>Sospendi</b><small>2–5 W, si riaccende subito</small></button>
+     <button class="pact pa-restart" data-power="restart"><span class="pa-ico"><svg class="i"><use href="#i-restart"/></svg></span><b>Riavvia</b><small>30 s per annullare</small></button>
+     <button class="pact pa-shutdown" data-power="shutdown"><span class="pa-ico"><svg class="i"><use href="#i-power"/></svg></span><b>Spegni</b><small>30 s per annullare</small></button>
+     <button class="pact pa-hibernate" data-power="hibernate" id="pw-hibernate" hidden><span class="pa-ico"><svg class="i"><use href="#i-disk"/></svg></span><b>Iberna</b><small>0 W, riprende da dove eri</small></button>
+     <button class="pact pa-lock" data-power="lock"><span class="pa-ico"><svg class="i"><use href="#i-lock"/></svg></span><b>Blocca</b><small>Schermata di accesso</small></button>
     </div>
+    <div class="two-col pw-cols">
     <section class="card">
      <div class="card-head"><div><h3>Programma</h3><p>Il PC si spegne da solo, anche se chiudi l'app</p></div></div>
-     <div class="seg2 small" id="sched-kind"><button data-kind="shutdown" class="selected">Spegni</button><button data-kind="sleep">Sospendi</button></div>
-     <div class="chips" id="sched-chips">
-      <button data-minutes="15">15 min</button><button data-minutes="30">30 min</button><button data-minutes="60">1 ora</button><button data-minutes="120">2 ore</button><button data-minutes="180">3 ore</button>
+     <div class="seg-ink kind-seg" id="sched-kind"><i class="si-ink" aria-hidden="true"></i><button data-kind="shutdown" class="selected"><svg class="i"><use href="#i-power"/></svg><span>Spegni</span></button><button data-kind="sleep"><svg class="i"><use href="#i-moon"/></svg><span>Sospendi</span></button></div>
+     <div class="tchips" id="sched-chips">
+      <button data-minutes="15"><b>15</b>min</button><button data-minutes="30"><b>30</b>min</button><button data-minutes="60"><b>1</b>ora</button><button data-minutes="120"><b>2</b>ore</button><button data-minutes="180"><b>3</b>ore</button>
      </div>
      <button class="wide-opt" type="button" id="sched-ai"><svg class="i"><use href="#i-bot"/></svg><div><b>Quando Codex e Claude hanno finito</b><small>2 minuti dopo che l'ultimo si chiude</small></div><svg class="i chev"><use href="#i-chev"/></svg></button>
     </section>
@@ -416,6 +452,7 @@
      <div class="relay" id="relay-box" hidden><div class="relay-head"><b>docker-compose per Umbrel</b><button class="btn small" type="button" id="relay-copy"><svg class="i"><use href="#i-copy"/></svg>Copia</button></div><pre id="relay-text"></pre><p class="fineprint warn-text">Contiene il token del bot: incollalo solo nel tuo Umbrel.</p></div>
      <p class="fineprint" id="wol-phone">—</p>
     </section>
+    </div>
    </section>
 
    <!-- OTTIMIZZA -->
@@ -439,7 +476,11 @@
        <button class="btn primary big-btn" type="button" id="opt-quick"><svg class="i"><use href="#i-clean"/></svg><span id="opt-quick-label">Ottimizza ora</span></button>
        <button class="btn glass big-btn" type="button" id="opt-scan"><svg class="i"><use href="#i-refresh"/></svg>Analizza</button>
       </div>
-      <div class="opt-chips"><span class="oc-main"><svg class="i"><use href="#i-check"/></svg>Liberati con NEXAR <b id="opt-freed">—</b></span><span id="opt-freed-sub">—</span></div>
+     </div>
+     <div class="opt-side">
+      <div class="os-stat os-a"><span class="os-ico"><svg class="i"><use href="#i-clean"/></svg></span><div><small>Da liberare adesso</small><b id="opt-side-free">—</b></div></div>
+      <div class="os-stat os-b"><span class="os-ico"><svg class="i"><use href="#i-check"/></svg></span><div><small>Liberati con NEXAR</small><b id="opt-freed">—</b></div></div>
+      <div class="os-stat os-c"><span class="os-ico"><svg class="i"><use href="#i-clock"/></svg></span><div><small id="opt-auto-lbl">Pulizia automatica</small><b id="opt-freed-sub">—</b></div></div>
      </div>
      <ul id="opt-tips" hidden></ul><ol id="opt-steps" hidden></ol>
     </section>
@@ -512,11 +553,18 @@
 
    <!-- COLLEGAMENTI -->
    <section class="page" id="page-links">
-    <section class="card">
-     <div class="card-head"><div><h3>Programmi collegati</h3><p>L'app li cerca da sola; quelli mancanti si installano con un clic</p></div><button class="btn" type="button" id="links-refresh"><svg class="i"><use href="#i-refresh"/></svg>Cerca</button></div>
-     <div class="links" id="links-list"><p class="muted">Ricerca in corso…</p></div>
-     <p class="fineprint">Installazioni e conferme da amministratore sono possibili solo dall'app sul PC.</p>
+    <section class="phero ph-links" id="links-hero">
+     <div class="hm-glow" aria-hidden="true"></div>
+     <div class="ph-main">
+      <span class="ph-tag"><i><svg class="i"><use href="#i-link"/></svg></i>Collegamenti</span>
+      <h2 class="ph-title" id="links-title">Controllo i programmi…</h2>
+      <p class="ph-sub">NEXAR cerca da solo i programmi che gli servono; quelli mancanti si installano con un clic.</p>
+      <div class="ph-actions"><button class="btn glass" type="button" id="links-refresh"><svg class="i"><use href="#i-refresh"/></svg>Cerca di nuovo</button></div>
+     </div>
+     <div class="ring-stat"><svg viewBox="0 0 120 120" aria-hidden="true"><circle class="rs-track" cx="60" cy="60" r="50" pathLength="100"/><circle class="rs-fill" id="links-ring" cx="60" cy="60" r="50" pathLength="100"/></svg><div><b id="links-count">—</b><small>collegati</small></div></div>
     </section>
+    <div class="link-grid" id="links-list"><p class="muted">Ricerca in corso…</p></div>
+    <p class="fineprint">Installazioni e conferme da amministratore sono possibili solo dall'app sul PC.</p>
    </section>
 
    <!-- IMPOSTAZIONI -->

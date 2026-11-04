@@ -130,6 +130,18 @@ function chart(id,series,max,unit){
  box.innerHTML=`<div class="chart-scale"><span>${Math.round(top)}${unit}</span><span>${Math.round(top/2)}${unit}</span><span>0${unit}</span></div>
  <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"><g class="gridlines"><line x1="0" y1="2" x2="${W}" y2="2"/><line x1="0" y1="${H/2}" x2="${W}" y2="${H/2}"/><line x1="0" y1="${H-2}" x2="${W}" y2="${H-2}"/></g>${body}</svg>`;
 }
+function areaBg(id,data){
+ // Curva morbida dei watt sul fondo delle schede grandi (colore preso dalla scheda: currentColor).
+ const box=$(id);if(!box)return;const pts=data.length>1?data:[0,0];const top=Math.max(80,...pts)*1.3,W=600,H=160;
+ const P=pts.map((v,i)=>[i*W/(pts.length-1),H-8-Math.min(1,Math.max(0,v/top))*(H-24)]);
+ let d=`M${P[0][0]},${P[0][1]}`;
+ for(let i=0;i<P.length-1;i++){const p0=P[i-1]||P[i],p1=P[i],p2=P[i+1],p3=P[i+2]||p2;
+  d+=` C${(p1[0]+(p2[0]-p0[0])/6).toFixed(1)},${(p1[1]+(p2[1]-p0[1])/6).toFixed(1)} ${(p2[0]-(p3[0]-p1[0])/6).toFixed(1)},${(p2[1]-(p3[1]-p1[1])/6).toFixed(1)} ${p2[0].toFixed(1)},${p2[1].toFixed(1)}`;}
+ const g='ab-'+id;
+ box.innerHTML=`<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"><defs><linearGradient id="${g}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="currentColor" stop-opacity=".32"/><stop offset="1" stop-color="currentColor" stop-opacity="0"/></linearGradient></defs>`+
+  `<path d="${d} L${W},${H} L0,${H} Z" fill="url(#${g})"/><path d="${d}" fill="none" stroke="currentColor" stroke-width="2" stroke-opacity=".8" vector-effect="non-scaling-stroke"/>`+
+  `<circle cx="${P[P.length-1][0]}" cy="${P[P.length-1][1]}" r="4" fill="currentColor" class="ab-dot"/></svg>`;
+}
 function push(arr,v){if(typeof v==='number'){arr.push(v);if(arr.length>60)arr.shift();}}
 
 /* ---------- rendering ---------- */
@@ -158,7 +170,10 @@ function render(s){
  countUp($('fan-val'),avg||null,v=>typeof v==='number'?Math.round(v)+' RPM':'—');setBar('fan-bar',avg,1800);
  const fs=$('fan-spin');if(fs){fs.style.animationDuration=avg?Math.max(.35,Math.min(4,900/avg)).toFixed(2)+'s':'0s';fs.classList.toggle('still',!avg);}
  renderHomeHero(s);
- $('hw-cpu').textContent=deg(s.cpu_temp);$('hw-gpu').textContent=deg(s.gpu_temp);setBar('hw-cpu-bar',s.cpu_temp,95);setBar('hw-gpu-bar',s.gpu_temp,90);
+ $('hw-cpu').textContent=deg(s.cpu_temp);$('hw-gpu').textContent=deg(s.gpu_temp);
+ [['cpu',s.cpu_temp,80],['gpu',s.gpu_temp,78]].forEach(([k,v,hot])=>{const a=$(`hw-${k}-arc`);if(!a)return;
+  a.style.strokeDasharray=`${typeof v==='number'?Math.min(75,Math.max(0,v)/100*75).toFixed(1):0} 100`;$('tg-'+k).classList.toggle('hot',v>=hot);
+  const col=!(v>0)?'#475569':v<60?'#34d399':v<hot-5?'#fbbf24':'#f87171';a.style.stroke=col;a.style.filter=`drop-shadow(0 0 6px ${col})`;});
  // Agenti e automazione
  [['codex',s.processes?.codex],['claude',s.processes?.claude]].forEach(([n,on])=>{$(n+'-state').textContent=on?'Al lavoro':'Chiuso';$(n+'-dot').classList.toggle('off',!on);});
  $('auto-toggle').setAttribute('aria-checked',s.auto_enabled?'true':'false');
@@ -170,6 +185,11 @@ function render(s){
  ['off','eco','normal','max'].forEach(l=>$('fans-'+l).classList.toggle('selected',s.fans_level===l));
  const upgrade=s.fans_enabled&&!s.remote&&(!s.fans_levels_ready||s.fans_profiles_outdated);$('fans-upgrade').hidden=!upgrade;
  $('fans-upgrade-title').textContent=s.fans_levels_ready?'Nuovo Massimo: tutte le ventole al 100%':'Nuovi profili Spente e Massimo';
+ const fanN=(s.fans||[]).filter(f=>f.rpm>0).length;
+ $('cool-title').textContent=!s.fans_enabled?'Gestione del BIOS':{off:'Ventole spente',eco:'Profilo silenzioso',max:'Tutte al massimo'}[s.fans_level]||'Profilo normale';
+ $('cool-sub').textContent=fanN?`${fanN} ventole in funzione${avg?` · media ${avg} RPM`:''} · CPU ${deg(s.cpu_temp)} · GPU ${deg(s.gpu_temp)}`:'Nessuna ventola rilevata: collega i sensori in Collegamenti';
+ $('cool-hero').dataset.level=s.fans_enabled?(s.fans_level||'normal'):'bios';
+ $('rgb-title').textContent=!s.rgb_enabled?'OpenRGB non collegato':s.rgb_off?'LED spenti':'LED accesi';
  $('fan-profile').textContent=!s.fans_enabled?'Gestione BIOS':{off:'Ventole spente',eco:'Profilo silenzioso',max:'Al massimo'}[s.fans_level]||'Profilo normale';
  $('rgb-label').textContent=!s.rgb_enabled?'OpenRGB non collegato':(s.rgb_off?'LED spenti: scegli un colore per riaccenderli':'Colore e luminosità per tutti i dispositivi');
  if(!rgbTouched&&s.rgb_color){$('rgb-color').value=s.rgb_color;$('rgb-bright').value=s.rgb_brightness??100;$('rgb-bright-val').textContent=$('rgb-bright').value+'%';}
@@ -189,6 +209,7 @@ function render(s){
  spark('cpu-val',hist.cpu,100,COMP.cpu);spark('gpu-val',hist.gpu,100,COMP.gpu);spark('ram-val',hist.ram,100,COMP.ram);spark('fan-val',hist.fan,1800,COMP.cooling);setZone();
  chart('chart-load',[{data:hist.cpu,color:COMP.cpu},{data:hist.gpu,color:COMP.gpu}],100,'%');
  chart('chart-power',[{data:hist.power,color:'#34d399'}],0,' W');
+ areaBg('hm-chart',hist.power);areaBg('e-chart',hist.power);
  renderLinks(s.integrations||[],s.jobs||{});
  renderUpdate(s.version,s.update||{},s.jobs?.update);
  watchOptimizeJobs(s.jobs||{});
@@ -213,14 +234,44 @@ function hideSplash(){
  setTimeout(()=>{$('splash').classList.add('gone');setTimeout(()=>$('splash').remove(),600);},Math.max(0,(tgInit?700:2100)-performance.now()));   // il tempo di vedere la N dipinta
 }
 function renderFans(fans){
- const box=$('fan-list');box.replaceChildren();
- if(!fans.length){box.append(el('p','muted','Nessun RPM disponibile: collega i sensori in Collegamenti.'));return;}
+ const box=$('fan-list');
  const spinning=fans.filter(f=>f.rpm>0),empty=fans.length-spinning.length;
- spinning.forEach(f=>{
-  const c=el('div','fan');const top=el('div','fan-top');top.append(el('span','',f.name.replace('CPU Fan','Radiatore (CPU Fan)').replace('Pump Fan','Pompa')),el('b','',`${f.rpm} RPM`));
-  const bar=el('div','bar');const fill=el('span');fill.style.width=Math.min(100,f.rpm/(/pump/i.test(f.name)?3000:1800)*100)+'%';bar.append(fill);c.append(top,bar);box.append(c);
+ const free=$('fan-free');free.hidden=!empty;free.textContent=`${empty} connettori liberi`;
+ if(!spinning.length){box._map=null;box.replaceChildren(el('p','muted',fans.length?'Ventole ferme in questo momento.':'Nessun RPM disponibile: collega i sensori in Collegamenti.'));return;}
+ if(!box._map){box._map=new Map();box.replaceChildren();}
+ const seen=new Set();
+ spinning.forEach((f,i)=>{
+  const pump=/pump/i.test(f.name),max=pump?3000:1800,pct=Math.min(100,f.rpm/max*100);seen.add(f.name);
+  let c=box._map.get(f.name);
+  if(!c){c=el('div','fan2'+(pump?' pump':''));c.style.setProperty('--i',i);
+   c.innerHTML=`<div class="f2-dial"><svg viewBox="0 0 60 60"><circle class="f2-track" cx="30" cy="30" r="26" pathLength="100"/><circle class="f2-fill" cx="30" cy="30" r="26" pathLength="100"/></svg><svg class="i f2-spin"><use href="#i-fan"/></svg></div><div class="f2-txt"><small></small><b></b></div>`;
+   c.querySelector('small').textContent=f.name.replace('CPU Fan','Radiatore').replace('Pump Fan','Pompa').replace('System Fan','Ventola case');
+   box._map.set(f.name,c);box.append(c);}
+  c.querySelector('b').innerHTML=`${f.rpm}<em>RPM</em>`;
+  c.querySelector('.f2-fill').style.strokeDasharray=`${pct.toFixed(1)} 100`;
+  c.querySelector('.f2-spin').style.animationDuration=Math.max(.3,Math.min(4,900/f.rpm)).toFixed(2)+'s';
  });
- if(empty){const c=el('div','fan idle');const top=el('div','fan-top');top.append(el('span','','Connettori liberi'),el('b','',`${empty}`));c.append(top);box.append(c);}
+ [...box._map].forEach(([k,c])=>{if(!seen.has(k)){c.remove();box._map.delete(k);}});
+}
+const COMP_ICON={cpu:'cpu',gpu:'gpu',board:'grid',ram:'ram',disks:'disk',cooling:'fan',rgb:'bulb',usb:'plug',monitor:'monitor',loss:'bolt'};
+let donutPick=null;
+function renderDonut(items,total){
+ const svg=$('e-stack');if(!svg)return;const tot=items.reduce((a,i)=>a+i.watts,0)||1;let at=0;
+ if(!svg._segs){svg.innerHTML='<circle class="dn-track" cx="100" cy="100" r="78" pathLength="100"/>';svg._segs=new Map();}
+ const seen=new Set();
+ const show=i=>{$('e-donut-sub').textContent=i?i.name:'Totale';$('e-donut-top').textContent=i?nf(i.watts/tot*100,0)+'%':Math.round(total)+' W';
+  $('e-donut-w').textContent=i?`${i.source==='misurato'?'':'~'}${nf(i.watts,i.watts<10?1:0)} W`:`${items.length} voci`;};
+ items.forEach(i=>{const len=i.watts/tot*100;if(len<.3){at+=len;return;}seen.add(i.key);
+  let c=svg._segs.get(i.key);
+  if(!c){c=document.createElementNS('http://www.w3.org/2000/svg','circle');
+   ['cx','cy'].forEach(k=>c.setAttribute(k,100));c.setAttribute('r',78);c.setAttribute('pathLength',100);c.setAttribute('class','dn-seg'+(i.key==='loss'?' loss':''));
+   c.style.stroke=COMP[i.key]||'#64748b';c.style.strokeDasharray='0 100';c.style.strokeDashoffset=(-at).toFixed(2);
+   c.addEventListener('pointerenter',()=>{donutPick=i.key;show(c._item);svg.classList.add('picking');c.classList.add('on');});
+   c.addEventListener('pointerleave',()=>{donutPick=null;show(null);svg.classList.remove('picking');c.classList.remove('on');});
+   svg.append(c);svg._segs.set(i.key,c);void c.getBoundingClientRect();}
+  c._item=i;c.style.strokeDasharray=`${Math.max(.1,len-.8).toFixed(2)} ${(100-len+.8).toFixed(2)}`;c.style.strokeDashoffset=(-at).toFixed(2);at+=len;});
+ svg._segs.forEach((c,k)=>{if(!seen.has(k)){c.remove();svg._segs.delete(k);}});
+ show(donutPick?items.find(x=>x.key===donutPick):null);
 }
 function renderPower(p,e){
  const fill=$('gauge-fill');
@@ -237,14 +288,25 @@ function renderPower(p,e){
   $('e-va').textContent=nf(p.va,0)+' VA';$('e-pf').textContent=`fattore di potenza ${nf(p.pf,2)}`;
   const measured=(p.items||[]).filter(i=>i.source==='misurato').reduce((a,i)=>a+i.watts,0);
   $('e-measured').textContent=Math.round(measured/p.total*100)+'%';
-  const items=[...(p.items||[])].sort((a,b)=>b.watts-a.watts);
-  const stack=$('e-stack'),list=$('e-list');stack.replaceChildren();list.replaceChildren();
-  items.concat([{key:'loss',name:'Perdite alimentatore',watts:p.loss,source:'calcolato',detail:`calore dell'alimentatore`}]).forEach(i=>{
-   const seg=el('span',i.key==='loss'?'loss':'');seg.style.setProperty('--c',COMP[i.key]||'#64748b');seg.style.flexGrow=i.watts;seg.title=`${i.name}: ${nf(i.watts)} W`;stack.append(seg);
-   const row=el('div','brk');const sw=el('i',i.key==='loss'?'loss':'');sw.style.setProperty('--c',COMP[i.key]||'#64748b');
-   const txt=el('div');const name=el('b','',i.name);name.append(el('em',i.source==='misurato'?'m':'',i.source));txt.append(name,el('small','',i.detail||''));
-   row.append(sw,txt,el('strong','',(i.source==='misurato'?'':'~')+nf(i.watts,i.watts<10?1:0)+' W'));list.append(row);
+  const all=[...(p.items||[])].sort((a,b)=>b.watts-a.watts).concat([{key:'loss',name:'Perdite alimentatore',watts:p.loss,source:'calcolato',detail:`calore dell'alimentatore`}]);
+  renderDonut(all,p.total);
+  const list=$('e-list');if(!list._rows){list._rows=new Map();list.replaceChildren();}
+  all.forEach((i,n)=>{
+   const c=COMP[i.key]||'#64748b',share=i.watts/p.total*100;
+   let row=list._rows.get(i.key);
+   if(!row){row=el('div','brk2');row.style.setProperty('--c',c);row.style.setProperty('--i',n);
+    const ico=el('span','b2-ico');ico.append(icon(COMP_ICON[i.key]||'bolt'));
+    const txt=el('div','b2-txt');const name=el('b','',i.name);name.append(el('em',i.source==='misurato'?'m':'',i.source));txt.append(name,el('small','b2-d',''));
+    const bar=el('div','b2-bar');bar.append(el('i'));txt.append(bar);
+    const val=el('div','b2-val');val.append(el('strong'),el('small'));
+    row.append(ico,txt,val);list._rows.set(i.key,row);}
+   row.querySelector('.b2-d').textContent=i.detail||'';
+   row.querySelector('.b2-bar i').style.width=Math.max(2,share).toFixed(1)+'%';
+   row.querySelector('.b2-val strong').textContent=(i.source==='misurato'?'':'~')+nf(i.watts,i.watts<10?1:0)+' W';
+   row.querySelector('.b2-val small').textContent=nf(share,0)+'%';
+   list.append(row);   // riordina per consumo senza ricreare
   });
+  list._rows.forEach((r,k)=>{if(!all.some(x=>x.key===k)){r.remove();list._rows.delete(k);}});
  }
  if(e){
   $('h-today').textContent=kwh(e.today_kwh);$('h-today-cost').textContent=eur(e.today_cost);
@@ -259,6 +321,7 @@ function renderPc(pc){
  $('pw-uptime').textContent=typeof pc.uptime_s==='number'?`da ${duration(pc.uptime_s)}`:'—';
  $('pw-hibernate').hidden=!pc.hibernate;
  const plan=pc.pending,box=$('pw-pending');box.hidden=!plan;
+ $('pw-hero').classList.toggle('armed',!!plan);$('pw-title').textContent=plan?(plan.label||'Programmato'):'PC acceso';
  if(plan){
   $('pw-pending-title').textContent=plan.label+(plan.started?' in corso':' programmato');
   $('pw-pending-sub').textContent=plan.after_ai?(plan.idle_since?'Codex e Claude chiusi: tra meno di 2 minuti':'Quando Codex e Claude hanno finito'):`tra ${plan.seconds_left<90?plan.seconds_left+' s':duration(plan.seconds_left)}`;
@@ -275,6 +338,7 @@ function renderPc(pc){
 
 /* ---------- collegamenti ---------- */
 const LINK_ICONS={rgb:'bulb',fans:'fan',sensors:'temp',gpu:'gpu',ai:'bot',tunnel:'send',autostart:'power'};
+const LINK_COL={rgb:'#f472b6',fans:'#34d399',sensors:'#fbbf24',gpu:'#a78bfa',ai:'#60a5fa',tunnel:'#22d3ee',autostart:'#94a3b8'};
 const LEVELS={ok:['Collegato','on'],warn:['Da completare','warn'],missing:['Mancante','err']};
 const seenJobs={};
 function linkAction(r,jobs){
@@ -293,14 +357,20 @@ function renderLinks(items,jobs){
  // Avvisa una volta sola quando un lavoro in background termina.
  Object.entries(jobs).forEach(([name,j])=>{if(j.state!=='running'&&seenJobs[name]!==undefined&&seenJobs[name]!==j.at)notify((j.state==='ok'?'✓ ':'⚠ ')+j.message,j.state!=='ok');seenJobs[name]=j.at;});
  if(!items.length)return;
- const box=$('links-list');box.replaceChildren();
- items.forEach(r=>{
-  const row=el('div','link-row');const txt=el('div','link-text');txt.append(el('strong','',r.name),el('small','',r.detail));
-  const [word,cls]=LEVELS[r.level]||LEVELS.missing;const ico=el('div','link-ico');ico.append(icon(LINK_ICONS[r.key]||'link'));
-  row.append(ico,txt,el('b','state '+cls,word));
+ const okN=items.length-todo;$('links-count').textContent=`${okN}/${items.length}`;
+ $('links-ring').style.strokeDasharray=`${(okN/items.length*100).toFixed(1)} 100`;
+ $('links-title').textContent=todo?(todo===1?'1 collegamento da completare':`${todo} collegamenti da completare`):'Tutto collegato';
+ $('links-hero').classList.toggle('todo',!!todo);
+ const box=$('links-list');const sig=JSON.stringify([items,jobs,current?.remote]);if(box._sig===sig)return;const first=!box._sig;box._sig=sig;box.replaceChildren();box.classList.toggle('fresh',first);
+ items.forEach((r,i)=>{
+  const [word,cls]=LEVELS[r.level]||LEVELS.missing;
+  const card=el('article','lcard '+cls);card.style.setProperty('--lc',LINK_COL[r.key]||'#38bdf8');card.style.setProperty('--i',i);
+  const head=el('div','lc-head');const ico=el('span','lc-ico');ico.append(icon(LINK_ICONS[r.key]||'link'));
+  const st=el('span','lc-state '+cls);st.append(el('i'),document.createTextNode(word));head.append(ico,st);
+  card.append(head,el('b','lc-name',r.name),el('small','lc-detail',r.detail));
   const a=current?.remote?null:linkAction(r,jobs);
-  if(a){const b=el('button','btn small '+(a.primary?'primary':''),a.running?'In corso…':a.label);b.type='button';b.disabled=!!a.running;b.addEventListener('click',a.run);row.append(b);}
-  box.append(row);
+  if(a){const b=el('button','btn small '+(a.primary?'primary':'glass'),a.running?'In corso…':a.label);b.type='button';b.disabled=!!a.running;b.addEventListener('click',a.run);card.append(b);}
+  box.append(card);
  });
 }
 
@@ -338,6 +408,8 @@ $('palette-edit').addEventListener('click',()=>{
 function paintOrb(off){
  const c=$('rgb-color').value;const orb=$('rgb-orb');orb.style.setProperty('--orb',c);orb.style.opacity=off?1:(.35+.65*bright()/100);orb.classList.toggle('off',!!off&&!rgbTouched);
  $('rgb-hex').textContent=c.toUpperCase();
+ const hero=$('rgb-hero');hero.style.setProperty('--hc',off&&!rgbTouched?'#475569':c);hero.classList.toggle('off',!!off&&!rgbTouched);
+ $('rgb-bright').style.setProperty('--rc',c);$('rgb-color').closest('.color-input').style.setProperty('--rc',c);
  document.querySelectorAll('.swatch').forEach(s=>s.classList.toggle('selected',s.dataset.color===c));
 }
 async function applyColor(color,device){
@@ -351,10 +423,15 @@ async function loadRgbDevices(){
  if((!key&&!tgInit)||!current?.rgb_enabled){box.replaceChildren(el('p','muted','OpenRGB non collegato: vedi Collegamenti.'));return;}
  try{
   const data=await req('/api/rgb/devices');box.replaceChildren();
-  data.devices.forEach(d=>{
-   const row=el('div','rgb-dev');const c=el('input');c.type='color';c.value=d.color||$('rgb-color').value;c.setAttribute('aria-label','Colore '+d.name);
-   const b=el('button','btn small','Applica');b.type='button';b.addEventListener('click',()=>applyColor(c.value,d.key));
-   const t=el('div');t.append(el('b','',d.name),el('small','',d.leds?`circa ${d.leds} LED`:'periferica'));row.append(t,c,b);box.append(row);
+  data.devices.forEach((d,i)=>{
+   const row=el('div','rgb-dev2');const col=d.color||$('rgb-color').value;row.style.setProperty('--dc',col);row.style.setProperty('--i',i);
+   const strip=el('div','led-strip');for(let k=0;k<Math.max(4,Math.min(16,d.leds||6));k++){const dot=el('i');dot.style.setProperty('--k',k);strip.append(dot);}
+   const t=el('div','rd-txt');t.append(el('b','',d.name),el('small','',d.leds?`circa ${d.leds} LED`:'periferica'),strip);
+   const sw=el('label','rd-color');const c=el('input');c.type='color';c.value=col;c.setAttribute('aria-label','Colore '+d.name);sw.append(c);
+   c.addEventListener('input',()=>row.style.setProperty('--dc',c.value));
+   const b=el('button','icon-btn rd-apply');b.type='button';b.title='Applica a '+d.name;b.setAttribute('aria-label',b.title);b.append(icon('check'));
+   b.addEventListener('click',()=>applyColor(c.value,d.key));
+   row.append(t,sw,b);box.append(row);
   });
   (current?.rgb_excluded||[]).forEach(n=>box.append(el('p','fineprint',`${n}: lasciata al firmware della scheda madre (effetto del BIOS), non si spegne con AI ECO.`)));
  }catch(ex){box.replaceChildren(el('p','muted','Dispositivi non disponibili: '+ex.message));}
@@ -536,7 +613,7 @@ function renderOptimize(d){
  $('opt-tips').replaceChildren(...(h.tips.length?h.tips.map(([ic,t,go])=>{const li=el('li');li.append(icon(ic),document.createTextNode(t));
   if(go){li.classList.add('link');li.addEventListener('click',()=>optTabGo(go));}return li;}):[(()=>{const li=el('li','ok');li.append(icon('check'),document.createTextNode('Tutto in ordine'));return li;})()]));
  countUp($('opt-freed'),d.freed_total||0,v=>bytes(v));
- const last=(d.history||[])[0];$('opt-freed-sub').textContent=(d.auto?'Pulizia automatica attiva':'Pulizia automatica spenta')+(last?` · ultima pulizia ${ago(last.at)}`:'');
+ const last=(d.history||[])[0];$('opt-auto-lbl').textContent=d.auto?'Pulizia automatica attiva':'Pulizia automatica spenta';$('opt-freed-sub').textContent=last?`Ultima ${ago(last.at)}`:'Mai fatta';
  renderChecks(d,h);
  $('tb-clean').textContent=d.report?bytes(d.report.total):'';$('tb-startup').textContent=h.on||'';$('tb-large').textContent=d.large?.count||'';
  renderClean(d);renderStartup(d.startup||[]);renderDisks(d);renderLarge(d.large);renderNet(d.net);renderOptHistory(d);
@@ -563,6 +640,7 @@ function renderChecks(d,h){
   ['check','Salute dischi',hd?`${hd.filter(x=>x.ok).length} su ${hd.length} ok`:'Non controllata',hd?(hd.every(x=>x.ok)?'ok':'bad'):'none',hd?(hd.every(x=>x.ok)?'Tutti in salute':'Un disco va controllato'):'Tocca per controllare','disks'],
   ['wave','Rete',net?.internet?.ms!=null?net.internet.ms+' ms':'Non provata',!net?'none':['ottima','buona'].includes(net.quality)?'ok':net.quality==='lenta'?'warn':'bad',net?`Connessione ${net.quality}`:'Tocca per provare','net']];
  const LBL={ok:'OK',warn:'Attenzione',bad:'Da sistemare',none:'Da fare'};
+ $('opt-side-free').textContent=rep?bytes(rep.total):'…';
  const box=$('opt-checks');box.replaceChildren();
  const fill={clean:rep?Math.min(100,rep.total/(5*GB)*100):0,large:c?100-Math.round(free*100):0,startup:Math.min(100,(h.on||0)/20*100),apps:h.ram||0,
   disks:hd?hd.filter(x=>x.ok).length/hd.length*100:0,net:net?.internet?.ms!=null?Math.min(100,net.internet.ms):0};
