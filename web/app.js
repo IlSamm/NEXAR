@@ -380,7 +380,8 @@ async function refresh(){
  try{render(await req('/api/status'));}
  catch(ex){hideSplash();if(tgInit)notify('⚠ '+ex.message,true);$('conn-dot').classList.add('off');$('conn-text').textContent='PC non raggiungibile';}
 }
-async function action(name){
+async function action(name,src){
+ if(['eco','normal','gaming'].includes(name))return modeSwitch(name,src);
  if(busy)return;if(demo){notify('Anteprima: i controlli non sono collegati al PC.');return;}
  if(!key&&!tgInit){loginScreen(true);return;}
  const map={eco:['/api/mode',{mode:'eco'}],normal:['/api/mode',{mode:'normal'}],gaming:['/api/mode',{mode:'gaming'}],screen:['/api/screen',{}],
@@ -448,20 +449,11 @@ const OPT_JOBS=['optimize-scan','optimize-clean','trim','optimize-large','optimi
 const QUICK_STEPS=['File temporanei','Cache dei giochi','Anteprime delle immagini','Rapporti di errore','Cache dei browser','Cache DNS','Nuova analisi'];
 const CLEAN_ICO={temp:'clean',shader:'game',thumbs:'palette',crash:'x',browser:'link',wintemp:'grid',wupdate:'refresh',recycle:'disk'};
 const KIND_ICO=k=>/^(mp4|mkv|avi|mov|wmv|webm)$/.test(k)?['🎬','#a78bfa']:/^(zip|rar|7z|tar|gz)$/.test(k)?['📦','#fbbf24']:/^(iso|vmdk|vhd|vhdx|img|ova)$/.test(k)?['💽','#38bdf8']:/^(exe|msi)$/.test(k)?['⚙️','#fb923c']:['📄','#94a3b8'];
-let stepTimer=null;
-function quickProgress(running,result){
- // Mentre "Ottimizza ora" lavora, i passi si spuntano uno dopo l'altro; alla fine tutti verdi con il risultato.
- const box=$('opt-steps');
- if(running){
-  if(!box.hidden&&stepTimer)return;
-  box.hidden=false;box.replaceChildren(...QUICK_STEPS.map(t=>el('li','',t)));let i=0;
-  const tick=()=>{const li=box.children;[...li].forEach((x,k)=>{x.classList.toggle('done',k<i);x.classList.toggle('now',k===i);});if(i<li.length-1)i++;};
-  tick();clearInterval(stepTimer);stepTimer=setInterval(tick,750);return;
- }
- if(!stepTimer)return;clearInterval(stepTimer);stepTimer=null;
- [...box.children].forEach(x=>{x.classList.remove('now');x.classList.add('done');});
- if(result)box.append(el('li','result',result));
- setTimeout(()=>{box.hidden=true;},6000);
+let cleanSteps=null,cleanEst=0;
+function quickProgress(running,result,state){
+ // Mentre la pulizia lavora: vortice con i passi e il contatore; alla fine spunta e spazio liberato.
+ if(running){if(!cfx.box)cleanStart(cleanSteps||QUICK_STEPS,cleanEst);return;}
+ cleanFinish(result||'',state!=='error');
 }
 function watchOptimizeJobs(jobs){
  // A fine analisi/pulizia/ricerca ricarica la pagina (se aperta) e aggiorna la scheda in Home.
@@ -470,7 +462,7 @@ function watchOptimizeJobs(jobs){
  $('opt-health').classList.toggle('scanning',scan||clean);$('opt-run').disabled=clean||!selectedKeys().length;
  [['optimize-large','opt-large-scan','Cerco…','Cerca'],['optimize-health','opt-health-btn','Controllo…','Controlla'],['optimize-net','opt-net-btn','Provo…','Prova la rete']].forEach(([j,id,on,off])=>{
   const b=$(id),r=jobs[j]?.state==='running';b.disabled=r;b.lastChild.textContent=r?on:off;});
- if(optSeen.quick&&!clean&&jobs['optimize-clean'])quickProgress(false,jobs['optimize-clean'].message);
+ if(optSeen.quick&&!clean&&jobs['optimize-clean'])quickProgress(false,jobs['optimize-clean'].message,jobs['optimize-clean'].state);
  if(clean&&optSeen.quick)quickProgress(true);
  let reload=false;
  OPT_JOBS.forEach(n=>{const j=jobs[n];if(!j)return;if(j.state!=='running'&&optSeen[n]!==undefined&&optSeen[n]!==j.at)reload=true;optSeen[n]=j.at;});
@@ -682,7 +674,8 @@ $('opt-scan').addEventListener('click',()=>post('/api/optimize/scan',{}));
 async function quickOptimize(){
  const est=optData?.report?.items?.filter(i=>['temp','shader','thumbs','crash','browser'].includes(i.key)).reduce((a,i)=>a+i.bytes,0);
  if(!await ask('Ottimizzare adesso?',`Pulisco file temporanei, cache dei giochi, anteprime, rapporti di errore e cache dei browser chiusi${est?' (circa '+bytes(est)+')':''}, poi svuoto la cache DNS. Cestino e documenti non vengono toccati.`,{danger:false,ico:'clean',yes:'Ottimizza'}))return;
- if(demo){quickProgress(true);setTimeout(()=>quickProgress(false,'Ottimizzazione fatta: liberati 3,9 GB · DNS svuotata'),4500);return;}
+ cleanSteps=QUICK_STEPS;cleanEst=est||0;
+ if(demo){quickProgress(true);setTimeout(()=>quickProgress(false,'Ottimizzazione fatta: liberati 3,9 GB · DNS svuotata','ok'),5000);return;}
  optSeen.quick=true;quickProgress(true);post('/api/optimize/quick',{});
 }
 $('opt-quick').addEventListener('click',quickOptimize);
@@ -690,7 +683,10 @@ $('opt-run').addEventListener('click',async()=>{
  const keys=selectedKeys();if(!keys.length)return;
  const perm=keys.includes('recycle');
  if(!await ask('Pulire adesso?',`${$('opt-selected').textContent}.`+(perm?' Il cestino verrà svuotato: quei file non si potranno più recuperare.':' Sono solo file temporanei e cache.'),{danger:perm,ico:'clean',yes:'Pulisci'}))return;
- post('/api/optimize/clean',{keys});
+ const items=(optData?.report?.items||[]).filter(i=>keys.includes(i.key));
+ cleanSteps=items.map(i=>i.name).concat('Nuova analisi');cleanEst=items.reduce((a,i)=>a+i.bytes,0);
+ if(demo){quickProgress(true);setTimeout(()=>quickProgress(false,'Pulizia: liberati '+bytes(cleanEst),'ok'),4000);return;}
+ optSeen.quick=true;quickProgress(true);post('/api/optimize/clean',{keys});
 });
 $('opt-auto').addEventListener('click',()=>post('/api/optimize/auto',{enabled:$('opt-auto').getAttribute('aria-checked')!=='true'}).then(()=>loadOptimize(true)));
 $('opt-large-scan').addEventListener('click',()=>post('/api/optimize/large/scan',{}));
@@ -757,10 +753,8 @@ function fx(kind,title,sub,img){
  document.body.append(box);setTimeout(()=>box.remove(),2000);
 }
 function modeFx(mode){
- if(lastMode&&mode&&lastMode!==mode&&Date.now()>fxQuiet){
-  if(mode==='gaming')fx('on','GAMING ON',current?.boost?.running?.name?'Si gioca a '+current.boost.running.name:'Massime prestazioni');
-  else if(lastMode==='gaming')fx('off','GAMING OFF','Tutto come prima');
- }
+ if(lastMode&&mode&&lastMode!==mode&&Date.now()>fxQuiet)
+  modeSceneOpen(mode,null,{auto:true,sub:mode==='gaming'&&current?.boost?.running?.name?'Si gioca a '+current.boost.running.name:''});
  lastMode=mode;
 }
 function particles(){
@@ -779,6 +773,103 @@ function tilt(card){
  });
  card.addEventListener('pointerleave',()=>{card.classList.remove('tilting');card.style.setProperty('--rx','0deg');card.style.setProperty('--ry','0deg');});
 }
+/* ---------- scene: cambio modalità e pulizia ---------- */
+const MODE_FX={eco:{t:'AI ECO',i:'leaf',s:'Consuma meno, l’AI continua a lavorare'},normal:{t:'NORMALE',i:'bolt',s:'Il piano energetico di Windows'},
+ gaming:{t:'GAMING',i:'game',s:'Massime prestazioni'}};
+let modeScene=null;
+function sceneOrigin(src){
+ const r=src?.getBoundingClientRect?.();
+ return r&&r.width?[r.left+r.width/2,r.top+r.height/2]:[innerWidth/2,innerHeight/2];
+}
+function modeSceneOpen(mode,src,{auto=false,sub=''}={}){
+ // Onda di colore che parte dal pulsante premuto e scheda al centro con quello che viene applicato.
+ if(calm.matches||document.hidden)return null;
+ modeScene?.remove();
+ const M=MODE_FX[mode],[x,y]=sceneOrigin(src);
+ const box=el('div','mscene m-'+mode+(auto?' auto':''));box.style.setProperty('--x',x+'px');box.style.setProperty('--y',y+'px');
+ const card=el('div','ms-card');
+ const ico=el('div','ms-ico');ico.append(el('i','ms-spin'),icon(M.i));
+ const list=el('ul','ms-list');
+ if(!auto){const li=el('li','wait');li.append(el('i'),document.createTextNode('Applico le impostazioni…'));list.append(li);}
+ card.append(ico,el('small','ms-eyebrow',auto?'Attivata automaticamente':'Modalità'),el('b','ms-title',M.t),el('span','ms-sub',sub||M.s),list);
+ box.append(el('div','ms-wave'),el('div','ms-fx'),card);
+ if(mode==='gaming'){const st=el('div','ms-streaks');for(let i=0;i<14;i++){const s=el('i');s.style.setProperty('--a',(i*360/14+Math.random()*10)+'deg');s.style.setProperty('--d',(Math.random()*.25)+'s');st.append(s);}box.append(st);}
+ if(mode==='eco'){const lv=el('div','ms-leaves');for(let i=0;i<9;i++){const l=el('i');l.style.cssText=`left:${8+Math.random()*84}%;--d:${(Math.random()*.6).toFixed(2)}s;--r:${(Math.random()*160-80).toFixed(0)}deg`;lv.append(l);}box.append(lv);}
+ document.body.append(box);modeScene=box;
+ box.addEventListener('click',()=>modeSceneClose(box));
+ if(auto)setTimeout(()=>modeSceneClose(box),1900);
+ return box;
+}
+function modeSceneDone(box,message,ok=true){
+ if(!box||!box.isConnected)return;
+ const list=box.querySelector('.ms-list');list.replaceChildren();
+ box.classList.add(ok?'ok':'fail');
+ const notes=String(message||'').split(' · ').map(t=>t.trim()).filter(Boolean).slice(0,5);
+ notes.forEach((t,i)=>{const bad=!ok||/non applicat|non trovato|errore/i.test(t);
+  const li=el('li',bad?'bad':'');li.style.setProperty('--i',i);li.append(el('i'),document.createTextNode(t.replace(/^Integrazione non applicata: /,'⚠ ').slice(0,80)));list.append(li);});
+ setTimeout(()=>modeSceneClose(box),ok?1500+notes.length*160:2600);
+}
+function modeSceneClose(box){if(!box||box.classList.contains('out'))return;box.classList.add('out');setTimeout(()=>box.remove(),520);if(modeScene===box)modeScene=null;}
+async function modeSwitch(mode,src){
+ if(busy)return;
+ if(demo){const b=modeSceneOpen(mode,src);setTimeout(()=>modeSceneDone(b,'Energia: '+MODE_FX[mode].t+' · RGB: profilo applicato · Ventole: profilo '+(mode==='eco'?'silenzioso':'normale')+(mode==='gaming'?' · Gaming Boost attivo':'')),900);return;}
+ if(!key&&!tgInit){loginScreen(true);return;}
+ fxQuiet=Date.now()+15000;busy=true;
+ const scene=modeSceneOpen(mode,src);
+ try{const r=await req('/api/mode','POST',{mode});if(scene)modeSceneDone(scene,r.message);else notify('✓ '+r.message);await refresh();}
+ catch(ex){if(scene)modeSceneDone(scene,ex.message,false);else notify('⚠ '+ex.message,true);}
+ finally{busy=false;}
+}
+
+/* pulizia: vortice che risucchia i file, contatore, spunta finale */
+const cfx={box:null,timers:[],t0:0,est:0,steps:[],shown:0};
+function parseBytes(t){const m=String(t).match(/liberati\s+([\d.,]+)\s*(B|KB|MB|GB|TB)/i);if(!m)return null;
+ return parseFloat(m[1].replace(/\./g,'').replace(',','.'))*1024**['B','KB','MB','GB','TB'].indexOf(m[2].toUpperCase());}
+function cleanStart(steps,est){
+ if(cfx.box||calm.matches)return;
+ cfx.t0=performance.now();cfx.est=est||0;cfx.steps=steps;
+ const box=el('div','cscene');const panel=el('div','cs-panel');
+ const vortex=el('div','cs-vortex');const core=el('div','cs-core');
+ core.append(icon('clean'));
+ const check=document.createElementNS('http://www.w3.org/2000/svg','svg');check.setAttribute('class','cs-check');check.setAttribute('viewBox','0 0 52 52');
+ const path=document.createElementNS('http://www.w3.org/2000/svg','path');path.setAttribute('d','M14 27.5l8 8 16-17');check.append(path);core.append(check);
+ vortex.append(el('div','cs-ring'),el('div','cs-ring r2'),el('div','cs-bits'),core,el('div','cs-burst'));
+ const amount=el('b','cs-amount','0 B');const label=el('small','cs-label','Sto pulendo');
+ const list=el('ol','cs-steps');steps.forEach(s=>list.append(el('li','',s)));
+ const btn=el('button','btn cs-close','Continua in background');btn.type='button';btn.addEventListener('click',()=>cleanClose());
+ panel.append(vortex,label,amount,list,btn);box.append(panel);document.body.append(box);cfx.box=box;
+ const bits=vortex.querySelector('.cs-bits');const cols=['#67e8f9','#34d399','#fbbf24','#a78bfa','#f9a8d4'];
+ cfx.timers.push(setInterval(()=>{
+  if(document.hidden)return;
+  const b=el('i');const a=Math.random()*Math.PI*2,d=120+Math.random()*70;
+  b.style.cssText=`--dx:${(Math.cos(a)*d).toFixed(0)}px;--dy:${(Math.sin(a)*d).toFixed(0)}px;--r:${(Math.random()*360).toFixed(0)}deg;--c:${cols[Math.floor(Math.random()*cols.length)]}`;
+  b.addEventListener('animationend',()=>b.remove());bits.append(b);
+ },70));
+ cfx.timers.push(setInterval(()=>{
+  const t=(performance.now()-cfx.t0)/1000,p=t/(t+6)*.9;
+  amount.textContent=cfx.est?bytes(cfx.est*p):`${Math.round(p*100)}%`;
+  const k=Math.min(steps.length-1,Math.floor(t/.8));
+  [...list.children].forEach((li,i)=>{li.classList.toggle('done',i<k);li.classList.toggle('now',i===k);});
+ },90));
+}
+function cleanFinish(message,ok=true){
+ const box=cfx.box;if(!box){if(message)notify((ok?'✓ ':'⚠ ')+message,!ok);return;}
+ cfx.timers.forEach(clearInterval);cfx.timers=[];
+ box.classList.add(ok?'done':'fail');
+ const list=box.querySelector('.cs-steps');[...list.children].forEach(li=>{li.classList.remove('now');li.classList.add(ok?'done':'');});
+ const amount=box.querySelector('.cs-amount'),label=box.querySelector('.cs-label');
+ const freed=parseBytes(message);
+ label.textContent=ok?'Liberati':'Pulizia non riuscita';
+ if(ok&&freed!=null){amount._v=undefined;countUp(amount,freed,v=>bytes(v));}else amount.textContent=ok?'Fatto':'—';
+ const note=String(message||'').replace(/^.*?liberati\s+[\d.,]+\s*\w+\s*/i,'').replace(/^[·.\s]+/,'');
+ if(note)box.querySelector('.cs-panel').insertBefore(el('p','cs-note',note.slice(0,160)),box.querySelector('.cs-close'));
+ const burst=box.querySelector('.cs-burst');
+ if(ok)for(let i=0;i<16;i++){const s=el('i');s.style.setProperty('--a',(i*360/16)+'deg');s.style.setProperty('--d',(70+Math.random()*50).toFixed(0)+'px');burst.append(s);}
+ box.querySelector('.cs-close').textContent='Fatto';
+ box.addEventListener('click',e=>{if(e.target===box)cleanClose();});
+ setTimeout(cleanClose,5200);
+}
+function cleanClose(){const box=cfx.box;if(!box)return;cfx.timers.forEach(clearInterval);cfx.timers=[];cfx.box=null;box.classList.add('out');setTimeout(()=>box.remove(),450);}
 /* ---------- gaming ---------- */
 let gameData=null,libStore='',showHidden=false,heroArt=null;const covers=new Map();
 const STORE_COLORS={Steam:'#66c0f4',Epic:'#e5e7eb',Riot:'#ff6b75',GOG:'#c79cff'};
@@ -949,16 +1040,16 @@ async function saveGaming(change){
  if(demo){notify('Anteprima: comando non attivo.');return;}
  try{const r=await req('/api/gaming/settings','POST',change);notify('✓ '+r.message);await loadGaming();}catch(ex){notify('⚠ '+ex.message,true);}
 }
-async function heroAction(act){
+async function heroAction(act,src){
  if(!act)return;
- if(act==='exit')return action('normal');
- if(act==='on')return action('gaming');
+ if(act==='exit')return action('normal',src);
+ if(act==='on')return action('gaming',src);
  if(act.startsWith('launch:')){const g=(gameData?.games||[]).find(x=>x.id===act.slice(7));if(g)launchGame(g);}
 }
 document.querySelectorAll('[data-boost]').forEach(t=>t.addEventListener('click',e=>{e.preventDefault();saveGaming({[t.dataset.boost]:t.getAttribute('aria-checked')!=='true'});}));
 document.querySelectorAll('#game-fans [data-fans]').forEach(b=>b.addEventListener('click',()=>saveGaming({fans:b.dataset.fans})));
-$('game-main').addEventListener('click',()=>heroAction($('game-main').dataset.act));
-$('game-second').addEventListener('click',()=>heroAction($('game-second').dataset.act));
+$('game-main').addEventListener('click',()=>heroAction($('game-main').dataset.act,$('game-main')));
+$('game-second').addEventListener('click',()=>heroAction($('game-second').dataset.act,$('game-second')));
 $('lib-search').addEventListener('input',renderLibrary);
 $('lib-reload').addEventListener('click',()=>loadGaming(true,true));
 $('lib-hidden').addEventListener('click',()=>{showHidden=!showHidden;renderLibrary();});
@@ -973,7 +1064,7 @@ $('fans-upgrade-btn').addEventListener('click',()=>post('/api/fans/setup',{}));
 $('logout').addEventListener('click',()=>{sessionStorage.removeItem('pc_eco_key');key='';loginScreen(true);});
 $('auto-toggle').addEventListener('click',toggleAuto);
 document.querySelectorAll('[data-view]').forEach(b=>b.addEventListener('click',()=>navigate(b.dataset.view)));
-document.querySelectorAll('[data-action]').forEach(b=>b.addEventListener('click',()=>action(b.dataset.action)));
+document.querySelectorAll('[data-action]').forEach(b=>b.addEventListener('click',()=>action(b.dataset.action,b)));
 
 if(demo){$('demo-strip').hidden=false;loginScreen(false);[7,9,8,12,11,17,14,13,15,12,18,15,12,10,9,11,13].forEach((v,i)=>{hist.cpu.push(v);hist.gpu.push(4+i%5);hist.power.push(98+v*1.4);});render(statusDemo);}
 else if(key||tgInit){loginScreen(false);refresh();}else loginScreen(true);
