@@ -1,4 +1,5 @@
-"""Aggiornamenti automatici: l'app controlla le release di GitHub, scarica lo zip, ne verifica l'hash e si sostituisce.
+"""Aggiornamenti: l'app controlla le release di GitHub e avvisa; quando l'utente preme Aggiorna scarica lo zip,
+ne verifica l'hash e si sostituisce. Niente installazioni da sola.
 
 Solo dall'exe (non da sorgente). I dati dell'utente stanno in %LOCALAPPDATA%\\NEXAR e non vengono toccati.
 """
@@ -32,14 +33,18 @@ def fetch(url, limit=2_000_000):
     with urlopen(Request(url, headers=HEADERS), timeout=25) as r:
         return r.read(limit)
 
-def download(url, dest: Path):
+def download(url, dest: Path, progress=None):
+    """Scarica verificando dimensione e hash. progress(fatti, totale) a ogni blocco, per la barra nella dashboard."""
     if not url.startswith('https://github.com/'): raise RuntimeError('Indirizzo di download non previsto')
     h = hashlib.sha256(); size = 0
     with urlopen(Request(url, headers={'User-Agent': HEADERS['User-Agent']}), timeout=60) as r, open(dest, 'wb') as f:
-        while chunk := r.read(1 << 20):
+        total = int(r.headers.get('Content-Length') or 0)
+        if progress: progress(0, total)
+        while chunk := r.read(256 * 1024):
             size += len(chunk)
             if size > MAX_ZIP: raise RuntimeError('Aggiornamento troppo grande')
             h.update(chunk); f.write(chunk)
+            if progress: progress(size, total)
     return h.hexdigest()
 
 def safe_extract(zip_path: Path, dest: Path):
@@ -105,8 +110,10 @@ class Updater:
         self.ctrl, self.install_dir, self.data_dir, self.frozen = controller, Path(install_dir), Path(data_dir), frozen
         self.lock = threading.Lock()
         self.info_state = {'current': VERSION, 'latest': None, 'available': False, 'status': 'idle', 'message': '',
-                           'checked_at': None, 'notes': '', 'page': f'https://github.com/{REPO}/releases'}
+                           'checked_at': None, 'notes': '', 'page': f'https://github.com/{REPO}/releases',
+                           'progress': None}
         self.release = None
+        self.told = None       # versione già segnalata su Telegram (una volta sola)
         self.exit_hooks = []   # la finestra desktop si registra qui per chiudersi bene prima della sostituzione
 
     def announce(self):
@@ -114,6 +121,7 @@ class Updater:
         last = self.ctrl.state.get('last_version')
         if last == VERSION: return
         if last:
+            with self.lock: self.info_state['updated'] = {'from': last, 'at': time.time()}
             self.ctrl.notify(f'✅ NEXAR aggiornato alla versione {VERSION}.')
             self.ctrl.log_event(f'Aggiornato da {last} a {VERSION}')
         from core import json_save, STATE_FILE
@@ -121,14 +129,14 @@ class Updater:
             self.ctrl.state['last_version'] = VERSION
             json_save(STATE_FILE, self.ctrl.state)
 
-    def auto(self):
-        return bool(self.ctrl.config.get('updates', {}).get('auto', True))
-
     def info(self):
-        with self.lock: return dict(self.info_state, auto=self.auto(), supported=self.frozen)
+        with self.lock: return dict(self.info_state, supported=self.frozen)
 
-    def set_status(self, status, message=''):
-        with self.lock: self.info_state.update(status=status, message=message)
+    def set_status(self, status, message='', progress=None):
+        with self.lock: self.info_state.update(status=status, message=message, progress=progress)
+
+    def _progress(self, done, total):
+        with self.lock: self.info_state['progress'] = {'done': done, 'total': total}
 
     def check(self):
         data = json.loads(fetch(API))
@@ -148,11 +156,17 @@ class Updater:
         if not self.frozen: raise RuntimeError('Gli aggiornamenti si installano solo dall\'app compilata')
         with self.lock: rel = self.release
         if not rel: raise RuntimeError('Nessun aggiornamento disponibile')
+        try: return self._install(rel)
+        except Exception as ex:
+            self.set_status('error', 'Aggiornamento non riuscito: ' + str(ex)[:150])
+            raise
+
+    def _install(self, rel):
         work = self.data_dir / 'updates'; work.mkdir(parents=True, exist_ok=True)
         zip_path = work / rel['name']
-        self.set_status('downloading', 'Download in corso…')
+        self.set_status('downloading', 'Download in corso…', {'done': 0, 'total': 0})
         expected = fetch(rel['sha'], 4096).decode('ascii', 'replace').split()[0].lower()
-        if download(rel['zip'], zip_path) != expected: raise RuntimeError('File scaricato danneggiato (hash diverso)')
+        if download(rel['zip'], zip_path, self._progress) != expected: raise RuntimeError('File scaricato danneggiato (hash diverso)')
         self.set_status('installing', 'Installazione…')
         src = safe_extract(zip_path, work / 'staging')
         script = work / 'swap.cmd'
@@ -162,6 +176,7 @@ class Updater:
         spawn_detached(['cmd.exe', '/d', '/c', str(script)])
         self.ctrl.log_event(f'⬆️ Installazione NEXAR {rel["tag"]}: riavvio')
         self.ctrl.notify(f'⬆️ Installo NEXAR {rel["tag"].lstrip("v")}: torno online tra poco.')
+        self.set_status('restarting', 'Riavvio di NEXAR…')
         threading.Thread(target=self.exit_soon, daemon=True, name='update-exit').start()
         return f'Aggiornamento a {rel["tag"].lstrip("v")}: NEXAR si riavvia da solo'
 
@@ -180,14 +195,14 @@ class Updater:
         except Exception: logging.exception('Chiusura per aggiornamento')
 
     def loop(self, stop: threading.Event):
-        if stop.wait(90) or not self.frozen: return
+        # Solo controllo e avviso: l'installazione parte quando l'utente preme Aggiorna nella dashboard.
+        if stop.wait(20) or not self.frozen: return
         while True:
             try:
                 info = self.check()
-                if info['available'] and self.auto():
-                    self.ctrl.notify(f'⬆️ Nuova versione NEXAR {info["latest"]}: la installo adesso.')
-                    self.install()
-                    return
+                if info['available'] and self.told != info['latest']:
+                    self.told = info['latest']
+                    self.ctrl.notify(f'⬆️ È disponibile NEXAR {info["latest"]}: apri NEXAR e premi Aggiorna quando vuoi.')
             except Exception as ex:
                 logging.warning('Controllo aggiornamenti: %s', ex)
                 self.set_status('error', 'Controllo non riuscito: ' + str(ex)[:150])

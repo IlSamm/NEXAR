@@ -295,13 +295,10 @@ def update_install():
     try: return {'ok':True,'message':controller.run_job('update',updater.install)}
     except RuntimeError as ex: raise HTTPException(409,str(ex))
 
-@app.post('/api/update/auto',dependencies=[Depends(authorized)])
-def update_auto(data: Toggle):
-    from core import json_save
-    with controller.lock:
-        controller.config.setdefault('updates',{})['auto']=data.enabled
-        json_save(CONFIG_FILE,controller.config)
-    return {'ok':True,'message':'Aggiornamenti automatici '+('attivi' if data.enabled else 'disattivati')}
+@app.get('/api/update',dependencies=[Depends(authorized)])
+def update_state():
+    # Letto spesso durante il download per la barra di avanzamento: niente sensori, solo lo stato dell'aggiornamento.
+    return {'update':updater.info(),'job':controller.jobs.get('update')}
 
 # ---------- ottimizzazione ----------
 import optimizer
