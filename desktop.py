@@ -2,7 +2,6 @@
 
 Chiudendo la finestra l'app resta vicino all'orologio: automazione AI, Telegram e Umbrel continuano.
 """
-import base64
 import logging
 import os
 import socket
@@ -15,9 +14,7 @@ import uvicorn
 import webview
 
 import main
-from core import ASSET_ROOT
 from tray import icon_image
-from version import VERSION
 
 controller = main.controller
 config = controller.config
@@ -38,38 +35,137 @@ def start_api(port):
     return server
 
 def splash_html():
-    """Schermata di caricamento con il logo, mostrata mentre il server interno parte."""
-    logo = base64.b64encode((ASSET_ROOT / 'web' / 'logo.png').read_bytes()).decode()
-    return SPLASH.replace('{LOGO}', logo).replace('{VERSION}', VERSION)
+    """Sfondo scuro mentre il server interno parte: la N dipinta la disegna poi la dashboard."""
+    return SPLASH
 
 SPLASH = '''<!doctype html><html><head><meta charset="utf-8"><style>
-html,body{margin:0;height:100%;background:#05070d;overflow:hidden;font-family:"Segoe UI Variable Display","Segoe UI",sans-serif}
-body{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;
- background:radial-gradient(600px 400px at 50% 45%,rgba(40,110,255,.18),transparent 70%),#05070d}
-img{width:190px;height:190px;animation:pop .9s cubic-bezier(.2,.9,.2,1.2) both,glow 2.4s ease-in-out .9s infinite}
-h1{margin:0;color:#eaf2ff;font-weight:800;font-size:34px;letter-spacing:.42em;padding-left:.42em;animation:fade .8s .35s both}
-.bar{width:220px;height:3px;border-radius:3px;background:#122038;overflow:hidden;animation:fade .6s .6s both}
-.bar i{display:block;width:40%;height:100%;border-radius:3px;background:linear-gradient(90deg,#1f6bff,#5ad1ff,#fff);animation:run 1.1s ease-in-out infinite}
-small{color:#4f6a95;font-size:12px;letter-spacing:.2em;animation:fade .6s .8s both}
-@keyframes pop{from{opacity:0;transform:scale(.6) rotate(-8deg)}to{opacity:1;transform:none}}
-@keyframes glow{50%{filter:drop-shadow(0 0 26px rgba(70,140,255,.75)) brightness(1.12)}}
-@keyframes fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
-@keyframes run{from{transform:translateX(-110%)}to{transform:translateX(260%)}}
-</style></head><body><img src="data:image/png;base64,{LOGO}" alt=""><h1>NEXAR</h1><div class="bar"><i></i></div><small>v{VERSION}</small></body></html>'''
+html,body{margin:0;height:100%;background:#090b0f;overflow:hidden}
+</style></head><body></body></html>'''
+
+# ---------------- barra della finestra integrata nella dashboard ----------------
+# La finestra resta una finestra Windows vera (bordi per ridimensionare, Snap, ombra, angoli
+# arrotondati): togliamo solo la barra del titolo grigia e la dashboard disegna la sua.
+if os.name == 'nt':
+    import ctypes
+    from ctypes import wintypes
+    user32 = ctypes.windll.user32
+    LRESULT = ctypes.c_ssize_t
+    WNDPROC = ctypes.WINFUNCTYPE(LRESULT, wintypes.HWND, ctypes.c_uint, wintypes.WPARAM, wintypes.LPARAM)
+    user32.CallWindowProcW.restype = LRESULT
+    user32.CallWindowProcW.argtypes = [ctypes.c_void_p, wintypes.HWND, ctypes.c_uint, wintypes.WPARAM, wintypes.LPARAM]
+    user32.SetWindowLongPtrW.restype = ctypes.c_void_p
+    user32.SetWindowLongPtrW.argtypes = [wintypes.HWND, ctypes.c_int, ctypes.c_void_p]
+    user32.PostMessageW.argtypes = [wintypes.HWND, ctypes.c_uint, wintypes.WPARAM, wintypes.LPARAM]
+    user32.IsZoomed.argtypes = [wintypes.HWND]
+    user32.ShowWindowAsync.argtypes = [wintypes.HWND, ctypes.c_int]
+    user32.SetWindowPos.argtypes = [wintypes.HWND, wintypes.HWND, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_uint]
+
+WM_CLOSE, WM_NCCALCSIZE, WM_NCLBUTTONDOWN = 0x10, 0x83, 0xA1
+HIT = {'caption': 2, 'top': 12, 'topleft': 13, 'topright': 14}
+
+def find_hwnd(title='NEXAR'):
+    """Finestra principale di questo processo (anche se è ancora nascosta)."""
+    found = []
+    pid = os.getpid()
+    @ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.HWND, wintypes.LPARAM)
+    def cb(h, _):
+        owner = wintypes.DWORD()
+        user32.GetWindowThreadProcessId(h, ctypes.byref(owner))
+        if owner.value == pid:
+            buf = ctypes.create_unicode_buffer(64)
+            user32.GetWindowTextW(h, buf, 64)
+            if buf.value == title: found.append(h)
+        return True
+    user32.EnumWindows(cb, 0)
+    return found[0] if found else None
+
+class WindowApi:
+    """Comandi della barra disegnata dalla dashboard (window.pywebview.api.win_*)."""
+    def __init__(self):
+        self._window = None
+        self._hwnd = None
+        self._proc = None
+        self._orig = None
+
+    def _attach(self, window):
+        self._window = window
+        if os.name != 'nt' or self._proc: return
+        for _ in range(50):
+            self._hwnd = find_hwnd()
+            if self._hwnd: break
+            time.sleep(0.1)
+        if not self._hwnd: return
+        hwnd = self._hwnd
+
+        def proc(h, msg, wp, lp):
+            if msg == WM_NCCALCSIZE and wp:
+                # Tieni i bordi invisibili per ridimensionare, togli solo la barra del titolo.
+                rc = ctypes.cast(lp, ctypes.POINTER(wintypes.RECT)).contents
+                top, left = rc.top, rc.left
+                res = user32.CallWindowProcW(self._orig, h, msg, wp, lp)
+                # Ingrandita: Windows allarga la finestra oltre lo schermo dello spessore del bordo.
+                rc.top = top + ((rc.left - left) if user32.IsZoomed(h) else 0)
+                return res
+            return user32.CallWindowProcW(self._orig, h, msg, wp, lp)
+
+        self._proc = WNDPROC(proc)  # riferimento tenuto vivo: Windows lo chiama per ogni messaggio
+        self._orig = user32.SetWindowLongPtrW(hwnd, -4, ctypes.cast(self._proc, ctypes.c_void_p))
+        # SWP_NOMOVE|SWP_NOSIZE|SWP_NOZORDER|SWP_NOACTIVATE|SWP_FRAMECHANGED: ricalcola il bordo adesso
+        user32.SetWindowPos(hwnd, None, 0, 0, 0, 0, 0x1 | 0x2 | 0x4 | 0x10 | 0x20)
+
+    def win_ready(self):
+        return bool(self._hwnd and self._proc)
+
+    def win_drag(self):
+        # Trascinamento nativo: funzionano Snap, Aero Shake e il trascinamento tra schermi.
+        if self._hwnd:
+            user32.ReleaseCapture()
+            user32.PostMessageW(self._hwnd, WM_NCLBUTTONDOWN, HIT['caption'], 0)
+
+    def win_resize(self, edge):
+        if self._hwnd and edge in HIT and edge != 'caption' and not user32.IsZoomed(self._hwnd):
+            user32.ReleaseCapture()
+            user32.PostMessageW(self._hwnd, WM_NCLBUTTONDOWN, HIT[edge], 0)
+
+    def win_min(self):
+        if self._hwnd: user32.ShowWindowAsync(self._hwnd, 6)  # SW_MINIMIZE
+
+    def win_toggle_max(self):
+        if not self._hwnd: return False
+        if self._fullscreen(): self._window.toggle_fullscreen(); return False
+        zoomed = bool(user32.IsZoomed(self._hwnd))
+        user32.ShowWindowAsync(self._hwnd, 9 if zoomed else 3)  # SW_RESTORE / SW_MAXIMIZE
+        return not zoomed
+
+    def win_fullscreen(self):
+        if self._window: self._window.toggle_fullscreen()
+        return self._fullscreen()
+
+    def win_close(self):
+        # Come la X di Windows: la finestra si nasconde e NEXAR resta vicino all'orologio.
+        if self._hwnd: user32.PostMessageW(self._hwnd, WM_CLOSE, 0, 0)
+
+    def win_state(self):
+        return {'max': bool(self._hwnd and user32.IsZoomed(self._hwnd)), 'full': self._fullscreen()}
+
+    def _fullscreen(self):
+        try: return bool(self._window.native.is_fullscreen)
+        except Exception: return False
 
 def run():
     port = int(config.get('web', {}).get('port', 8765))
     url = f"http://127.0.0.1:{port}/#access={config.get('access_token', '')}"
+    api = WindowApi()
     window = webview.create_window('NEXAR', html=splash_html(), width=1360, height=900, min_size=(1000, 680),
-                                   background_color='#05070d', hidden='--minimized' in sys.argv)
+                                   background_color='#090b0f', hidden='--minimized' in sys.argv, js_api=api)
     quitting = threading.Event()
     server = None
 
     def boot():
         nonlocal server
-        started = time.monotonic()
+        try: api._attach(window)
+        except Exception: logging.exception('Barra della finestra')  # resta la barra di Windows
         if not port_open(port): server = start_api(port)  # se l'agente è già attivo, apri solo la finestra
-        time.sleep(max(0.0, 1.6 - (time.monotonic() - started)))  # il logo si vede almeno un attimo
         window.load_url(url)
 
     def on_closing():

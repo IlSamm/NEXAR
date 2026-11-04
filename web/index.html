@@ -94,9 +94,6 @@
    <button data-view="links"><span class="nav-ico n-links"><svg class="i"><use href="#i-link"/></svg></span>Collegamenti<i class="badge" id="links-badge" hidden></i></button>
    <button data-view="settings"><span class="nav-ico n-settings"><svg class="i"><use href="#i-sliders"/></svg></span>Impostazioni</button>
   </nav>
-  <div class="rail-bottom">
-   <button class="rail-search" type="button" data-palette title="Cerca (Ctrl+K)"><svg class="i"><use href="#i-search"/></svg><span>Cerca</span><kbd>Ctrl K</kbd></button>
-  </div>
   <div class="rail-foot"><div class="conn"><i class="dot" id="conn-dot"></i><span id="conn-text">Connessione…</span></div></div>
  </aside>
 
@@ -116,8 +113,20 @@
 
    <!-- PANORAMICA -->
    <section class="page active" id="page-home">
-    <section class="card home-hero">
-     <button class="hh-power" type="button" data-view="energy" aria-label="Apri Consumi">
+    <section class="hm-hero" id="hm-hero">
+     <div class="hm-glow" aria-hidden="true"></div>
+     <div class="hm-main">
+      <span class="hm-eyebrow"><i class="hm-dot"></i><span id="hm-pc">Il tuo PC</span></span>
+      <h2 id="hm-status">Tutto sotto controllo</h2>
+      <p id="mode-desc">—</p>
+      <div class="mode-seg" id="mode-seg" role="group" aria-label="Modalità">
+       <i class="ms-ink" aria-hidden="true"></i>
+       <button class="mode-opt eco" data-action="eco"><svg class="i"><use href="#i-leaf"/></svg><span>AI ECO</span></button>
+       <button class="mode-opt normal" data-action="normal"><svg class="i"><use href="#i-bolt"/></svg><span>Normale</span></button>
+       <button class="mode-opt gaming" data-action="gaming"><svg class="i"><use href="#i-game"/></svg><span>Gaming</span></button>
+      </div>
+     </div>
+     <button class="hm-power" type="button" data-view="energy" aria-label="Apri Consumi">
       <div class="gauge" id="gauge">
        <svg viewBox="0 0 200 200" aria-hidden="true">
         <defs><linearGradient id="gauge-grad" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#34d399"/><stop offset=".6" stop-color="#38bdf8"/><stop offset="1" stop-color="#fbbf24"/></linearGradient></defs>
@@ -126,38 +135,26 @@
        </svg>
        <div class="gauge-center"><span class="eyebrow">Alla presa</span><strong id="g-watts">—</strong><span class="unit">watt</span><small id="g-amps">— A · 230 V</small></div>
       </div>
-      <div class="kwh-row">
-       <div><span>Oggi</span><b id="h-today">—</b><small id="h-today-cost">—</small></div>
-       <div><span>Mese</span><b id="h-month">—</b><small id="h-month-cost">—</small></div>
-       <div><span>Previsione</span><b id="h-forecast">—</b><small id="h-forecast-cost">—</small></div>
-      </div>
      </button>
-     <div class="hh-mode" id="mode-card">
-      <div class="card-head"><div><h3>Modalità</h3><p id="mode-desc">—</p></div></div>
-      <div class="mode-switch">
-       <button class="mode-opt eco" data-action="eco"><svg class="i"><use href="#i-leaf"/></svg><b>AI ECO</b><small>Consuma meno</small></button>
-       <button class="mode-opt normal" data-action="normal"><svg class="i"><use href="#i-bolt"/></svg><b>Normale</b><small>Piano di Windows</small></button>
-       <button class="mode-opt gaming" data-action="gaming"><svg class="i"><use href="#i-game"/></svg><b>Gaming</b><small>Massime prestazioni</small></button>
-      </div>
-      <div class="hh-auto">
-       <div class="agents">
-        <div class="agent"><span class="agent-ico codex">⌘</span><div><b>Codex</b><small id="codex-state">—</small></div><i class="dot off" id="codex-dot"></i></div>
-        <div class="agent"><span class="agent-ico claude">✳</span><div><b>Claude</b><small id="claude-state">—</small></div><i class="dot off" id="claude-dot"></i></div>
-       </div>
-       <div class="switch-row"><div><b>Automazione AI</b><small id="auto-note">—</small></div><button class="toggle" id="auto-toggle" role="switch" aria-checked="false" aria-label="Automazione AI ECO"><span></span></button></div>
-      </div>
-     </div>
     </section>
 
-    <div class="tiles">
-     <article class="tile"><div class="tile-head"><span class="tile-ico c-cpu"><svg class="i"><use href="#i-cpu"/></svg></span><div><b>Processore</b><small id="cpu-name">—</small></div><span class="temp" id="cpu-temp">—</span></div><strong class="tile-val" id="cpu-val">—</strong><div class="bar"><span id="cpu-bar"></span></div><small class="tile-sub" id="cpu-sub">—</small></article>
-     <article class="tile"><div class="tile-head"><span class="tile-ico c-gpu"><svg class="i"><use href="#i-gpu"/></svg></span><div><b>Scheda video</b><small id="gpu-name">—</small></div><span class="temp" id="gpu-temp">—</span></div><strong class="tile-val" id="gpu-val">—</strong><div class="bar"><span id="gpu-bar"></span></div><small class="tile-sub" id="gpu-sub">—</small></article>
-     <article class="tile"><div class="tile-head"><span class="tile-ico c-ram"><svg class="i"><use href="#i-ram"/></svg></span><div><b>Memoria</b><small id="ram-detail">—</small></div></div><strong class="tile-val" id="ram-val">—</strong><div class="bar"><span id="ram-bar"></span></div><small class="tile-sub" id="ram-sub">—</small></article>
-     <article class="tile"><div class="tile-head"><span class="tile-ico c-fan"><svg class="i"><use href="#i-fan"/></svg></span><div><b>Ventole</b><small id="fan-profile">—</small></div></div><strong class="tile-val" id="fan-val">—</strong><div class="bar"><span id="fan-bar"></span></div><small class="tile-sub">giri medi del case</small></article>
-    </div>
+    <div class="bento">
+     <article class="tile b-cpu"><div class="tile-head"><span class="tile-ico c-cpu"><svg class="i"><use href="#i-cpu"/></svg></span><div><b>Processore</b><small id="cpu-name">—</small></div><span class="temp" id="cpu-temp">—</span></div><strong class="tile-val" id="cpu-val">—</strong><div class="bar"><span id="cpu-bar"></span></div><small class="tile-sub" id="cpu-sub">—</small></article>
+     <article class="tile b-gpu"><div class="tile-head"><span class="tile-ico c-gpu"><svg class="i"><use href="#i-gpu"/></svg></span><div><b>Scheda video</b><small id="gpu-name">—</small></div><span class="temp" id="gpu-temp">—</span></div><strong class="tile-val" id="gpu-val">—</strong><div class="bar"><span id="gpu-bar"></span></div><small class="tile-sub" id="gpu-sub">—</small></article>
+     <article class="tile b-ram"><div class="tile-head"><span class="tile-ico c-ram"><svg class="i"><use href="#i-ram"/></svg></span><div><b>Memoria</b><small id="ram-detail">—</small></div></div><strong class="tile-val" id="ram-val">—</strong><div class="bar"><span id="ram-bar"></span></div><small class="tile-sub" id="ram-sub">—</small></article>
+     <article class="tile b-fan"><div class="tile-head"><span class="tile-ico c-fan"><svg class="i fan-spin" id="fan-spin"><use href="#i-fan"/></svg></span><div><b>Ventole</b><small id="fan-profile">—</small></div></div><strong class="tile-val" id="fan-val">—</strong><div class="bar"><span id="fan-bar"></span></div><small class="tile-sub">giri medi del case</small></article>
 
-    <div class="zone-row">
-     <article class="zone-card zc-gaming" id="zc-gaming" data-view="gaming" tabindex="0">
+     <button class="card b-energy" type="button" data-view="energy">
+      <div class="be-head"><span class="eyebrow">Energia</span><span class="be-link">Consumi <svg class="i"><use href="#i-chev"/></svg></span></div>
+      <div class="be-nums">
+       <div><small>Oggi</small><b id="h-today">—</b><span id="h-today-cost">—</span></div>
+       <div><small>Mese</small><b id="h-month">—</b><span id="h-month-cost">—</span></div>
+       <div><small>Previsione</small><b id="h-forecast">—</b><span id="h-forecast-cost">—</span></div>
+      </div>
+      <div class="be-week" id="hm-week" aria-label="Ultimi 7 giorni"></div>
+     </button>
+
+     <article class="zone-card zc-gaming b-game" id="zc-gaming" data-view="gaming" tabindex="0">
       <div class="zc-art" id="zc-gaming-art"></div>
       <div class="zc-body">
        <span class="zone-tag"><i></i>GAMING</span>
@@ -166,7 +163,7 @@
       </div>
       <button class="btn primary small" type="button" id="zc-gaming-btn"><svg class="i"><use href="#i-play"/></svg><span>Apri</span></button>
      </article>
-     <article class="zone-card zc-opt" id="zc-opt" data-view="optimize" tabindex="0">
+     <article class="zone-card zc-opt b-opt" id="zc-opt" data-view="optimize" tabindex="0">
       <div class="zc-ring"><svg viewBox="0 0 120 120" aria-hidden="true"><circle class="h-track" cx="60" cy="60" r="50" pathLength="100"/><circle class="h-fill" id="zc-opt-ring" cx="60" cy="60" r="50" pathLength="100"/></svg><b id="zc-opt-score">—</b></div>
       <div class="zc-body">
        <span class="zone-tag"><i></i>OTTIMIZZA</span>
@@ -175,24 +172,33 @@
       </div>
       <button class="btn primary small" type="button" id="zc-opt-btn"><svg class="i"><use href="#i-clean"/></svg><span>Ottimizza</span></button>
      </article>
+
+     <section class="card b-ai">
+      <div class="be-head"><span class="eyebrow">Agenti AI</span></div>
+      <div class="ai-list">
+       <div class="agent"><span class="agent-ico codex">⌘</span><div><b>Codex</b><small id="codex-state">—</small></div><i class="dot off" id="codex-dot"></i></div>
+       <div class="agent"><span class="agent-ico claude">✳</span><div><b>Claude</b><small id="claude-state">—</small></div><i class="dot off" id="claude-dot"></i></div>
+      </div>
+      <div class="ai-auto"><div><b>AI ECO automatica</b><small id="auto-note">—</small></div><button class="toggle" id="auto-toggle" role="switch" aria-checked="false" aria-label="Automazione AI ECO"><span></span></button></div>
+     </section>
+
+     <section class="card b-quick">
+      <div class="be-head"><span class="eyebrow">Azioni rapide</span></div>
+      <div class="qgrid">
+       <button class="qb" data-action="screen"><span><svg class="i"><use href="#i-monitor"/></svg></span>Monitor off</button>
+       <button class="qb" data-action="rgb-eco" id="q-rgb-off"><span><svg class="i"><use href="#i-bulb"/></svg></span>LED off</button>
+       <button class="qb" data-action="rgb-normal" id="q-rgb-on"><span><svg class="i"><use href="#i-palette"/></svg></span>LED on</button>
+       <button class="qb" data-action="fans-eco" id="q-fans-eco"><span><svg class="i"><use href="#i-fan"/></svg></span>Silenziose</button>
+       <button class="qb" data-action="fans-normal" id="q-fans-normal"><span><svg class="i"><use href="#i-fan"/></svg></span>Ventole</button>
+       <button class="qb danger" data-view="power"><span><svg class="i"><use href="#i-power"/></svg></span>Spegni</button>
+      </div>
+     </section>
+
+     <section class="card b-chart">
+      <div class="card-head"><div><h3>Carico</h3><p>Processore e scheda video, ultimi minuti</p></div><div class="legend-mini"><span class="c-cpu">CPU</span><span class="c-gpu">GPU</span></div></div>
+      <div class="chart" id="chart-load"></div>
+     </section>
     </div>
-
-    <section class="card">
-     <div class="card-head"><div><h3>Azioni rapide</h3><p>Il PC continua a lavorare</p></div></div>
-     <div class="quick">
-      <button class="qa" data-action="screen"><svg class="i"><use href="#i-monitor"/></svg>Spegni monitor</button>
-      <button class="qa" data-action="rgb-eco" id="q-rgb-off"><svg class="i"><use href="#i-bulb"/></svg>LED spenti</button>
-      <button class="qa" data-action="rgb-normal" id="q-rgb-on"><svg class="i"><use href="#i-palette"/></svg>LED accesi</button>
-      <button class="qa" data-action="fans-eco" id="q-fans-eco"><svg class="i"><use href="#i-fan"/></svg>Ventole silenziose</button>
-      <button class="qa" data-action="fans-normal" id="q-fans-normal"><svg class="i"><use href="#i-fan"/></svg>Ventole normali</button>
-      <button class="qa danger" data-view="power"><svg class="i"><use href="#i-power"/></svg>Spegni PC</button>
-     </div>
-    </section>
-
-    <section class="card">
-     <div class="card-head"><div><h3>Carico</h3><p>Processore e scheda video, ultimi minuti</p></div><div class="legend-mini"><span class="c-cpu">CPU</span><span class="c-gpu">GPU</span></div></div>
-     <div class="chart" id="chart-load"></div>
-    </section>
    </section>
 
    <!-- GAMING -->

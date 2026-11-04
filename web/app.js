@@ -156,6 +156,8 @@ function render(s){
  const caseFans=(s.fans||[]).filter(f=>/system fan/i.test(f.name)&&f.rpm>0);
  const avg=caseFans.length?Math.round(caseFans.reduce((a,f)=>a+f.rpm,0)/caseFans.length):null;
  countUp($('fan-val'),avg||null,v=>typeof v==='number'?Math.round(v)+' RPM':'—');setBar('fan-bar',avg,1800);
+ const fs=$('fan-spin');if(fs){fs.style.animationDuration=avg?Math.max(.35,Math.min(4,900/avg)).toFixed(2)+'s':'0s';fs.classList.toggle('still',!avg);}
+ renderHomeHero(s);
  $('hw-cpu').textContent=deg(s.cpu_temp);$('hw-gpu').textContent=deg(s.gpu_temp);setBar('hw-cpu-bar',s.cpu_temp,95);setBar('hw-gpu-bar',s.gpu_temp,90);
  // Agenti e automazione
  [['codex',s.processes?.codex],['claude',s.processes?.claude]].forEach(([n,on])=>{$(n+'-state').textContent=on?'Al lavoro':'Chiuso';$(n+'-dot').classList.toggle('off',!on);});
@@ -1141,6 +1143,28 @@ document.addEventListener('keydown',e=>{
  if(typing||e.ctrlKey||e.metaKey||e.altKey)return;
  if(/^[1-9]$/.test(e.key)){const p=PAGES[+e.key-1];if(p)navigate(p[0]);}
 });
+let homeStatsAt=0;
+function renderHomeHero(s){
+ // Riga di stato della Home: dice subito se qualcosa richiede attenzione.
+ const hero=$('hm-hero');if(!hero)return;hero.dataset.mode=s.mode||'normal';
+ const up=s.pc?.uptime_s;const upTxt=typeof up==='number'&&up>0?`acceso da ${duration(up)}`:'';$('hm-pc').textContent=matchMedia('(max-width:760px)').matches?(upTxt?'PC '+upTxt:'Il tuo PC'):greeting()+(upTxt?' · '+upTxt:'');
+ const hot=(s.cpu_temp>=85&&'Processore')||(s.gpu_temp>=83&&'Scheda video');
+ const st=hot?[`${hot} molto caldo`,'warn']:s.update?.available?['Aggiornamento pronto','info']:s.ram>=90?['Memoria quasi piena','warn']
+  :s.boost?.running?[`In gioco: ${s.boost.running.name||'partita'}`,'']:s.mode==='eco'?['Risparmio attivo','']:s.mode==='gaming'?['Pronto per giocare','']:['Tutto sotto controllo',''];
+ const t=$('hm-status');if(t.textContent!==st[0])t.textContent=st[0];hero.dataset.state=st[1];
+ if(Date.now()-homeStatsAt>300000){homeStatsAt=Date.now();loadStats();}
+}
+function renderHomeWeek(d){
+ // Ultimi 7 giorni di consumo nella scheda Energia della Home.
+ const box=$('hm-week');if(!box)return;box.replaceChildren();
+ const today=new Date();const map=new Map((d.days||[]).map(x=>[x.day,x]));const days=[];
+ for(let i=6;i>=0;i--){const dt=new Date(today-i*864e5);const k=`${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;days.push([dt,map.get(k)]);}
+ const mx=Math.max(.01,...days.map(([,x])=>x?.kwh||0));
+ days.forEach(([dt,x],i)=>{const c=el('div','wk'+(i===6?' today':''));const bar=el('div','wk-bar');const f=el('i');
+  f.style.height=Math.max(4,(x?.kwh||0)/mx*100)+'%';f.style.setProperty('--i',i);bar.append(f);
+  c.title=`${dt.toLocaleDateString('it-IT',{weekday:'long',day:'numeric'})}: ${x?nf(x.kwh,2)+' kWh · '+eur(x.cost):'nessun dato'}`;
+  c.append(bar,el('small','',dt.toLocaleDateString('it-IT',{weekday:'narrow'})));box.append(c);});
+}
 function greeting(){
  const d=new Date(),h=d.getHours();
  const hi=h<5?'Buonanotte':h<13?'Buongiorno':h<18?'Buon pomeriggio':'Buonasera';
@@ -1160,7 +1184,7 @@ async function loadStats(){
  try{renderStats(await req('/api/stats'));}catch(ex){}
 }
 function renderStats(d){
- statsData=d;
+ statsData=d;renderHomeWeek(d);
  $('st-since').textContent=d.since?`Da quando usi NEXAR: dal ${new Date(d.since+'T12:00').toLocaleDateString('it-IT',{day:'numeric',month:'long',year:'numeric'})} · ${d.days_count} giorni`:'I dati si raccolgono mentre il PC è acceso';
  countUp($('st-kwh'),d.total_kwh,v=>nf(v,v<100?2:1)+' kWh');$('st-kwh-sub').textContent=d.avg_w?`in media ${d.avg_w} W alla presa`:'—';
  countUp($('st-cost'),d.total_cost,v=>eur(v));$('st-cost-sub').textContent=`a ${nf(d.price_eur_kwh*100,0)} c€ per kWh`;
@@ -1407,4 +1431,42 @@ if(demo){$('demo-strip').hidden=false;loginScreen(false);[7,9,8,12,11,17,14,13,1
 else if(key||tgInit){loginScreen(false);refresh();}else loginScreen(true);
 navigate('home');
 setInterval(()=>{if(!document.hidden)refresh();},4000);
+/* ---------- barra della finestra (solo nell'app per Windows) ---------- */
+// La barra grigia di Windows non c'è più: qui ci sono trascinamento, Snap, doppio clic per
+// ingrandire, ridimensionamento dal bordo alto, F11 per lo schermo intero.
+function setupWinbar(){
+ const api=window.pywebview?.api;if(!api?.win_drag||$('winbar'))return;
+ const root=document.documentElement;root.classList.add('in-desktop');
+ const bar=document.createElement('div');bar.id='winbar';bar.className='winbar';
+ bar.innerHTML=`<div class="wb-btns">
+  <button type="button" class="wb-btn" data-wb="full" title="Schermo intero (F11)" aria-label="Schermo intero"><svg viewBox="0 0 12 12"><path class="wb-full-in" d="M1.5 4.5v-3h3M7.5 1.5h3v3M10.5 7.5v3h-3M4.5 10.5h-3v-3"/><path class="wb-full-out" d="M4.5 1.5v3h-3M10.5 4.5h-3v-3M7.5 10.5v-3h3M1.5 7.5h3v3"/></svg></button>
+  <button type="button" class="wb-btn" data-wb="min" title="Riduci a icona" aria-label="Riduci a icona"><svg viewBox="0 0 12 12"><path d="M2 6h8"/></svg></button>
+  <button type="button" class="wb-btn" data-wb="max" title="Ingrandisci" aria-label="Ingrandisci"><svg viewBox="0 0 12 12"><rect class="wb-max-in" x="1.75" y="1.75" width="8.5" height="8.5" rx="2"/><path class="wb-max-out" d="M3.75 3.25V2.9c0-.6.5-1.15 1.15-1.15h4.2c.6 0 1.15.5 1.15 1.15v4.2c0 .6-.5 1.15-1.15 1.15h-.35"/><rect class="wb-max-out" x="1.75" y="3.75" width="6.5" height="6.5" rx="1.6"/></svg></button>
+  <button type="button" class="wb-btn close" data-wb="close" title="Chiudi: NEXAR resta attivo vicino all'orologio" aria-label="Chiudi"><svg viewBox="0 0 12 12"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7"/></svg></button></div>`;
+ const edges=document.createElement('div');edges.className='wb-edges';edges.setAttribute('aria-hidden','true');
+ edges.innerHTML='<i data-edge="top"></i><i data-edge="topleft"></i><i data-edge="topright"></i>';
+ document.body.append(bar,edges);
+ const sync=()=>api.win_state().then(s=>{root.classList.toggle('win-max',!!s.max);root.classList.toggle('win-full',!!s.full);
+  const m=bar.querySelector('[data-wb=max]');m.title=s.max?'Ripristina':'Ingrandisci';m.setAttribute('aria-label',m.title);}).catch(()=>{});
+ let last=0;
+ const drag=e=>{
+  if(e.button!==0||e.target.closest('button,a,input'))return;e.preventDefault();
+  const now=performance.now();if(now-last<400){last=0;api.win_toggle_max().then(()=>setTimeout(sync,250));return;}
+  last=now;api.win_drag();
+ };
+ bar.addEventListener('mousedown',drag);
+ document.querySelector('.rail .brand')?.addEventListener('mousedown',drag);
+ edges.addEventListener('mousedown',e=>{const k=e.target.dataset.edge;if(k&&e.button===0){e.preventDefault();api.win_resize(k);}});
+ bar.addEventListener('click',e=>{const b=e.target.closest('[data-wb]');if(!b)return;const k=b.dataset.wb;
+  ({min:()=>api.win_min(),max:()=>api.win_toggle_max(),close:()=>api.win_close(),full:()=>api.win_fullscreen()})[k]?.().then?.(()=>setTimeout(sync,250));});
+ document.addEventListener('keydown',e=>{
+  if(e.key==='F11'){e.preventDefault();api.win_fullscreen().then(()=>setTimeout(sync,250));}
+  else if(e.key==='Escape'&&root.classList.contains('win-full')&&!document.querySelector('dialog[open]')&&$('palette').hidden){api.win_fullscreen().then(()=>setTimeout(sync,250));}
+ });
+ addEventListener('resize',()=>{clearTimeout(sync.t);sync.t=setTimeout(sync,60);});
+ addEventListener('scroll',()=>bar.classList.toggle('scrolled',scrollY>6),{passive:true});
+ sync();
+}
+addEventListener('pywebviewready',setupWinbar);
+if(window.pywebview?.api)setupWinbar();
 })();
