@@ -171,7 +171,11 @@ def riot_games(base=None):
         prod = RIOT_PRODUCTS.get(folder.name.lower())
         client = client if Path(str(client)).is_file() else j.get('rc_default') or ''
         if not prod or not folder.is_dir() or not Path(str(client)).is_file(): continue
-        exes = sorted(d.glob('*.exe'), key=lambda x: -x.stat().st_size) if d.is_dir() else []
+        # Il client di Riot tiene l'iscrizione anche dopo la disinstallazione: cartella vuota = gioco non installato.
+        try:
+            if not d.is_dir() or not any(d.iterdir()): continue
+        except OSError: continue
+        exes = sorted(d.glob('*.exe'), key=lambda x: -x.stat().st_size)
         out.append({'id': 'riot-' + prod[1], 'name': prod[0], 'store': 'Riot', 'dir': str(folder), 'size': 0, 'last': 0,
                     'launch': [str(client), f'--launch-product={prod[1]}', '--launch-patchline=live'], 'cover': False,
                     'exe': str(exes[0]) if exes else ''})

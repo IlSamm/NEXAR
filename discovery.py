@@ -230,6 +230,65 @@ def fan_control_id(sensor_id: str) -> str:
 def is_pump(nick: str, ident: str) -> bool:
     return any(w in (nick + ' ' + ident).lower() for w in ('pump', 'pompa', 'aio'))
 
+# Curva per una sola ventola: velocità (%) secondo la temperatura di CPU o GPU, eseguita da Fan Control.
+CURVE_SAFE_AT, CURVE_SAFE_MIN = 80, 50   # a 80 °C ogni curva deve dare almeno il 50%
+CURVE_PREFIX = 'NEXAR '
+
+def curve_duty(points, temp: float) -> float:
+    """La velocità che la curva comanda a questa temperatura (interpolata fra i punti)."""
+    pts = sorted(points)
+    if temp <= pts[0][0]: return pts[0][1]
+    for (t0, d0), (t1, d1) in zip(pts, pts[1:]):
+        if temp <= t1: return d0 + (d1 - d0) * (temp - t0) / (t1 - t0)
+    return pts[-1][1]
+
+def fan_curve_clean(curve, pump: bool = False) -> dict:
+    """Controlla una curva arrivata dalla dashboard: 2–6 punti, temperature 20–100 °C in salita,
+    velocità 0–100% mai in discesa, pompa mai sotto il minimo, e abbastanza forte quando scalda."""
+    if not isinstance(curve, dict) or curve.get('src') not in ('cpu', 'gpu'): raise ValueError('Curva non valida')
+    raw = curve.get('pts')
+    if not isinstance(raw, list) or not 2 <= len(raw) <= 6: raise ValueError('La curva vuole da 2 a 6 punti')
+    pts = []
+    for p in raw:
+        if not (isinstance(p, (list, tuple)) and len(p) == 2 and all(type(v) is int for v in p)): raise ValueError('Punto della curva non valido')
+        t, d = p
+        if not (20 <= t <= 100 and 0 <= d <= 100): raise ValueError('Temperature 20–100 °C, velocità 0–100%')
+        pts.append([t, d])
+    if any(b[0] <= a[0] for a, b in zip(pts, pts[1:])): raise ValueError('Le temperature devono salire da un punto al successivo')
+    if any(b[1] < a[1] for a, b in zip(pts, pts[1:])): raise ValueError('La velocità non può scendere quando la temperatura sale')
+    if pump and pts[0][1] < PUMP_MIN_PERCENT: raise ValueError(f'La pompa non scende sotto il {PUMP_MIN_PERCENT}%: raffredda il processore')
+    if curve_duty(pts, CURVE_SAFE_AT) < CURVE_SAFE_MIN:
+        raise ValueError(f'Troppo lenta quando scalda: a {CURVE_SAFE_AT} °C serve almeno il {CURVE_SAFE_MIN}%')
+    return {'src': curve['src'], 'pts': pts}
+
+def apply_fan_custom(prof: dict, custom: dict, temp_ids: dict) -> dict:
+    """Applica a un profilo di Fan Control le regolazioni delle singole ventole:
+    un numero = velocità fissa, un dizionario = curva sulla temperatura di CPU o GPU."""
+    fc = prof.setdefault('FanControl', {})
+    curves = [c for c in fc.get('FanCurves') or [] if not str(c.get('Name', '')).startswith(CURVE_PREFIX)]
+    for ctl in fc.get('Controls', []):
+        ident = str(ctl.get('Identifier', ''))
+        v = custom.get(ident)
+        if isinstance(v, int) and not isinstance(v, bool):
+            ctl['Enable'] = ctl['ManualControl'] = True
+            ctl['ManualControlValue'] = v
+            ctl['SelectedFanCurve'] = None
+        elif isinstance(v, dict):
+            source = temp_ids.get(v.get('src'))
+            if not source: raise RuntimeError('Sensore di temperatura non trovato: serve LibreHardwareMonitor acceso')
+            name = CURVE_PREFIX + ident
+            curves.append({'Name': name, 'IsHidden': False, 'CommandMode': 0,
+                           'SelectedTempSource': {'Identifier': source},
+                           'Points': [f'{t},{d}' for t, d in v['pts']],
+                           'MaximumTemperature': 100, 'MinimumTemperature': 20, 'MaximumCommand': 100,
+                           'HysteresisConfig': {'ResponseTimeUp': 2, 'ResponseTimeDown': 3, 'HysteresisValueUp': 2,
+                                                'HysteresisValueDown': 3, 'IgnoreHysteresisAtLimits': True}})
+            ctl['Enable'] = True
+            ctl['ManualControl'] = False
+            ctl['SelectedFanCurve'] = {'Name': name}
+    fc['FanCurves'] = curves
+    return prof
+
 def live_fan_rpm() -> dict[str, float]:
     """RPM attuali da LibreHardwareMonitor, per id hardware e numero del connettore (es. 'nct6687dr/11')."""
     try:

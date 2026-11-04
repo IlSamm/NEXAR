@@ -366,11 +366,11 @@ function renderFans(fans){
    c.innerHTML=`<div class="f2-dial"><svg viewBox="0 0 60 60"><circle class="f2-track" cx="30" cy="30" r="26" pathLength="100"/><circle class="f2-fill" cx="30" cy="30" r="26" pathLength="100"/></svg><svg class="i f2-spin"><use href="#i-fan"/></svg></div><div class="f2-txt"><small></small><b></b></div>`;
    c.querySelector('small').textContent=f.name.replace('CPU Fan','Radiatore').replace('Pump Fan','Pompa').replace('System Fan','Ventola case');
    box._map.set(f.name,c);box.append(c);}
-  c._f=f;const cu=(current?.fans_custom||{})[f.ctl];c.classList.toggle('custom',cu!=null);
-  c.setAttribute('aria-label',`${FAN_NICE(f.name)}: ${f.rpm} RPM${cu!=null?`, manuale al ${cu}%`:''}. Apri per regolarla`);
-  let tag=c.querySelector('.f2-tag');if(cu!=null){if(!tag){tag=el('span','f2-tag');c.append(tag);}tag.textContent=cu+'%';}else tag?.remove();
+  c._f=f;const cu=(current?.fans_custom||{})[f.ctl],cv=cu&&typeof cu==='object';c.classList.toggle('custom',cu!=null);
+  c.setAttribute('aria-label',`${FAN_NICE(f.name)}: ${f.rpm} RPM${cv?`, con curva sulla ${cu.src.toUpperCase()}`:cu!=null?`, fissa al ${cu}%`:''}. Apri per regolarla`);
+  let tag=c.querySelector('.f2-tag');if(cu!=null){if(!tag){tag=el('span','f2-tag');c.append(tag);}tag.textContent=cv?'Curva':cu+'%';tag.classList.toggle('cv',cv);}else tag?.remove();
   c.querySelector('b').innerHTML=`${f.rpm}<em>RPM</em>`;
-  if(fanSheet.f?.ctl===f.ctl)fanSheetLive(f);
+  if(fanSheet.f?.ctl===f.ctl){fanSheetLive(f);if(fanSheet.mode==='curve'&&fanSheet.drag<0)fanCurveDraw();}
   c.querySelector('.f2-fill').style.strokeDasharray=`${pct.toFixed(1)} 100`;
   c.querySelector('.f2-spin').style.animationDuration=Math.max(.3,Math.min(4,900/f.rpm)).toFixed(2)+'s';
  });
@@ -378,7 +378,8 @@ function renderFans(fans){
 }
 /* ---------- una ventola alla volta: scheda con regolazione manuale ---------- */
 const FAN_NICE=n=>String(n||'Ventola').replace('CPU Fan','Radiatore').replace('Pump Fan','Pompa AIO').replace('System Fan','Ventola case');
-const fanSheet={f:null,mode:'auto',val:50};
+const fanSheet={f:null,mode:'auto',val:50,src:'cpu',pts:null,drag:-1};
+const FAN_CURVES={quiet:[[40,20],[60,35],[72,55],[85,100]],bal:[[35,30],[55,45],[70,70],[80,100]],perf:[[30,45],[50,60],[65,85],[75,100]]};
 function fanSheetLive(f){
  fanSheet.f=f;const pump=/pump/i.test(f.name),pct=Math.min(100,f.rpm/(pump?3000:1800)*100);
  $('fs-rpm').textContent=f.rpm;$('fs-arc').style.strokeDasharray=`${pct.toFixed(1)} 100`;
@@ -387,8 +388,68 @@ function fanSheetLive(f){
 }
 function fanSheetMode(m){
  fanSheet.mode=m;document.querySelectorAll('#fs-modes button').forEach(b=>b.classList.toggle('selected',b.dataset.m===m));
- $('fs-manual').classList.toggle('off',m!=='manual');$('fs-auto').hidden=m==='manual';
+ $('fs-manual').classList.toggle('off',m!=='manual');$('fs-manual').hidden=m==='curve';$('fs-curve').hidden=m!=='curve';$('fs-auto').hidden=m!=='auto';
+ if(m==='curve')fanCurveDraw();fanSheetSafe();
 }
+/* curva: velocità secondo la temperatura di CPU o GPU, eseguita da Fan Control */
+const CV={x0:34,x1:310,y0:10,y1:156,t0:20,t1:100};
+const cvX=t=>CV.x0+(t-CV.t0)/(CV.t1-CV.t0)*(CV.x1-CV.x0),cvY=d=>CV.y0+(100-d)/100*(CV.y1-CV.y0);
+function cvDuty(pts,t){if(t<=pts[0][0])return pts[0][1];for(let i=1;i<pts.length;i++){const[a,b]=[pts[i-1],pts[i]];if(t<=b[0])return a[1]+(b[1]-a[1])*(t-a[0])/(b[0]-a[0]);}return pts[pts.length-1][1];}
+const fanIsPump=()=>/pump/i.test(fanSheet.f?.name||'');
+function fanCurveSet(pts){const min=fanIsPump()?40:0;fanSheet.pts=pts.map(([t,d])=>[t,Math.max(min,d)]);
+ for(let i=1;i<fanSheet.pts.length;i++)fanSheet.pts[i][1]=Math.max(fanSheet.pts[i][1],fanSheet.pts[i-1][1]);fanCurveDraw();fanSheetSafe();}
+function fanCurveNow(){const t=fanSheet.src==='gpu'?current?.gpu_temp:current?.cpu_temp;return typeof t==='number'?t:null;}
+function fanCurveDraw(){
+ const g=$('fs-graph'),P=fanSheet.pts;if(!P)return;const ns='http://www.w3.org/2000/svg';
+ const mk=(tag,a,cls)=>{const n=document.createElementNS(ns,tag);for(const k in a)n.setAttribute(k,a[k]);if(cls)n.setAttribute('class',cls);return n;};
+ if(!g._init){g._init=true;g.replaceChildren();
+  const defs=mk('defs',{});defs.innerHTML='<linearGradient id="fs-cv-g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#22d3ee" stop-opacity=".42"/><stop offset="1" stop-color="#22d3ee" stop-opacity="0"/></linearGradient>';g.append(defs);
+  g.append(mk('rect',{x:cvX(CV.t0),y:CV.y0,width:cvX(100)-cvX(CV.t0),height:CV.y1-CV.y0,rx:8},'cv-bg'));
+  g.append(mk('rect',{x:cvX(80),y:CV.y0,width:cvX(100)-cvX(80),height:CV.y1-CV.y0},'cv-hot'));
+  [40,60,80].forEach(t=>{g.append(mk('line',{x1:cvX(t),x2:cvX(t),y1:CV.y0,y2:CV.y1},'cv-grid'));const l=mk('text',{x:cvX(t),y:CV.y1+17,'text-anchor':'middle'},'cv-lab');l.textContent=t+'°';g.append(l);});
+  [25,50,75].forEach(d=>{g.append(mk('line',{x1:CV.x0,x2:CV.x1,y1:cvY(d),y2:cvY(d)},'cv-grid'));});
+  [0,50,100].forEach(d=>{const l=mk('text',{x:CV.x0-7,y:cvY(d)+4,'text-anchor':'end'},'cv-lab');l.textContent=d+'%';g.append(l);});
+  g.append(mk('path',{d:''},'cv-area'));g.append(mk('path',{d:''},'cv-line'));
+  g.append(mk('line',{x1:0,x2:0,y1:CV.y0,y2:CV.y1},'cv-now'));g.append(mk('circle',{r:5,cx:0,cy:0},'cv-now-dot'));
+  g._pts=[];
+ }
+ while(g._pts.length>P.length)g._pts.pop().remove();
+ while(g._pts.length<P.length){const i=g._pts.length,h=mk('g',{tabindex:0,role:'slider'},'cv-pt');h.append(mk('circle',{r:16},'cv-hit'),mk('circle',{r:7.5},'cv-dot'));
+  h.addEventListener('pointerdown',e=>{e.preventDefault();fanSheet.drag=i;g.setPointerCapture(e.pointerId);h.classList.add('drag');});
+  h.addEventListener('keydown',e=>{const k={ArrowLeft:[-1,0],ArrowRight:[1,0],ArrowUp:[0,1],ArrowDown:[0,-1]}[e.key];if(!k)return;e.preventDefault();const p=fanSheet.pts[i];fanCurveMove(i,p[0]+k[0],p[1]+k[1]*(e.shiftKey?10:2));});
+  g.append(h);g._pts.push(h);}
+ const xy=P.map(([t,d])=>[cvX(t),cvY(d)]),line=`M${cvX(CV.t0)},${xy[0][1]} `+xy.map(p=>'L'+p.join(',')).join(' ')+` L${cvX(100)},${xy[xy.length-1][1]}`;
+ g.querySelector('.cv-line').setAttribute('d',line);g.querySelector('.cv-area').setAttribute('d',line+` L${cvX(100)},${CV.y1} L${cvX(CV.t0)},${CV.y1} Z`);
+ P.forEach(([t,d],i)=>{const h=g._pts[i];h.setAttribute('transform',`translate(${cvX(t)},${cvY(d)})`);h.setAttribute('aria-label',`Punto ${i+1}: ${t} gradi, ${d}%`);});
+ const now=fanCurveNow(),nl=g.querySelector('.cv-now'),nd=g.querySelector('.cv-now-dot');
+ if(now==null){nl.classList.add('gone');nd.classList.add('gone');$('fs-cv-now').textContent='temperatura —';}
+ else{const t=Math.max(CV.t0,Math.min(100,now)),d=cvDuty(P,t);nl.classList.remove('gone');nd.classList.remove('gone');
+  nl.setAttribute('x1',cvX(t));nl.setAttribute('x2',cvX(t));nd.setAttribute('cx',cvX(t));nd.setAttribute('cy',cvY(d));
+  $('fs-cv-now').innerHTML=`<b>${Math.round(now)}°</b> → <b>${Math.round(d)}%</b> ora`;}
+ document.querySelectorAll('#fs-src button').forEach(b=>b.classList.toggle('selected',b.dataset.s===fanSheet.src));
+ document.querySelectorAll('#fs-cpresets button').forEach(b=>b.classList.toggle('selected',JSON.stringify(FAN_CURVES[b.dataset.c].map(([t,d])=>[t,Math.max(fanIsPump()?40:0,d)]))===JSON.stringify(P)));
+}
+function fanCurveMove(i,t,d){
+ const P=fanSheet.pts,min=fanIsPump()?40:0,lo=i?P[i-1]:null,hi=P[i+1];
+ t=Math.round(Math.max(lo?lo[0]+3:CV.t0,Math.min(hi?hi[0]-3:100,t)));d=Math.round(Math.max(lo?lo[1]:min,Math.min(hi?hi[1]:100,d)));
+ P[i]=[t,d];fanCurveDraw();fanSheetSafe();
+}
+function fanSheetSafe(){
+ const ap=$('fs-apply'),bad=fanSheet.mode==='curve'&&fanSheet.pts&&cvDuty(fanSheet.pts,80)<50;
+ ap.disabled=!!bad&&!!current?.fans_manual_ready;
+ $('fs-cnote').textContent=bad?'Troppo lenta quando scalda: a 80 °C serve almeno il 50%. Alza l\'ultimo punto.'
+  :fanIsPump()?'La pompa non scende sotto il 40%.':'Trascina i punti. Fan Control la segue da solo, anche a NEXAR chiusa.';
+ $('fs-cnote').classList.toggle('bad',!!bad);
+}
+$('fs-graph').addEventListener('pointermove',e=>{
+ if(fanSheet.drag<0)return;const g=$('fs-graph'),m=g.getScreenCTM();if(!m)return;
+ const p=new DOMPoint(e.clientX,e.clientY).matrixTransform(m.inverse());
+ fanCurveMove(fanSheet.drag,CV.t0+(p.x-CV.x0)/(CV.x1-CV.x0)*(CV.t1-CV.t0),100-(p.y-CV.y0)/(CV.y1-CV.y0)*100);
+});
+const cvEnd=()=>{if(fanSheet.drag<0)return;fanSheet.drag=-1;document.querySelectorAll('.cv-pt.drag').forEach(h=>h.classList.remove('drag'));};
+$('fs-graph').addEventListener('pointerup',cvEnd);$('fs-graph').addEventListener('pointercancel',cvEnd);
+document.querySelectorAll('#fs-src button').forEach(b=>b.addEventListener('click',()=>{fanSheet.src=b.dataset.s;fanCurveDraw();}));
+document.querySelectorAll('#fs-cpresets button').forEach(b=>b.addEventListener('click',()=>fanCurveSet(FAN_CURVES[b.dataset.c])));
 function fanSheetVal(v){
  const pump=/pump/i.test(fanSheet.f?.name||''),min=pump?40:0;v=Math.max(min,Math.min(100,Math.round(v)));fanSheet.val=v;
  const r=$('fs-range');r.min=min;r.value=v;r.style.setProperty('--v',((v-min)/(100-min)*100).toFixed(1)+'%');
@@ -401,8 +462,10 @@ function openFan(f){
  if(!f)return;const d=$('fan-sheet'),cu=(current?.fans_custom||{})[f.ctl],ready=!!current?.fans_manual_ready,enabled=current?.fans_enabled!==false;
  $('fs-name').textContent=FAN_NICE(f.name);
  $('fs-kind').textContent=/pump/i.test(f.name)?'Pompa del liquido':/cpu/i.test(f.name)?'Radiatore del processore':/system/i.test(f.name)?'Ventola del case':'Ventola';
- $('fs-mode').textContent=cu!=null?`manuale al ${cu}%`:'segue il profilo';
- fanSheetLive(f);fanSheetMode(cu!=null?'manual':'auto');fanSheetVal(cu??(/pump/i.test(f.name)?60:50));
+ const cv=cu&&typeof cu==='object';
+ $('fs-mode').textContent=cv?`curva sulla ${cu.src.toUpperCase()}`:cu!=null?`fissa al ${cu}%`:'segue il profilo';
+ fanSheetLive(f);fanSheet.src=cv?cu.src:(/gpu/i.test(f.name)?'gpu':'cpu');fanCurveSet(cv?cu.pts.map(p=>[...p]):FAN_CURVES.bal);
+ fanSheetVal(typeof cu==='number'?cu:(/pump/i.test(f.name)?60:50));fanSheetMode(cv?'curve':cu!=null?'manual':'auto');
  $('fs-ctl').hidden=!ready||!enabled||!f.ctl;$('fs-setup').hidden=ready&&enabled;
  $('fs-setup-text').textContent=!enabled?'La gestione delle ventole non è collegata: attivala da Collegamenti (serve Fan Control).'
   :current?.remote?'Per regolare ogni ventola a mano serve una conferma da amministratore, una volta sola: falla dalla app sul PC.'
@@ -420,9 +483,10 @@ $('fan-sheet').addEventListener('click',e=>{if(e.target===e.currentTarget)closeF
 $('fs-apply').addEventListener('click',async()=>{
  const f=fanSheet.f;if(!f)return;
  if(!current?.fans_manual_ready){closeFan();post('/api/fans/setup',{});return;}
- const percent=fanSheet.mode==='manual'?fanSheet.val:null;closeFan();
- if(demo){notify(`✓ ${FAN_NICE(f.name)}: `+(percent==null?'torna al profilo':`${percent}% fisso`));return;}
- post('/api/fans/one',{id:f.ctl,percent});
+ const percent=fanSheet.mode==='manual'?fanSheet.val:null,curve=fanSheet.mode==='curve'?{src:fanSheet.src,pts:fanSheet.pts.map(p=>[...p])}:null;closeFan();
+ if(demo){current.fans_custom[f.ctl]=curve||percent;if(curve==null&&percent==null)delete current.fans_custom[f.ctl];
+  notify(`✓ ${FAN_NICE(f.name)}: `+(curve?`curva sulla ${curve.src.toUpperCase()}`:percent==null?'torna al profilo':`${percent}% fisso`));return;}
+ post('/api/fans/one',{id:f.ctl,percent,curve});
 });
 const COMP_ICON={cpu:'cpu',gpu:'gpu',board:'grid',ram:'ram',disks:'disk',cooling:'fan',rgb:'bulb',usb:'plug',monitor:'monitor',loss:'bolt'};
 let donutPick=null;
@@ -746,7 +810,9 @@ const DEMO_OPT={report:{total:6.1e9,at:'2026-11-04T08:30:00',items:[
  large:{files:[{path:'C:/x/a.vmdk',name:'Debian 10.x 64-bit.vmdk',folder:'C:\\Users\\samue\\Documents\\Virtual Machines',bytes:1.6e10,mtime:1720000000,kind:'vmdk'},
   {path:'C:/x/b.mp4',name:'Clip partita.mp4',folder:'C:\\Users\\samue\\Videos',bytes:2.2e9,mtime:1760000000,kind:'mp4'}],total:1.82e10,count:2,at:Date.now()/1000},
  health:{at:Date.now()/1000,disks:[{name:'Sabrent',media:'SSD',bus:'NVMe',health:'Healthy',size:1.02e12,ok:true,temp:41,wear:3},{name:'WDC WD10EARS',media:'Disco',bus:'SATA',health:'Healthy',size:1e12,ok:true}]},
- net:{at:Date.now()/1000,router:{host:'192.168.0.1',ms:1,loss:0},internet:{host:'1.1.1.1',ms:21,loss:0},google:{host:'8.8.8.8',ms:22,loss:0},dns_ms:35,quality:'ottima'}};
+ net:{at:Date.now()/1000,router:{host:'192.168.0.1',ms:1,loss:0},internet:{host:'1.1.1.1',ms:21,loss:0},google:{host:'8.8.8.8',ms:22,loss:0},dns_ms:35,quality:'ottima'},
+ net_auto:true,net_history:Array.from({length:72},(_,i)=>{const at=Date.now()/1000-(71-i)*7200,hr=new Date(at*1000).getHours(),eve=hr>=20&&hr<=23;
+  return {at,ms:i===40?null:Math.round(18+Math.sin(i*1.7)*3+(eve?14:0)+(i===55?95:0)),router:1,dns:30,q:i===40?'offline':'ottima',auto:true};})};
 const DEMO_PROC={cpu_total:14,ram:{used:1.6e10,total:3.2e10,percent:51},count:312,
  by_cpu:[{name:'chrome.exe',cpu:6.2,bytes:1.9e9,count:24,closable:true},{name:'Discord.exe',cpu:2.1,bytes:6e8,count:6,closable:true},{name:'svchost.exe',cpu:1.3,bytes:1.6e9,count:80,closable:false}],
  by_ram:[{name:'ChatGPT.exe',cpu:.4,bytes:2.6e9,count:9,closable:true},{name:'chrome.exe',cpu:6.2,bytes:1.9e9,count:24,closable:true},{name:'svchost.exe',cpu:1.3,bytes:1.6e9,count:80,closable:false}]};
@@ -787,7 +853,7 @@ function renderOptimize(d){
  const last=(d.history||[])[0];$('opt-auto-lbl').textContent=d.auto?'Pulizia automatica attiva':'Pulizia automatica spenta';$('opt-freed-sub').textContent=last?`Ultima ${ago(last.at)}`:'Mai fatta';
  renderChecks(d,h);
  $('tb-clean').textContent=d.report?bytes(d.report.total):'';$('tb-startup').textContent=h.on||'';$('tb-large').textContent=d.large?.count||'';
- renderClean(d);renderStartup(d.startup||[]);renderDisks(d);renderLarge(d.large);renderNet(d.net);renderOptHistory(d);
+ renderClean(d);renderStartup(d.startup||[]);renderDisks(d);renderLarge(d.large);renderNet(d.net);renderNetHist(d);renderOptHistory(d);
  renderZones();
 }
 function scoreTicks(score){
@@ -959,6 +1025,36 @@ function netRun(){
  if(demo){netTimers.push(setTimeout(()=>{netRunning=true;renderNet({...DEMO_OPT.net,at:Date.now()/1000});},4300));return;}
  post('/api/optimize/net',{});
 }
+function renderNetHist(d){
+ // Andamento: tempo verso internet di ogni prova (manuali e automatiche), con fascia del "solito" e punti rossi se cade.
+ const h=(d.net_history||[]).slice(-72),svg=$('nh-chart'),ok=h.filter(r=>r.ms!=null);
+ $('net-auto').setAttribute('aria-checked',d.net_auto?'true':'false');
+ $('nh-auto-txt').textContent=d.net_auto?'Prova ogni ora · avviso se peggiora':'Prova automatica spenta';
+ $('net-hist').classList.toggle('empty',h.length<2);
+ if(h.length<2){svg.replaceChildren();$('nh-stats').replaceChildren();$('nh-axis').replaceChildren();
+  $('nh-sub').textContent=d.net_auto?'Le prove automatiche arrivano una volta all\'ora: qui vedrai come va la rete nei giorni.':'Ogni prova finisce qui.';return;}
+ const vals=ok.map(r=>r.ms).sort((a,b)=>a-b),med=vals[Math.floor(vals.length/2)]??0,max=Math.max(40,...vals)*1.15,W=600,H=150;
+ const t0=h[0].at,t1=h[h.length-1].at||t0+1,X=t=>(t-t0)/Math.max(1,t1-t0)*W,Y=v=>H-6-(v/max)*(H-16);
+ const ns='http://www.w3.org/2000/svg',mk=(t,a)=>{const e=document.createElementNS(ns,t);for(const k in a)e.setAttribute(k,a[k]);return e;};
+ // punti tondi anche con il grafico stirato: linea lunga zero con estremi arrotondati
+ const dot=(x,y,c)=>mk('line',{x1:x,x2:x,y1:y,y2:y,class:'nh-dot '+c});
+ svg.replaceChildren();
+ const defs=mk('defs',{});defs.innerHTML='<linearGradient id="nh-g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#38bdf8" stop-opacity=".35"/><stop offset="1" stop-color="#38bdf8" stop-opacity="0"/></linearGradient>';svg.append(defs);
+ svg.append(mk('line',{x1:0,x2:W,y1:Y(med),y2:Y(med),class:'nh-med'}));
+ let path='',started=false;h.forEach(r=>{if(r.ms==null){started=false;return;}path+=(started?'L':'M')+X(r.at).toFixed(1)+','+Y(r.ms).toFixed(1)+' ';started=true;});
+ const segs=path.trim().split(/(?=M)/);
+ segs.forEach(sg=>{const pts=sg.slice(1).trim().split(' L').map(p=>p.split(',').map(Number));if(!pts.length||!pts[0].length)return;
+  svg.append(mk('path',{d:sg+` L${pts[pts.length-1][0]},${H} L${pts[0][0]},${H} Z`,class:'nh-area'}));svg.append(mk('path',{d:sg,class:'nh-line'}));});
+ h.forEach(r=>{if(r.ms==null)svg.append(mk('rect',{x:X(r.at)-2,y:0,width:4,height:H,class:'nh-off'}));
+  else if(r.ms>=Math.max(80,med*3))svg.append(dot(X(r.at),Y(r.ms),'nh-bad'));});
+ const last=ok[ok.length-1];if(last)svg.append(dot(X(last.at),Y(last.ms),'nh-last-o'),dot(X(last.at),Y(last.ms),'nh-last'));
+ const off=h.length-ok.length,avg=ok.length?Math.round(ok.reduce((a,r)=>a+r.ms,0)/ok.length):null;
+ const st=[['Di solito',med+' ms'],['Media',avg!=null?avg+' ms':'—'],['Peggiore',vals.length?vals[vals.length-1]+' ms':'—'],['Senza rete',off?`${off} ${off>1?'volte':'volta'}`:'mai']];
+ $('nh-stats').replaceChildren(...st.map(([k,v])=>{const c=el('div','nh-st');c.append(el('small','',k),el('b','',v));return c;}));
+ $('nh-sub').textContent=`${h.length} prove dal ${new Date(t0*1000).toLocaleDateString('it-IT',{day:'numeric',month:'short'})} · la linea tratteggiata è il tuo solito`;
+ const fmt=t=>{const dt=new Date(t*1000),days=(t1-t0)/86400;return days>1.5?dt.toLocaleDateString('it-IT',{weekday:'short',day:'numeric'}):dt.toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'});};
+ $('nh-axis').replaceChildren(...[t0,(t0+t1)/2,t1].map(t=>el('span','',fmt(t))));
+}
 function latPos(ms){return ms==null?1:Math.min(1,Math.sqrt(ms/150));}
 function renderNet(n){
  const box=$('opt-net');if(!n)return;
@@ -1068,6 +1164,8 @@ $('opt-auto').addEventListener('click',()=>post('/api/optimize/auto',{enabled:$(
 $('opt-large-scan').addEventListener('click',()=>post('/api/optimize/large/scan',{}));
 $('opt-health-btn').addEventListener('click',()=>post('/api/optimize/health',{}));
 $('opt-net-btn').addEventListener('click',netRun);
+$('net-auto').addEventListener('click',()=>{const on=$('net-auto').getAttribute('aria-checked')!=='true';
+ if(demo){DEMO_OPT.net_auto=on;renderNetHist(DEMO_OPT);return;}post('/api/optimize/net/auto',{enabled:on}).then(()=>loadOptimize(true));});
 $('opt-dns').addEventListener('click',()=>post('/api/optimize/dns',{}));
 $('opt-trim').addEventListener('click',()=>post('/api/optimize/trim',{}));
 $('zc-opt-btn').addEventListener('click',e=>{e.stopPropagation();navigate('optimize');setTimeout(quickOptimize,350);});
@@ -1615,6 +1713,22 @@ function renderGaming(d,animate=false){
  renderLibrary(animate);renderBoostApps(d);renderHistory(d.history||[]);
  renderGamingLive(current||statusDemo);
 }
+let libSort='recent';try{libSort=localStorage.getItem('nexar.libSort')||'recent';}catch(e){}
+function libHero(g,running){
+ // "Continua a giocare": l'ultimo gioco aperto, grande, con il tasto per ripartire subito.
+ const h=$('lib-hero');if(!g){h.hidden=true;h.replaceChildren();h._id=null;return;}
+ const playing=g.id===running,key=g.id+'|'+playing+'|'+g.last;if(h._id===key&&!h.hidden)return;h._id=key;h.hidden=false;
+ h.style.setProperty('--h',hue(g.name));h.style.setProperty('--sc',STORE_COLORS[g.store]||'#94a3b8');h.className='lib-hero';
+ const bg=el('div','lh-bg'),body=el('div','lh-body'),txt=el('div','lh-txt');
+ txt.append(el('small','',playing?'In gioco ora':'Continua a giocare'),el('b','',g.name),
+  el('span','',[g.store,'ultima volta '+ago(g.last),g.playtime?playtime(g.playtime)+' in tutto':''].filter(Boolean).join(' · ')));
+ const go=el('button','btn primary lh-go');go.type='button';go.append(icon('play'),el('span','',playing?'In gioco':'Gioca'));go.disabled=playing;
+ go.addEventListener('click',()=>launchGame(g));body.append(txt,go);
+ const img=u=>{if(!u)return false;const im=el('img');im.alt='';im.onload=()=>h.classList.add('ready');im.src=u;bg.append(im);return true;};
+ if(g.cover)coverUrl(g.id,'header').then(u=>img(u)||coverUrl(g.id,'capsule').then(img));
+ else if(g.icon)coverUrl(g.id,'icon').then(u=>{if(img(u))h.classList.add('icon');});
+ h.replaceChildren(bg,el('i','lh-scrim'),body);
+}
 function renderLibrary(animate=false){
  const d=gameData;if(!d)return;const games=d.games||[];const q=$('lib-search').value.trim().toLowerCase();
  const stores=[...new Set(games.filter(g=>!g.hidden).map(g=>g.store))];if(libStore&&!stores.includes(libStore))libStore='';
@@ -1623,6 +1737,10 @@ function renderLibrary(animate=false){
   b.addEventListener('click',()=>{libStore=st;renderLibrary(true);});return b;}));
  const hiddenN=games.filter(g=>g.hidden).length;
  const list=games.filter(g=>(showHidden||!g.hidden)&&(!libStore||g.store===libStore)&&(!q||g.name.toLowerCase().includes(q)));
+ const byName=(a,b)=>a.name.localeCompare(b.name,'it',{sensitivity:'base'});
+ list.sort(libSort==='az'?byName:libSort==='time'?(a,b)=>(b.playtime||0)-(a.playtime||0)||byName(a,b):(a,b)=>(b.last||0)-(a.last||0)||byName(a,b));
+ document.querySelectorAll('#lib-sort button').forEach(b=>b.classList.toggle('selected',b.dataset.sort===libSort));
+ libHero(!q&&!libStore?games.filter(g=>!g.hidden&&g.last).sort((a,b)=>b.last-a.last)[0]:null,(current?.boost||d.boost)?.running?.id);
  const running=(current?.boost||d.boost)?.running?.id;
  $('lib-sub').textContent=games.length?`${games.length-hiddenN} giochi · ${stores.join(', ')}`:'Nessun gioco trovato';
  const lh=$('lib-hidden');lh.hidden=!hiddenN;lh.textContent=showHidden?'Nascondi i programmi esclusi':`Mostra ${hiddenN} ${hiddenN>1?'esclusi':'escluso'}`;
@@ -1754,7 +1872,8 @@ document.querySelectorAll('[data-boost]').forEach(t=>t.addEventListener('click',
 document.querySelectorAll('#game-fans [data-fans]').forEach(b=>b.addEventListener('click',()=>saveGaming({fans:b.dataset.fans})));
 $('game-main').addEventListener('click',()=>heroAction($('game-main').dataset.act,$('game-main')));
 $('game-second').addEventListener('click',()=>heroAction($('game-second').dataset.act,$('game-second')));
-$('lib-search').addEventListener('input',renderLibrary);
+$('lib-search').addEventListener('input',()=>renderLibrary());
+document.querySelectorAll('#lib-sort button').forEach(b=>b.addEventListener('click',()=>{libSort=b.dataset.sort;try{localStorage.setItem('nexar.libSort',libSort);}catch(e){}renderLibrary(true);}));
 $('lib-reload').addEventListener('click',()=>loadGaming(true,true));
 $('lib-hidden').addEventListener('click',()=>{showHidden=!showHidden;renderLibrary();});
 $('boost-reload').addEventListener('click',()=>loadGaming());

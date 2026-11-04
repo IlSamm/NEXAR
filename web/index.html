@@ -238,9 +238,11 @@
       <div class="lib-tools">
        <label class="search"><svg class="i"><use href="#i-search"/></svg><input id="lib-search" type="search" placeholder="Cerca un gioco" autocomplete="off"></label>
        <div class="seg3" id="lib-stores"></div>
+       <div class="seg3" id="lib-sort" role="group" aria-label="Ordina"><button type="button" data-sort="recent">Recenti</button><button type="button" data-sort="time">Più giocati</button><button type="button" data-sort="az">A–Z</button></div>
        <button class="icon-btn" type="button" id="lib-reload" aria-label="Aggiorna libreria"><svg class="i"><use href="#i-refresh"/></svg></button>
       </div>
      </div>
+     <div class="lib-hero" id="lib-hero" hidden></div>
      <div class="game-grid" id="game-grid"><p class="muted">Cerco i giochi…</p></div>
      <button class="link-btn" type="button" id="lib-hidden" hidden></button>
     </section>
@@ -548,6 +550,13 @@
      <div class="card-head"><div><h3>Rete</h3><p id="opt-net-sub">Quanto ci mette il PC a raggiungere router, internet e DNS</p></div>
       <div class="btn-row tight"><button class="btn" type="button" id="opt-dns"><svg class="i"><use href="#i-wave"/></svg>Svuota DNS</button><button class="btn primary" type="button" id="opt-net-btn"><svg class="i"><use href="#i-refresh"/></svg>Prova la rete</button></div></div>
      <div class="net-grid" id="opt-net"><p class="muted">Premi Prova la rete: 5 secondi.</p></div>
+     <div class="net-hist" id="net-hist">
+      <div class="nh-head"><div><b>Andamento</b><small id="nh-sub">Ogni prova finisce qui</small></div>
+       <div class="nh-auto"><span id="nh-auto-txt">Prova ogni ora</span><button class="toggle" type="button" id="net-auto" role="switch" aria-label="Prova della rete ogni ora"><span></span></button></div></div>
+      <div class="nh-stats" id="nh-stats"></div>
+      <svg class="nh-chart" id="nh-chart" viewBox="0 0 600 150" preserveAspectRatio="none" aria-hidden="true"></svg>
+      <div class="nh-axis" id="nh-axis"></div>
+     </div>
     </section>
    </section>
 
@@ -697,12 +706,18 @@
   <button class="icon-btn fs-x" type="button" id="fs-close" aria-label="Chiudi"><svg class="i"><use href="#i-x"/></svg></button>
  </div>
  <div id="fs-ctl">
-  <div class="seg-ink fs-seg" id="fs-modes"><i class="si-ink"></i><button type="button" data-m="auto"><svg class="i"><use href="#i-refresh"/></svg><span>Automatica</span></button><button type="button" data-m="manual"><svg class="i"><use href="#i-sliders"/></svg><span>Manuale</span></button></div>
+  <div class="seg-ink fs-seg" id="fs-modes"><i class="si-ink"></i><button type="button" data-m="auto"><svg class="i"><use href="#i-refresh"/></svg><span>Automatica</span></button><button type="button" data-m="manual"><svg class="i"><use href="#i-sliders"/></svg><span>Fissa</span></button><button type="button" data-m="curve"><svg class="i"><use href="#i-temp"/></svg><span>Curva</span></button></div>
   <div class="fs-manual" id="fs-manual">
    <div class="fs-val"><b id="fs-pct">50</b><span>%</span></div>
    <input type="range" class="fs-range" id="fs-range" min="0" max="100" step="1" value="50" aria-label="Velocità della ventola">
    <div class="fs-presets" id="fs-presets"><button type="button" data-p="0">Ferma</button><button type="button" data-p="25">25%</button><button type="button" data-p="50">50%</button><button type="button" data-p="75">75%</button><button type="button" data-p="100">Max</button></div>
    <p class="fs-note" id="fs-note"></p>
+  </div>
+  <div class="fs-curve" id="fs-curve" hidden>
+   <div class="fs-cv-top"><div class="fs-src" id="fs-src" role="group" aria-label="Temperatura da seguire"><button type="button" data-s="cpu">Segue la CPU</button><button type="button" data-s="gpu">Segue la GPU</button></div><span class="fs-cv-now" id="fs-cv-now"></span></div>
+   <svg class="fs-graph" id="fs-graph" viewBox="0 0 320 184" role="img" aria-label="Curva: velocità della ventola secondo la temperatura"></svg>
+   <div class="fs-presets fs-cpresets" id="fs-cpresets"><button type="button" data-c="quiet">Silenziosa</button><button type="button" data-c="bal">Bilanciata</button><button type="button" data-c="perf">Prestazioni</button></div>
+   <p class="fs-note" id="fs-cnote"></p>
   </div>
   <p class="fs-auto" id="fs-auto">Segue il livello scelto nella pagina (Spente, ECO, Normale o Massimo).</p>
  </div>

@@ -107,14 +107,14 @@ def gpu_read():
 def collect_sensors(url: str):
     # URL di telemetria solo su loopback: nessun SSRF da configurazioni remote.
     if url not in ('http://127.0.0.1:8085/data.json', 'http://localhost:8085/data.json'):
-        return {'cpu_temp':None,'fans':[],'cpu_power':None}
+        return {'cpu_temp':None,'fans':[],'cpu_power':None,'temp_ids':{}}
     try:
         with urlopen(url, timeout=0.6) as response:
             if int(response.headers.get('Content-Length', 0)) > 1_000_000: raise ValueError('JSON troppo grande')
             tree = json.loads(response.read(1_000_001))
     except Exception:
-        return {'cpu_temp':None,'fans':[],'cpu_power':None}
-    candidates, fans, cpu_power = [], [], []
+        return {'cpu_temp':None,'fans':[],'cpu_power':None,'temp_ids':{}}
+    candidates, fans, cpu_power, gpu_ids = [], [], [], []
     def walk(node, trail):
         if isinstance(node, list):
             for n in node: walk(n, trail)
@@ -131,7 +131,11 @@ def collect_sensors(url: str):
                 if 'tctl' in low or 'tdie' in low: score += 10
                 if 'package' in low: score += 7
                 if 'core' in low: score += 4
-                candidates.append((score, value))
+                candidates.append((score, value, str(node.get('SensorId',''))))
+            # Sensore della GPU per le curve delle ventole (Fan Control lo legge con lo stesso id).
+            gm = re.match(r'/gpu-(nvidia|amd|intel)/\d+/temperature/', sensor_id)
+            if gm and (kind == 'temperature' or '°c' in str(node.get('Value',''))):
+                gpu_ids.append(({'nvidia': 0, 'amd': 1, 'intel': 2}[gm.group(1)], 'core' not in name.lower(), str(node.get('SensorId',''))))
             if (kind == 'fan' or 'rpm' in str(node.get('Value','')).lower()) and 0 <= value < 10000:
                 if len(fans) < 12:
                     import discovery
@@ -141,8 +145,10 @@ def collect_sensors(url: str):
                 cpu_power.append(value)
         for child in node.get('Children', []): walk(child, trail + [name])
     walk(tree, [])
-    return {'cpu_temp': sorted(candidates, reverse=True)[0][1] if candidates else None,'fans':fans,
-            'cpu_power': cpu_power[0] if cpu_power else None}
+    best = sorted(candidates, key=lambda c: c[0], reverse=True)[0] if candidates else None
+    temp_ids = {k: v for k, v in (('cpu', best[2] if best else ''), ('gpu', sorted(gpu_ids)[0][2] if gpu_ids else '')) if v}
+    return {'cpu_temp': best[1] if best else None,'fans':fans,
+            'cpu_power': cpu_power[0] if cpu_power else None, 'temp_ids': temp_ids}
 
 HIGH_PERFORMANCE = '8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c'
 USB_SUSPEND = ('2a737441-1930-4402-8d77-b2bebba308a3', '48e6b7a6-50f5-4782-a5d4-53bb8f07e226')
@@ -285,12 +291,66 @@ class Control:
             if kind == 'automatica': self.state['optimize_last_auto'] = int(time.time())
             json_save(STATE_FILE, self.state)
 
+    NET_EVERY = 3600   # prova automatica della rete: una volta all'ora
+    NET_KEEP = 336     # due settimane di prove orarie
+
+    def record_net(self, n, auto=False):
+        """Ogni prova della rete finisce nello storico (internet, router, DNS): la pagina ne disegna l'andamento."""
+        def ms(x): return (x or {}).get('ms') if isinstance(x, dict) else None
+        row = {'at': int(n.get('at') or time.time()), 'ms': ms(n.get('internet')), 'router': ms(n.get('router')),
+               'dns': n.get('dns_ms'), 'loss': (n.get('internet') or {}).get('loss'), 'q': n.get('quality'), 'auto': bool(auto)}
+        with self.lock:
+            self.net_report = n
+            h = self.state.setdefault('net_history', [])
+            h.append(row); del h[:-self.NET_KEEP]
+            json_save(STATE_FILE, self.state)
+        return row
+
+    def net_alert(self, row):
+        """Avviso (Telegram e notifica) quando internet cade o diventa molto più lento del solito.
+        Una volta ogni 6 ore al massimo, e un messaggio quando torna normale."""
+        hist = [r for r in (self.state.get('net_history') or [])[:-1] if r.get('ms') is not None][-24:]
+        usual = sorted(r['ms'] for r in hist)[len(hist) // 2] if len(hist) >= 3 else None
+        bad = (row.get('q') == 'offline' and 'internet non raggiungibile') or \
+              (usual is not None and row.get('ms') is not None and row['ms'] >= max(80, usual * 3) and
+               f"internet a {row['ms']} ms (di solito {usual} ms)") or \
+              ((row.get('loss') or 0) >= 50 and f"{row['loss']}% di pacchetti persi")
+        now = time.time()
+        if bad:
+            if now - float(self.state.get('net_alert_at') or 0) < 6 * 3600: return None
+            msg = '📶 Rete: ' + bad
+            with self.lock: self.state['net_alert_at'] = now; self.state['net_alert_open'] = True; json_save(STATE_FILE, self.state)
+        elif self.state.get('net_alert_open'):
+            msg = f"📶 Rete di nuovo a posto: internet {row.get('ms')} ms"
+            with self.lock: self.state['net_alert_open'] = False; json_save(STATE_FILE, self.state)
+        else: return None
+        self.log_event(msg); self.notify(msg)
+        return msg
+
+    def set_net_auto(self, enabled):
+        with self.lock:
+            self.config.setdefault('optimize', {})['net_auto'] = bool(enabled)
+            json_save(CONFIG_FILE, self.config)
+        return 'Prova della rete automatica ' + ('attiva: una volta all\'ora, con avviso se peggiora' if enabled else 'spenta')
+
+    def net_loop(self, stop_event):
+        """Prova della rete ogni ora (se attiva), mai mentre si gioca: tiene lo storico e avvisa se peggiora."""
+        import optimizer
+        while not stop_event.wait(60):
+            try:
+                if not self.config.get('optimize', {}).get('net_auto', True) or self.booster.active: continue
+                last = max([r.get('at', 0) for r in (self.state.get('net_history') or []) if r.get('auto')] or [0])
+                if time.time() - last < self.NET_EVERY: continue
+                self.net_alert(self.record_net(optimizer.network_check(), auto=True))
+            except Exception: logging.exception('Prova della rete automatica')
+
     def optimize_extra(self):
         o = self.config.get('optimize', {})
         last = int(self.state.get('optimize_last_auto') or 0)
         return {'history': list(self.state.get('optimize_history') or [])[:12], 'freed_total': int(self.state.get('optimize_freed_total', 0)),
                 'auto': bool(o.get('auto')), 'auto_last': last or None, 'auto_next': (last + 7 * 86400) if o.get('auto') and last else None,
-                'large': getattr(self, 'large_report', None), 'health': getattr(self, 'disk_report', None), 'net': getattr(self, 'net_report', None)}
+                'large': getattr(self, 'large_report', None), 'health': getattr(self, 'disk_report', None), 'net': getattr(self, 'net_report', None),
+                'net_history': list(self.state.get('net_history') or [])[-168:], 'net_auto': bool(o.get('net_auto', True))}
 
     def set_optimize_auto(self, enabled):
         with self.lock:
@@ -690,14 +750,15 @@ class Control:
             self.fans_manual_cache = (time.monotonic(), ready)
         return ready
 
-    def fan_set(self, ident, percent):
-        """Una sola ventola a velocità fissa (0–100%) o di nuovo come il profilo scelto (percent None).
-        Le altre restano come il livello attuale (Spente/ECO/Normale/Massimo)."""
+    def fan_set(self, ident, percent, curve=None):
+        """Una sola ventola a velocità fissa (0–100%), con una curva sulla temperatura (curve) o di nuovo
+        come il profilo scelto (entrambi None). Le altre restano come il livello attuale."""
         import discovery
         cfg = self.config.get('fans', {})
         if not cfg.get('enabled'): raise RuntimeError('Gestione ventole non attiva')
         if not isinstance(ident, str) or not re.fullmatch(r'/[A-Za-z0-9_/-]{3,80}', ident): raise ValueError('Ventola non valida')
         if percent is not None and (type(percent) is not int or not 0 <= percent <= 100): raise ValueError('Velocità 0–100%')
+        if percent is not None and curve is not None: raise ValueError('Scegli velocità fissa oppure curva')
         exe = Path(cfg.get('fancontrol_exe', ''))
         folder = exe.parent / 'Configurations'
         if not self.fans_manual_ready():
@@ -713,22 +774,21 @@ class Control:
         name = str(target.get('NickName') or 'Ventola')
         if percent is not None and discovery.is_pump(name, ident) and percent < discovery.PUMP_MIN_PERCENT:
             raise ValueError(f'La pompa non scende sotto il {discovery.PUMP_MIN_PERCENT}%: raffredda il processore')
-        custom = {k: v for k, v in (self.state.get('fans_custom') or {}).items() if isinstance(v, int)}
-        if percent is None: custom.pop(ident, None)
-        else: custom[ident] = percent
-        for ctl in ctls:
-            v = custom.get(str(ctl.get('Identifier', '')))
-            if v is not None:
-                ctl['Enable'] = ctl['ManualControl'] = True
-                ctl['ManualControlValue'] = v
-                ctl['SelectedFanCurve'] = None
+        if curve is not None: curve = discovery.fan_curve_clean(curve, discovery.is_pump(name, ident))
+        custom = {k: v for k, v in (self.state.get('fans_custom') or {}).items() if isinstance(v, (int, dict))}
+        value = curve if curve is not None else percent
+        if value is None: custom.pop(ident, None)
+        else: custom[ident] = value
+        temp_ids = collect_sensors(self.config.get('sensors', {}).get('libre_hardware_monitor', '')).get('temp_ids') or {}
+        discovery.apply_fan_custom(prof, custom, temp_ids)
         slot = 'manual_b' if self.state.get('fans_slot') == 'manual_a' else 'manual_a'
         (folder / discovery.FAN_FILES[slot]).write_text(json.dumps(prof, indent=2), encoding='utf-8')
         cmd(['schtasks', '/run', '/tn', discovery.FAN_TASKS[slot]], 15)
         with self.lock:
             self.state.update(fans_custom=custom, fans_slot=slot); json_save(STATE_FILE, self.state)
         nice = name.replace('CPU Fan', 'Radiatore').replace('Pump Fan', 'Pompa').replace('System Fan', 'Ventola case')
-        msg = f'{nice}: ' + (f'{percent}% fisso' if percent is not None else 'torna al profilo ' + FAN_LEVEL_NAMES.get(level, level))
+        msg = f'{nice}: ' + (f'{percent}% fisso' if percent is not None else
+                             f"curva sulla temperatura {curve['src'].upper()}" if curve is not None else 'torna al profilo ' + FAN_LEVEL_NAMES.get(level, level))
         self.log_event('Ventole · ' + msg)
         return msg
 

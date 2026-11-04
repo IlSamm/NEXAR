@@ -58,6 +58,7 @@ async def lifespan(app: FastAPI):
     t7 = threading.Thread(target=controller.fan_guard_loop,args=(stop,),daemon=True,name='fan-guard')
     t8 = threading.Thread(target=controller.boost_loop,args=(stop,),daemon=True,name='gaming-boost')
     t9 = threading.Thread(target=controller.optimize_loop,args=(stop,),daemon=True,name='auto-clean')
+    threading.Thread(target=controller.net_loop,args=(stop,),daemon=True,name='auto-net').start()
     t1.start();t2.start();t3.start();t4.start();t5.start();t6.start();t7.start();t8.start();t9.start()
     updater.announce()
     # Avviso "PC acceso" solo dopo un avvio vero di Windows, non a ogni riapertura dell'app.
@@ -243,9 +244,10 @@ def install(data: Install):
 class FanOne(BaseModel):
     id: str
     percent: int | None = None
+    curve: dict | None = None
 @app.post('/api/fans/one',dependencies=[Depends(authorized)])
 def fan_one(data: FanOne):
-    try: return {'ok':True,'message':controller.fan_set(data.id,data.percent)}
+    try: return {'ok':True,'message':controller.fan_set(data.id,data.percent,data.curve)}
     except (RuntimeError,OSError,ValueError) as ex: raise HTTPException(400,str(ex))
 
 @app.post('/api/fans/setup',dependencies=[Depends(authorized),Depends(local_only)])
@@ -498,8 +500,8 @@ def optimize_health():
     except RuntimeError as ex: raise HTTPException(409,str(ex))
 
 def optimize_net_job():
-    controller.net_report = optimizer.network_check()
-    n = controller.net_report
+    n = optimizer.network_check()
+    controller.net_alert(controller.record_net(n))
     return f"Rete {n['quality']}: internet {n['internet'].get('ms') or '—'} ms"
 @app.post('/api/optimize/net',dependencies=[Depends(authorized)])
 def optimize_net():
@@ -511,6 +513,9 @@ class AutoClean(BaseModel):
 @app.post('/api/optimize/auto',dependencies=[Depends(authorized)])
 def optimize_auto(data: AutoClean):
     return {'ok':True,'message':controller.set_optimize_auto(data.enabled)}
+@app.post('/api/optimize/net/auto',dependencies=[Depends(authorized)])
+def optimize_net_auto(data: AutoClean):
+    return {'ok':True,'message':controller.set_net_auto(data.enabled)}
 
 @app.post('/api/optimize/trim',dependencies=[Depends(authorized),Depends(local_only)])
 def optimize_trim():
