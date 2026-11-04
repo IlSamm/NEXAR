@@ -55,7 +55,8 @@ async def lifespan(app: FastAPI):
     t5 = threading.Thread(target=controller.power_loop,args=(stop,),daemon=True,name='power-plan')
     t6 = threading.Thread(target=updater.loop,args=(stop,),daemon=True,name='updater')
     t7 = threading.Thread(target=controller.fan_guard_loop,args=(stop,),daemon=True,name='fan-guard')
-    t1.start();t2.start();t3.start();t4.start();t5.start();t6.start();t7.start()
+    t8 = threading.Thread(target=controller.boost_loop,args=(stop,),daemon=True,name='gaming-boost')
+    t1.start();t2.start();t3.start();t4.start();t5.start();t6.start();t7.start();t8.start()
     updater.announce()
     # Avviso "PC acceso" solo dopo un avvio vero di Windows, non a ogni riapertura dell'app.
     import psutil
@@ -301,6 +302,22 @@ def update_auto(data: Toggle):
 
 # ---------- ottimizzazione ----------
 import optimizer
+import gaming_boost
+
+@app.get('/api/gaming',dependencies=[Depends(authorized)])
+def gaming_info():
+    return {'boost':controller.booster.info(),'apps':gaming_boost.user_apps()[:40]}
+
+class BoostSettings(BaseModel):
+    game_priority: bool | None = None
+    game_mode: bool | None = None
+    no_dvr: bool | None = None
+    reopen: bool | None = None
+    apps: dict[str, str] | None = None
+@app.post('/api/gaming/settings',dependencies=[Depends(authorized)])
+def gaming_settings(data: BoostSettings):
+    try: return {'ok':True,'message':'Gaming Boost salvato','settings':controller.save_boost_settings(data.model_dump(exclude_none=True))}
+    except ValueError as ex: raise HTTPException(400,str(ex))
 
 @app.get('/api/optimize',dependencies=[Depends(authorized)])
 def optimize_info():
@@ -342,6 +359,20 @@ def optimize_startup(data: StartupToggle, request: Request):
         controller.log_event(f'Avvio di Windows: {name} ' + ('attivato' if data.enabled else 'disattivato'))
         return {'ok':True,'message':f'{name}: ' + ('parte con Windows' if data.enabled else 'non parte più con Windows')}
     except (ValueError,RuntimeError,OSError) as ex: raise HTTPException(400,str(ex))
+
+QUICK_CLEAN = ('temp','shader','thumbs','crash','browser')  # mai cestino né cartelle di Windows: niente admin, niente perdite
+
+@app.post('/api/optimize/quick',dependencies=[Depends(authorized)])
+def optimize_quick():
+    """Ottimizza ora: pulizia sicura + cache DNS in un clic, poi nuova analisi per il punteggio."""
+    def job():
+        res = optimizer.clean(QUICK_CLEAN)
+        try: optimizer.flush_dns(); dns = ' · DNS svuotata'
+        except (RuntimeError,OSError): dns = ''
+        optimize_scan_job()
+        return 'Ottimizzazione fatta: liberati ' + optimizer.human(res['freed']) + dns + ('. ' + ' · '.join(res['notes']) if res['notes'] else '')
+    try: return {'ok':True,'message':controller.run_job('optimize-clean',job)}
+    except RuntimeError as ex: raise HTTPException(409,str(ex))
 
 @app.post('/api/optimize/dns',dependencies=[Depends(authorized)])
 def optimize_dns():

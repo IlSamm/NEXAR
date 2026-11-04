@@ -256,28 +256,71 @@
 
    <!-- OTTIMIZZA -->
    <section class="page" id="page-optimize">
-    <section class="card">
-     <div class="card-head"><div><h3>Dischi</h3><p>Spazio libero su ogni unità</p></div></div>
-     <div class="disk-list" id="opt-disks"><p class="muted">Caricamento…</p></div>
+    <section class="card opt-hero">
+     <div class="health">
+      <svg viewBox="0 0 120 120" aria-hidden="true"><circle class="h-track" cx="60" cy="60" r="50" pathLength="100"/><circle class="h-fill" id="opt-score-ring" cx="60" cy="60" r="50" pathLength="100"/></svg>
+      <div class="health-center"><strong id="opt-score">—</strong><span id="opt-score-label">Stato del PC</span></div>
+     </div>
+     <div class="opt-hero-main">
+      <div class="opt-stats">
+       <div><span>Recuperabile</span><b id="opt-st-junk">—</b></div>
+       <div><span>Disco C libero</span><b id="opt-st-disk">—</b></div>
+       <div><span>App all'avvio</span><b id="opt-st-startup">—</b></div>
+       <div><span>RAM in uso</span><b id="opt-st-ram">—</b></div>
+      </div>
+      <ul class="opt-tips" id="opt-tips"></ul>
+      <div class="btn-row"><button class="btn primary big-btn" type="button" id="opt-quick"><svg class="i"><use href="#i-clean"/></svg><span id="opt-quick-label">Ottimizza ora</span></button><button class="btn" type="button" id="opt-scan"><svg class="i"><use href="#i-refresh"/></svg>Analizza</button></div>
+     </div>
     </section>
-    <section class="card">
-     <div class="card-head"><div><h3>Pulizia</h3><p id="opt-clean-sub">File temporanei e cache che Windows e i programmi ricreano</p></div><button class="btn" type="button" id="opt-scan"><svg class="i"><use href="#i-refresh"/></svg>Analizza</button></div>
+
+    <div class="tabs" id="opt-tabs" role="tablist">
+     <button class="selected" data-panel="clean" role="tab"><svg class="i"><use href="#i-clean"/></svg>Pulizia</button>
+     <button data-panel="boost" role="tab"><svg class="i"><use href="#i-game"/></svg>Gaming Boost</button>
+     <button data-panel="startup" role="tab"><svg class="i"><use href="#i-power"/></svg>Avvio</button>
+     <button data-panel="system" role="tab"><svg class="i"><use href="#i-ram"/></svg>Dischi e RAM</button>
+     <button data-panel="tools" role="tab"><svg class="i"><use href="#i-sliders"/></svg>Strumenti</button>
+    </div>
+
+    <section class="card opt-panel" data-panel="clean">
+     <div class="card-head"><div><h3>Pulizia</h3><p id="opt-clean-sub">File temporanei e cache che Windows e i programmi ricreano</p></div></div>
      <div class="clean-list" id="opt-clean"><p class="muted">Premi Analizza per vedere quanto spazio puoi recuperare.</p></div>
      <div class="clean-foot"><span id="opt-selected">—</span><button class="btn primary" type="button" id="opt-run" disabled><svg class="i"><use href="#i-clean"/></svg>Pulisci</button></div>
      <p class="fineprint">Mai documenti, foto o download. I file in uso vengono saltati, i temporanei solo se hanno più di un giorno. Le voci con lo scudo chiedono la conferma da amministratore sul PC.</p>
     </section>
-    <div class="two-col">
+
+    <section class="card opt-panel" data-panel="boost" hidden>
+     <div class="card-head"><div><h3>Gaming Boost</h3><p id="boost-sub">Parte da solo con la modalità Gaming e rimette tutto com'era quando esci</p></div><span class="tag" id="boost-state">SPENTO</span></div>
+     <div class="boost-live" id="boost-live"></div>
+     <div class="boost-opts">
+      <label class="switch-row"><div><b>Priorità alta al gioco</b><small>Riconosciuto dalla cartella (Steam, Epic, Riot, Xbox…) o perché è a schermo intero</small></div><button class="toggle" type="button" data-boost="game_priority" role="switch"><span></span></button></label>
+      <label class="switch-row"><div><b>Modalità gioco di Windows</b><small>Windows dà le risorse al gioco e rimanda gli aggiornamenti</small></div><button class="toggle" type="button" data-boost="game_mode" role="switch"><span></span></button></label>
+      <label class="switch-row"><div><b>Niente registrazione Xbox in background</b><small>La Game Bar non registra di nascosto: più FPS</small></div><button class="toggle" type="button" data-boost="no_dvr" role="switch"><span></span></button></label>
+      <label class="switch-row"><div><b>Riapri le app chiuse</b><small>Quando esci da Gaming</small></div><button class="toggle" type="button" data-boost="reopen" role="switch"><span></span></button></label>
+     </div>
+     <div class="card-head sub-head"><div><h3>App in background</h3><p>Scegli cosa fare di ogni app mentre giochi</p></div><button class="icon-btn" type="button" id="boost-reload" aria-label="Aggiorna elenco"><svg class="i"><use href="#i-refresh"/></svg></button></div>
+     <div class="boost-apps" id="boost-apps"><p class="muted">Caricamento…</p></div>
+     <p class="fineprint">"Chiudi" è gentile, come la X della finestra: se un programma ha lavoro da salvare resta aperto. Sistema, NEXAR e i programmi che la fanno funzionare non compaiono.</p>
+     <div class="btn-row"><button class="btn primary" type="button" data-action="gaming"><svg class="i"><use href="#i-game"/></svg>Attiva Gaming</button><button class="btn" type="button" data-action="normal">Torna a Normale</button></div>
+    </section>
+
+    <section class="card opt-panel" data-panel="startup" hidden>
+     <div class="card-head"><div><h3>Programmi all'avvio</h3><p id="opt-startup-sub">Meno programmi = Windows parte prima</p></div></div>
+     <div class="startup-list" id="opt-startup"><p class="muted">Caricamento…</p></div>
+     <p class="fineprint">Si disattivano come in Gestione attività: niente viene disinstallato e puoi riattivarli quando vuoi.</p>
+    </section>
+
+    <div class="opt-panel two-col" data-panel="system" hidden>
      <section class="card">
-      <div class="card-head"><div><h3>Programmi all'avvio</h3><p id="opt-startup-sub">Meno programmi = Windows parte prima</p></div></div>
-      <div class="startup-list" id="opt-startup"><p class="muted">Caricamento…</p></div>
-      <p class="fineprint">Si disattivano come in Gestione attività: niente viene disinstallato e puoi riattivarli quando vuoi.</p>
+      <div class="card-head"><div><h3>Dischi</h3><p>Spazio libero su ogni unità</p></div></div>
+      <div class="disk-list" id="opt-disks"><p class="muted">Caricamento…</p></div>
      </section>
      <section class="card">
       <div class="card-head"><div><h3>Memoria RAM</h3><p id="opt-mem-sub">—</p></div></div>
       <div class="mem-list" id="opt-mem"></div>
      </section>
     </div>
-    <section class="card">
+
+    <section class="card opt-panel" data-panel="tools" hidden>
      <div class="card-head"><div><h3>Strumenti</h3><p>Interventi rapidi e sicuri</p></div></div>
      <div class="actions tools">
       <button class="act" type="button" id="opt-dns"><svg class="i"><use href="#i-wave"/></svg>Svuota cache DNS</button>

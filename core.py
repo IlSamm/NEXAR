@@ -179,6 +179,24 @@ class Control:
         self.video_timeout = (0.0, None)
         self.screen_off_at = 0.0
         self.power_plan = None
+        import gaming_boost
+        self.booster = gaming_boost.Booster(config, notify=lambda m: self.notify(m), log=lambda m: self.log_event(m))
+
+    def boost_loop(self, stop_event):
+        """In Gaming: ogni 5 s riconosce il gioco e sistema le priorità; se NEXAR riparte in Gaming riattiva il boost."""
+        while not stop_event.wait(5):
+            try:
+                gaming = self.mode() == 'gaming'
+                if gaming and not self.booster.active: self.booster.start()
+                elif not gaming and self.booster.active: self.booster.stop()
+                if self.booster.active: self.booster.tick()
+            except Exception: logging.exception('Gaming Boost')
+
+    def save_boost_settings(self, new):
+        with self.lock:
+            s = self.booster.update_settings(new)
+            json_save(CONFIG_FILE, self.config)
+        return s
 
     def begin_telegram_pair(self, token):
         """Call from authenticated loopback UI only; keep ephemeral code in memory."""
@@ -532,8 +550,12 @@ class Control:
             if manual: self.manual_override = True
             notes = ['Energia: '+MODES[value]]
             fans = {'eco':'eco','normal':'normal','gaming':self.config.get('fans',{}).get('gaming_level','normal')}[value]
-            for cb in (lambda: self.rgb_profile(value == 'eco'), lambda: self.fans_level(fans)):
-                try: notes.append(cb())
+            # Gaming Boost: parte con Gaming e rimette tutto com'era quando si passa ad altra modalità.
+            boost = (lambda: self.booster.start()) if value == 'gaming' else (lambda: self.booster.stop())
+            for cb in (lambda: self.rgb_profile(value == 'eco'), lambda: self.fans_level(fans), boost):
+                try:
+                    note = cb()
+                    if note: notes.append(note)
                 except Exception as ex: notes.append('Integrazione non applicata: '+str(ex))
             self.last_message = ' · '.join(notes)
             self.log_event(self.last_message)
@@ -791,6 +813,7 @@ class Control:
             'rgb_brightness':int(self.config.get('rgb',{}).get('brightness',100)),
             'rgb_off':bool(self.state.get('rgb_off')),
             'rgb_palette':self.rgb_palette(),
+            'boost':self.booster.info(),
             'rgb_excluded':list(self.rgb_excluded()),
             'fans_eco':bool(self.state.get('fans_eco')),
             'fans_level':self.state.get('fans_level') or ('eco' if self.state.get('fans_eco') else 'normal'),
