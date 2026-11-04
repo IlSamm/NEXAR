@@ -133,7 +133,9 @@ def collect_sensors(url: str):
                 if 'core' in low: score += 4
                 candidates.append((score, value))
             if (kind == 'fan' or 'rpm' in str(node.get('Value','')).lower()) and 0 <= value < 10000:
-                if len(fans) < 12: fans.append({'name':name or 'Ventola', 'rpm':round(value)})
+                if len(fans) < 12:
+                    import discovery
+                    fans.append({'name':name or 'Ventola', 'rpm':round(value), 'ctl':discovery.fan_control_id(str(node.get('SensorId','')))})
             # Potenza del processore: il sensore "Package" comprende core, cache e grafica integrata.
             if re.search(r'/(amd|intel)cpu/\d+/power/', sensor_id) and 'package' in name.lower() and 0 <= value < 500:
                 cpu_power.append(value)
@@ -357,7 +359,8 @@ class Control:
 
     def gaming_view(self, force=False):
         cfg = self.config
-        return {'boost': self.booster.info(), 'games': [{k: g[k] for k in ('id', 'name', 'store', 'size', 'last', 'playtime', 'cover')}
+        return {'boost': self.booster.info(), 'games': [dict({k: g[k] for k in ('id', 'name', 'store', 'size', 'last', 'playtime', 'cover', 'hidden')},
+                                                             icon=bool(g.get('exe')))
                                                         for g in self.booster.games(force)],
                 'history': self.booster.history()[:12], 'apps': gaming_boost.user_apps()[:40],
                 'fans': cfg.get('fans', {}).get('gaming_level', 'normal'), 'fans_enabled': bool(cfg.get('fans', {}).get('enabled')),
@@ -663,7 +666,8 @@ class Control:
             # Fan Control gira come amministratore: lo raggiungiamo con l'attività già autorizzata.
             cmd(['schtasks', '/run', '/tn', task], 15)
             with self.lock:
-                self.state.update(fans_level=level, fans_pump=bool(level == 'off' and keep_pump), fans_eco=level in ('eco','off'))
+                # Un livello scelto azzera le regolazioni fatte a mano sulle singole ventole.
+                self.state.update(fans_level=level, fans_pump=bool(level == 'off' and keep_pump), fans_eco=level in ('eco','off'), fans_custom={})
                 json_save(STATE_FILE, self.state)
             detail = {'normal': ' (BIOS)', 'max': ' (tutte: case, radiatore, pompa e scheda video al 100%)',
                       'off': ' (tutte ferme' + (f', pompa al {discovery.PUMP_MIN_PERCENT}%' if keep_pump else ', anche la pompa') +
@@ -675,12 +679,66 @@ class Control:
         subprocess.Popen([str(exe),'-c',name],**opts)
         return 'Ventole: richiesto profilo '+name+' (AIO escluso nei profili utente)'
 
+    def fans_manual_ready(self):
+        """Profili "Manuale" creati e scrivibili: serve aver premuto Configura/Aggiorna profili da questa versione."""
+        import discovery
+        exe = Path(self.config.get('fans', {}).get('fancontrol_exe', ''))
+        f = exe.parent / 'Configurations' / discovery.FAN_FILES['manual_a']
+        at, ready = getattr(self, 'fans_manual_cache', (0.0, False))
+        if time.monotonic() - at > 60:
+            ready = f.is_file() and os.access(f, os.W_OK) and discovery.task_exists(discovery.FAN_TASKS['manual_a'])
+            self.fans_manual_cache = (time.monotonic(), ready)
+        return ready
+
+    def fan_set(self, ident, percent):
+        """Una sola ventola a velocità fissa (0–100%) o di nuovo come il profilo scelto (percent None).
+        Le altre restano come il livello attuale (Spente/ECO/Normale/Massimo)."""
+        import discovery
+        cfg = self.config.get('fans', {})
+        if not cfg.get('enabled'): raise RuntimeError('Gestione ventole non attiva')
+        if not isinstance(ident, str) or not re.fullmatch(r'/[A-Za-z0-9_/-]{3,80}', ident): raise ValueError('Ventola non valida')
+        if percent is not None and (type(percent) is not int or not 0 <= percent <= 100): raise ValueError('Velocità 0–100%')
+        exe = Path(cfg.get('fancontrol_exe', ''))
+        folder = exe.parent / 'Configurations'
+        if not self.fans_manual_ready():
+            self.fans_manual_cache = (0.0, False)
+            raise RuntimeError('Per regolare le singole ventole premi "Aggiorna profili" nella pagina Ventole (una conferma)')
+        level = self.state.get('fans_level') or 'normal'
+        profile = ('off_pump' if self.state.get('fans_pump') else 'off') if level == 'off' else level
+        base = folder / discovery.FAN_FILES.get(profile, discovery.FAN_FILES['normal'])
+        prof = json.loads(base.read_text(encoding='utf-8-sig'))
+        ctls = prof.get('FanControl', {}).get('Controls', [])
+        target = next((c for c in ctls if str(c.get('Identifier', '')) == ident), None)
+        if not target: raise ValueError('Questa ventola non è regolabile da Fan Control')
+        name = str(target.get('NickName') or 'Ventola')
+        if percent is not None and discovery.is_pump(name, ident) and percent < discovery.PUMP_MIN_PERCENT:
+            raise ValueError(f'La pompa non scende sotto il {discovery.PUMP_MIN_PERCENT}%: raffredda il processore')
+        custom = {k: v for k, v in (self.state.get('fans_custom') or {}).items() if isinstance(v, int)}
+        if percent is None: custom.pop(ident, None)
+        else: custom[ident] = percent
+        for ctl in ctls:
+            v = custom.get(str(ctl.get('Identifier', '')))
+            if v is not None:
+                ctl['Enable'] = ctl['ManualControl'] = True
+                ctl['ManualControlValue'] = v
+                ctl['SelectedFanCurve'] = None
+        slot = 'manual_b' if self.state.get('fans_slot') == 'manual_a' else 'manual_a'
+        (folder / discovery.FAN_FILES[slot]).write_text(json.dumps(prof, indent=2), encoding='utf-8')
+        cmd(['schtasks', '/run', '/tn', discovery.FAN_TASKS[slot]], 15)
+        with self.lock:
+            self.state.update(fans_custom=custom, fans_slot=slot); json_save(STATE_FILE, self.state)
+        nice = name.replace('CPU Fan', 'Radiatore').replace('Pump Fan', 'Pompa').replace('System Fan', 'Ventola case')
+        msg = f'{nice}: ' + (f'{percent}% fisso' if percent is not None else 'torna al profilo ' + FAN_LEVEL_NAMES.get(level, level))
+        self.log_event('Ventole · ' + msg)
+        return msg
+
     def fan_guard_loop(self, stop_event):
         """Con le ventole spente (anche radiatore e pompa) la CPU può scaldare in pochi secondi:
         temperature ogni 2 s e ritorno al profilo normale a 75 °C o se i sensori smettono di rispondere."""
         blind = 0
         while not stop_event.wait(FAN_GUARD_SECONDS):
-            if self.state.get('fans_level') != 'off':
+            slow = any(isinstance(v, int) and v < 30 for v in (self.state.get('fans_custom') or {}).values())
+            if self.state.get('fans_level') != 'off' and not slow:
                 blind = 0; continue
             try:
                 cpu = collect_sensors(self.config.get('sensors',{}).get('libre_hardware_monitor',''))['cpu_temp']
@@ -1034,6 +1092,8 @@ class Control:
             'fans_eco':bool(self.state.get('fans_eco')),
             'fans_level':self.state.get('fans_level') or ('eco' if self.state.get('fans_eco') else 'normal'),
             'fans_levels_ready':self.fans_levels_ready() if self.config.get('fans',{}).get('enabled') else False,
+            'fans_manual_ready':self.fans_manual_ready() if self.config.get('fans',{}).get('enabled') else False,
+            'fans_custom':dict(self.state.get('fans_custom') or {}),
             'fans_profiles_outdated':self.fans_profiles_outdated() if self.config.get('fans',{}).get('enabled') else False,
             'pc':self.pc_info(),
         })

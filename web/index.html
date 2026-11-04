@@ -690,6 +690,25 @@
  </nav>
 </div>
 
+<dialog class="sheet fan-sheet" id="fan-sheet" aria-labelledby="fs-name">
+ <div class="fs-head">
+  <div class="fs-dial"><svg viewBox="0 0 120 120"><circle class="fs-track" cx="60" cy="60" r="52" pathLength="100"/><circle class="fs-fill" id="fs-arc" cx="60" cy="60" r="52" pathLength="100"/></svg><svg class="i fs-spin" id="fs-spin"><use href="#i-fan"/></svg></div>
+  <div class="fs-title"><small id="fs-kind">Ventola</small><h3 id="fs-name">—</h3><p><b id="fs-rpm">—</b> RPM · <span id="fs-mode">segue il profilo</span></p></div>
+  <button class="icon-btn fs-x" type="button" id="fs-close" aria-label="Chiudi"><svg class="i"><use href="#i-x"/></svg></button>
+ </div>
+ <div id="fs-ctl">
+  <div class="seg-ink fs-seg" id="fs-modes"><i class="si-ink"></i><button type="button" data-m="auto"><svg class="i"><use href="#i-refresh"/></svg><span>Automatica</span></button><button type="button" data-m="manual"><svg class="i"><use href="#i-sliders"/></svg><span>Manuale</span></button></div>
+  <div class="fs-manual" id="fs-manual">
+   <div class="fs-val"><b id="fs-pct">50</b><span>%</span></div>
+   <input type="range" class="fs-range" id="fs-range" min="0" max="100" step="1" value="50" aria-label="Velocità della ventola">
+   <div class="fs-presets" id="fs-presets"><button type="button" data-p="0">Ferma</button><button type="button" data-p="25">25%</button><button type="button" data-p="50">50%</button><button type="button" data-p="75">75%</button><button type="button" data-p="100">Max</button></div>
+   <p class="fs-note" id="fs-note"></p>
+  </div>
+  <p class="fs-auto" id="fs-auto">Segue il livello scelto nella pagina (Spente, ECO, Normale o Massimo).</p>
+ </div>
+ <div class="fs-setup" id="fs-setup" hidden><span class="fs-setup-ico"><svg class="i"><use href="#i-lock"/></svg></span><p id="fs-setup-text"></p></div>
+ <div class="sheet-actions"><button class="btn" type="button" id="fs-cancel">Chiudi</button><button class="btn primary" type="button" id="fs-apply">Applica</button></div>
+</dialog>
 <dialog class="sheet" id="confirm">
  <form method="dialog">
   <span class="sheet-ico" id="confirm-ico"><svg class="i"><use href="#i-power"/></svg></span>

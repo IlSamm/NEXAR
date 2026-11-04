@@ -39,7 +39,7 @@ let tgApp=null;let current=null,busy=false,rgbTouched=false,schedKind='shutdown'
 const hist={cpu:[],gpu:[],power:[],ram:[],fan:[]};let curView='home';
 const COMP={cpu:'#38bdf8',gpu:'#a78bfa',board:'#94a3b8',ram:'#2dd4bf',disks:'#fbbf24',cooling:'#34d399',rgb:'#f472b6',usb:'#fb923c',monitor:'#e2e8f0'};
 const statusDemo={connected:true,version:'1.0.0',update:new URLSearchParams(location.search).has('upd')?{supported:true,available:true,latest:'1.0.31',checked_at:'2026-11-03T21:10:00'}:{supported:true,available:false,checked_at:'2026-11-03T21:10:00'},mode:'gaming',fans_level:'max',fans_levels_ready:true,cpu:12,cpu_temp:46,gpu:6,gpu_temp:38,gpu_watts:24,ram:34,ram_used:10.9,ram_total:31.1,eco_cpu_max_percent:90,
- fans:[{name:'CPU Fan',rpm:930},{name:'System Fan #1',rpm:0},{name:'System Fan #2',rpm:740},{name:'System Fan #3',rpm:750},{name:'Pump Fan',rpm:2400}],
+ fans:[{name:'CPU Fan',rpm:930,ctl:'/lpc/demo/control/0'},{name:'System Fan #1',rpm:0,ctl:'/lpc/demo/control/1'},{name:'System Fan #2',rpm:740,ctl:'/lpc/demo/control/2'},{name:'System Fan #3',rpm:750,ctl:'/lpc/demo/control/3'},{name:'Pump Fan',rpm:2400,ctl:'/lpc/demo/control/4'}],fans_manual_ready:true,fans_custom:{'/lpc/demo/control/2':45},
  rgb_enabled:true,fans_enabled:true,auto_enabled:true,processes:{codex:true,claude:false},telegram_enabled:true,rgb_color:'#ff0000',rgb_brightness:100,
  rgb_palette:['#ffffff','#ff0000','#ff8a00','#ffd400','#2cff5a','#00e5ff','#1f6bff','#8a3cff','#ff3cc8'],
  hardware:{cpu:'AMD Ryzen 7 9800X3D',gpu:'NVIDIA GeForce RTX 3060 Ti',motherboard:'MSI MAG B850 TOMAHAWK MAX WIFI',cooler:'ARCTIC Liquid Freezer II 240'},
@@ -361,16 +361,69 @@ function renderFans(fans){
  spinning.forEach((f,i)=>{
   const pump=/pump/i.test(f.name),max=pump?3000:1800,pct=Math.min(100,f.rpm/max*100);seen.add(f.name);
   let c=box._map.get(f.name);
-  if(!c){c=el('div','fan2'+(pump?' pump':''));c.style.setProperty('--i',i);
+  if(!c){c=el('div','fan2'+(pump?' pump':''));c.style.setProperty('--i',i);c.tabIndex=0;c.setAttribute('role','button');
+   c.addEventListener('click',()=>openFan(c._f));c.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openFan(c._f);}});
    c.innerHTML=`<div class="f2-dial"><svg viewBox="0 0 60 60"><circle class="f2-track" cx="30" cy="30" r="26" pathLength="100"/><circle class="f2-fill" cx="30" cy="30" r="26" pathLength="100"/></svg><svg class="i f2-spin"><use href="#i-fan"/></svg></div><div class="f2-txt"><small></small><b></b></div>`;
    c.querySelector('small').textContent=f.name.replace('CPU Fan','Radiatore').replace('Pump Fan','Pompa').replace('System Fan','Ventola case');
    box._map.set(f.name,c);box.append(c);}
+  c._f=f;const cu=(current?.fans_custom||{})[f.ctl];c.classList.toggle('custom',cu!=null);
+  c.setAttribute('aria-label',`${FAN_NICE(f.name)}: ${f.rpm} RPM${cu!=null?`, manuale al ${cu}%`:''}. Apri per regolarla`);
+  let tag=c.querySelector('.f2-tag');if(cu!=null){if(!tag){tag=el('span','f2-tag');c.append(tag);}tag.textContent=cu+'%';}else tag?.remove();
   c.querySelector('b').innerHTML=`${f.rpm}<em>RPM</em>`;
+  if(fanSheet.f?.ctl===f.ctl)fanSheetLive(f);
   c.querySelector('.f2-fill').style.strokeDasharray=`${pct.toFixed(1)} 100`;
   c.querySelector('.f2-spin').style.animationDuration=Math.max(.3,Math.min(4,900/f.rpm)).toFixed(2)+'s';
  });
  [...box._map].forEach(([k,c])=>{if(!seen.has(k)){c.remove();box._map.delete(k);}});
 }
+/* ---------- una ventola alla volta: scheda con regolazione manuale ---------- */
+const FAN_NICE=n=>String(n||'Ventola').replace('CPU Fan','Radiatore').replace('Pump Fan','Pompa AIO').replace('System Fan','Ventola case');
+const fanSheet={f:null,mode:'auto',val:50};
+function fanSheetLive(f){
+ fanSheet.f=f;const pump=/pump/i.test(f.name),pct=Math.min(100,f.rpm/(pump?3000:1800)*100);
+ $('fs-rpm').textContent=f.rpm;$('fs-arc').style.strokeDasharray=`${pct.toFixed(1)} 100`;
+ $('fs-spin').style.animationDuration=f.rpm>0?Math.max(.25,Math.min(4,900/f.rpm)).toFixed(2)+'s':'0s';
+ $('fan-sheet').classList.toggle('still',!f.rpm);
+}
+function fanSheetMode(m){
+ fanSheet.mode=m;document.querySelectorAll('#fs-modes button').forEach(b=>b.classList.toggle('selected',b.dataset.m===m));
+ $('fs-manual').classList.toggle('off',m!=='manual');$('fs-auto').hidden=m==='manual';
+}
+function fanSheetVal(v){
+ const pump=/pump/i.test(fanSheet.f?.name||''),min=pump?40:0;v=Math.max(min,Math.min(100,Math.round(v)));fanSheet.val=v;
+ const r=$('fs-range');r.min=min;r.value=v;r.style.setProperty('--v',((v-min)/(100-min)*100).toFixed(1)+'%');
+ $('fs-pct').textContent=v;$('fan-sheet').style.setProperty('--fv',v);
+ document.querySelectorAll('#fs-presets button').forEach(b=>{const p=+b.dataset.p;b.disabled=p<min;b.classList.toggle('selected',p===v);});
+ $('fs-note').textContent=pump?'La pompa non scende sotto il 40%: tiene freddo il processore.'
+  :v===0?'Ferma: se CPU o GPU arrivano a 75 °C torna normale da sola.':v<30?'Molto lenta: se CPU o GPU arrivano a 75 °C torna normale da sola.':'';
+}
+function openFan(f){
+ if(!f)return;const d=$('fan-sheet'),cu=(current?.fans_custom||{})[f.ctl],ready=!!current?.fans_manual_ready,enabled=current?.fans_enabled!==false;
+ $('fs-name').textContent=FAN_NICE(f.name);
+ $('fs-kind').textContent=/pump/i.test(f.name)?'Pompa del liquido':/cpu/i.test(f.name)?'Radiatore del processore':/system/i.test(f.name)?'Ventola del case':'Ventola';
+ $('fs-mode').textContent=cu!=null?`manuale al ${cu}%`:'segue il profilo';
+ fanSheetLive(f);fanSheetMode(cu!=null?'manual':'auto');fanSheetVal(cu??(/pump/i.test(f.name)?60:50));
+ $('fs-ctl').hidden=!ready||!enabled||!f.ctl;$('fs-setup').hidden=ready&&enabled;
+ $('fs-setup-text').textContent=!enabled?'La gestione delle ventole non è collegata: attivala da Collegamenti (serve Fan Control).'
+  :current?.remote?'Per regolare ogni ventola a mano serve una conferma da amministratore, una volta sola: falla dalla app sul PC.'
+  :'Per regolare ogni ventola a mano serve una conferma da amministratore, una volta sola: rifaccio i profili di Fan Control e aggiungo quello manuale.';
+ const ap=$('fs-apply');ap.hidden=!enabled||(!ready&&!!current?.remote);ap.textContent=ready?'Applica':'Attiva regolazione';
+ if(!d.open)d.showModal();
+}
+function closeFan(){const d=$('fan-sheet');if(d.open)d.close();fanSheet.f=null;}
+document.querySelectorAll('#fs-modes button').forEach(b=>b.addEventListener('click',()=>fanSheetMode(b.dataset.m)));
+$('fs-range').addEventListener('input',e=>{fanSheetVal(+e.target.value);if(fanSheet.mode!=='manual')fanSheetMode('manual');});
+document.querySelectorAll('#fs-presets button').forEach(b=>b.addEventListener('click',()=>{fanSheetVal(+b.dataset.p);fanSheetMode('manual');}));
+$('fs-close').addEventListener('click',closeFan);$('fs-cancel').addEventListener('click',closeFan);
+$('fan-sheet').addEventListener('close',()=>{fanSheet.f=null;});
+$('fan-sheet').addEventListener('click',e=>{if(e.target===e.currentTarget)closeFan();});   // clic fuori dalla scheda
+$('fs-apply').addEventListener('click',async()=>{
+ const f=fanSheet.f;if(!f)return;
+ if(!current?.fans_manual_ready){closeFan();post('/api/fans/setup',{});return;}
+ const percent=fanSheet.mode==='manual'?fanSheet.val:null;closeFan();
+ if(demo){notify(`✓ ${FAN_NICE(f.name)}: `+(percent==null?'torna al profilo':`${percent}% fisso`));return;}
+ post('/api/fans/one',{id:f.ctl,percent});
+});
 const COMP_ICON={cpu:'cpu',gpu:'gpu',board:'grid',ram:'ram',disks:'disk',cooling:'fan',rgb:'bulb',usb:'plug',monitor:'monitor',loss:'bolt'};
 let donutPick=null;
 function renderDonut(items,total){
@@ -863,8 +916,46 @@ function netScene(){
  [[rt,'Router raggiunto: ora misuro la strada verso internet…'],[web,'Internet raggiunto: misuro quanto ci mette a trovare un sito…'],[dns,'Quasi fatto: preparo il risultato…']].forEach(([n,t],i)=>netTimers.push(setTimeout(()=>{
   n.classList.add('on');n.querySelector('.nn-ms').textContent='risponde';sc.querySelectorAll('.nlink')[i].classList.add('on');st.textContent=t;},900+i*1100)));
 }
+let netIsl=null;
+function islandNet(){
+ // Isola in alto durante la prova: onde radar, catena PC → Router → Internet → DNS che si accende, poi il risultato.
+ const st=animStyle();if(calm.matches||st==='off')return null;
+ document.querySelectorAll('.isl').forEach(x=>x.remove());
+ const is=el('div','isl ni');const rad=el('div','ni-rad');rad.append(el('i'),el('i'),el('i'),icon('wave'));
+ const okI=icon('check');okI.classList.add('ni-ok');rad.append(okI);
+ const mid=el('div','ni-mid');const t1=el('b','','Prova della rete');const tBox=el('div','ni-sub');let t2=el('small','','Raggiungo il router di casa…');tBox.append(t2);
+ const chain=el('div','ni-chain');const line=el('div','ni-line');const lf=el('i');line.append(lf,el('b'));
+ const nodes=['PC','Router','Internet','DNS'].map((l,i)=>{const n=el('span','ni-node'+(i?'':' on'));n.append(el('i'),el('em','',l));return n;});
+ chain.append(line,...nodes);mid.append(t1,tBox,chain);is.append(rad,mid);document.body.append(is);
+ const W=islandW(410),H=100;
+ is.animate([{opacity:0,transform:'translate(-50%,-14px) scale(.9)'},{opacity:1,transform:'translate(-50%,0)'}],{duration:320,easing:EASE.out,fill:'forwards'});
+ is.animate([{width:'130px',height:'40px'},{width:'130px',height:'40px',offset:.25},{width:W+'px',height:H+'px'}],{duration:760,easing:EASE.spring,fill:'forwards'});
+ rad.animate([{opacity:0,transform:'scale(.3)'},{opacity:0,offset:.35},{opacity:1,transform:'none'}],{duration:760,easing:EASE.spring,fill:'forwards'});
+ mid.animate([{opacity:0,transform:'translateX(-10px)'},{opacity:0,offset:.45},{opacity:1,transform:'none'}],{duration:760,easing:EASE.out,fill:'forwards'});
+ const say=text=>{const old=t2;t2=el('small','',text);tBox.append(t2);
+  old.animate([{transform:'none',opacity:1},{transform:'translateY(-14px)',opacity:0}],{duration:300,easing:EASE.io,fill:'forwards'}).finished.then(()=>old.remove()).catch(()=>{});
+  t2.animate([{transform:'translateY(14px)',opacity:0},{transform:'none',opacity:1}],{duration:420,easing:EASE.spring});};
+ const reach=k=>{nodes.forEach((n,i)=>n.classList.toggle('on',i<=k));lf.style.width=(k/3*100)+'%';};
+ const timers=[[1,'Router raggiunto · misuro la strada verso internet…'],[2,'Internet raggiunto · quanto ci mette a trovare un sito…'],[3,'Quasi fatto · preparo il risultato…']]
+  .map(([k,t],i)=>setTimeout(()=>{reach(k);say(t);},900+i*1100));
+ let closed=false;
+ const close=async()=>{if(closed)return;closed=true;timers.forEach(clearTimeout);if(netIsl===h)netIsl=null;
+  [rad,mid].forEach(x=>x.animate([{opacity:1},{opacity:0}],{duration:160,fill:'forwards'}));const r=is.getBoundingClientRect();
+  await is.animate([{width:r.width+'px',height:r.height+'px'},{width:'130px',height:'40px'}],{duration:420,easing:EASE.spring,fill:'forwards'}).finished.catch(()=>{});
+  await is.animate([{opacity:1},{opacity:0,transform:'translate(-50%,-12px) scale(.9)'}],{duration:240,fill:'forwards'}).finished.catch(()=>{});is.remove();};
+ const safety=setTimeout(close,40000);
+ const h={close,finish(n){
+  timers.forEach(clearTimeout);clearTimeout(safety);reach(3);
+  const q={ottima:['Ottima','q-ok'],buona:['Buona','q-mid'],lenta:['Lenta','q-low'],offline:['Non connesso','q-bad']}[n?.quality]||['Fatto','q-mid'];
+  is.classList.add('done',q[1]);const ms=n?.internet?.ms;
+  t1.textContent=ms!=null?`${Math.round(ms)} ms · ${q[0]}`:q[0];
+  say(n?.router?.ms!=null?`Router ${Math.round(n.router.ms)} ms · DNS ${n.dns_ms!=null?Math.round(n.dns_ms)+' ms':'—'}`:'Internet non raggiungibile');
+  rad.animate([{transform:'scale(1)'},{transform:'scale(1.15)'},{transform:'scale(1)'}],{duration:600,easing:EASE.spring});
+  is.addEventListener('click',close);setTimeout(close,4200);}};
+ netIsl=h;return h;
+}
 function netRun(){
- netRunning=true;netStart=Date.now()/1000-2;netScene();
+ netRunning=true;netStart=Date.now()/1000-2;netScene();netIsl?.close();islandNet();
  if(demo){netTimers.push(setTimeout(()=>{netRunning=true;renderNet({...DEMO_OPT.net,at:Date.now()/1000});},4300));return;}
  post('/api/optimize/net',{});
 }
@@ -873,6 +964,7 @@ function renderNet(n){
  const box=$('opt-net');if(!n)return;
  if(netRunning&&!(n.at>netStart))return;   // prova in corso: si aspetta il risultato nuovo
  const animate=netRunning;netRunning=false;netTimers.forEach(clearTimeout);netTimers=[];box.replaceChildren();
+ if(animate)netIsl?.finish(n);
  const Q={ottima:['Ottima','ok'],buona:['Buona','mid'],lenta:['Lenta','low'],offline:['Non connesso','low']}[n.quality]||['—',''];
  $('opt-net-sub').textContent=`Prova ${ago(n.at)} alle ${new Date(n.at*1000).toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'})}`;
  // tachimetro: la lancetta va dal verde (pochi ms) al rosso (tanti ms)
@@ -1500,7 +1592,7 @@ function ago(ts){if(!ts)return '';const d=(Date.now()/1000-ts)/86400;
 function coverUrl(id,kind){
  // Le immagini arrivano dalla cache di Steam sul PC, con la stessa chiave della API.
  const k=id+'/'+kind;if(covers.has(k))return covers.get(k);
- const p=(async()=>{if(demo||!id.startsWith('steam-'))return '';
+ const p=(async()=>{if(demo||(kind!=='icon'&&!id.startsWith('steam-')))return '';
   try{const r=await fetch(`/api/gaming/cover/${encodeURIComponent(id)}/${kind}`,{headers:tgInit?{'X-TG-Init-Data':tgInit}:{'X-PC-ECO-Key':key}});
    return r.ok?URL.createObjectURL(await r.blob()):'';}catch(e){return '';}})();
  covers.set(k,p);return p;
@@ -1537,23 +1629,28 @@ function renderLibrary(animate=false){
  const grid=$('game-grid');grid.replaceChildren();
  if(!list.length){grid.append(el('p','muted',games.length?'Nessun gioco corrisponde alla ricerca.':'Non ho trovato giochi di Steam, Epic, Riot o GOG su questo PC.'));return;}
  list.forEach((g,i)=>{
-  // Locandina verticale come nei launcher: copertina 600×900 di Steam, altrimenti l'intestazione, altrimenti le iniziali.
+  // Locandina 2:3 come nei launcher. Steam: copertina dalla sua cache; Epic/Riot/GOG: icona grande del gioco
+  // su uno sfondo fatto con i suoi colori; altrimenti una locandina disegnata col nome.
   const playing=g.id===running;
-  const card=el('article','poster'+(g.hidden?' is-hidden':'')+(playing?' playing':'')+(animate?' enter':''));
-  card.style.setProperty('--i',Math.min(i,18));card.style.setProperty('--h',hue(g.name));tilt(card);
-  const art=el('div','poster-art');art.append(el('span','initials',initials(g.name)));
-  const showImg=u=>{if(!u)return false;const im=el('img');im.alt='';im.onload=()=>art.classList.add('has-img');im.src=u;art.prepend(im);return true;};
-  if(g.cover)coverUrl(g.id,'capsule').then(u=>showImg(u)||coverUrl(g.id,'header').then(h=>{if(showImg(h))art.classList.add('wide');}));
-  const badge=el('span','store-badge',g.store);badge.style.setProperty('--sc',STORE_COLORS[g.store]||'#94a3b8');
-  const info=el('div','poster-info');info.append(el('b','',g.name),
-   el('small','',[g.playtime?playtime(g.playtime):'',g.last?ago(g.last):'mai giocato'].filter(Boolean).join(' · ')));
-  const play=el('button','poster-play');play.type='button';play.append(icon('play'));play.setAttribute('aria-label',(playing?'In gioco: ':'Gioca a ')+g.name);
+  const card=el('article','gcard'+(g.hidden?' is-hidden':'')+(playing?' playing':'')+(animate?' enter':''));
+  card.style.setProperty('--i',Math.min(i,18));card.style.setProperty('--h',hue(g.name));card.style.setProperty('--sc',STORE_COLORS[g.store]||'#94a3b8');
+  const art=el('div','gc-art');
+  const gen=el('div','gc-gen'),gt=el('b','',g.name);gt.style.setProperty('--n',Math.max(8,...String(g.name).split(/\s+/).map(w=>w.length)));gen.append(gt,el('small','',g.store));art.append(gen);
+  const cover=u=>{if(!u)return false;const im=el('img','cov');im.alt='';im.onload=()=>art.classList.add('ready');im.src=u;art.prepend(im);return true;};
+  const iconArt=u=>{if(!u)return;const bg=el('img','ia-bg'),fg=el('img','ia-fg');bg.alt=fg.alt='';bg.src=fg.src=u;
+   fg.onload=()=>{art.classList.add('icon','ready');};art.append(bg,fg,el('span','ia-name',g.name));};
+  if(g.cover)coverUrl(g.id,'capsule').then(u=>cover(u)||coverUrl(g.id,'header').then(h=>{if(cover(h))art.classList.add('wide');}));
+  else if(g.icon)coverUrl(g.id,'icon').then(iconArt);
+  art.append(el('i','scrim'));
+  const play=el('button','gc-play');play.type='button';play.append(icon('play'));play.setAttribute('aria-label',(playing?'In gioco: ':'Gioca a ')+g.name);
   play.disabled=playing||g.hidden;play.addEventListener('click',e=>{e.stopPropagation();launchGame(g);});
-  const hide=el('button','poster-hide');hide.type='button';hide.title=g.hidden?'Rimetti tra i giochi':'Non è un gioco: escludi';hide.setAttribute('aria-label',hide.title);
+  const hide=el('button','gc-hide');hide.type='button';hide.title=g.hidden?'Rimetti tra i giochi':'Non è un gioco: escludi';hide.setAttribute('aria-label',hide.title);
   hide.append(icon(g.hidden?'eye':'eye-off'));
   hide.addEventListener('click',e=>{e.stopPropagation();const h=new Set(d.boost?.settings?.hidden||[]);g.hidden?h.delete(g.id):h.add(g.id);saveGaming({hidden:[...h]});});
-  card.append(art,badge,info,play,hide);
-  if(playing)card.append(el('span','now-badge','IN GIOCO'));
+  art.append(play,hide);if(playing)art.append(el('span','gc-now','IN GIOCO'));
+  const cap=el('div','gc-cap');const meta=el('div','gc-meta');meta.append(el('i'),el('span','',[g.store,g.playtime?playtime(g.playtime):'',g.last?ago(g.last):'mai giocato'].filter(Boolean).join(' · ')));
+  cap.append(el('b','',g.name),meta);
+  card.append(art,cap);tilt(art);
   if(g.size)card.title=`${g.name} · ${bytes(g.size)}`;
   grid.append(card);
  });

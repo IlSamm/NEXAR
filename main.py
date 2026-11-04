@@ -240,6 +240,14 @@ def install(data: Install):
     try: return {'ok':True,'message':controller.run_job('install-'+data.key,run)}
     except RuntimeError as ex: raise HTTPException(409,str(ex))
 
+class FanOne(BaseModel):
+    id: str
+    percent: int | None = None
+@app.post('/api/fans/one',dependencies=[Depends(authorized)])
+def fan_one(data: FanOne):
+    try: return {'ok':True,'message':controller.fan_set(data.id,data.percent)}
+    except (RuntimeError,OSError,ValueError) as ex: raise HTTPException(400,str(ex))
+
 @app.post('/api/fans/setup',dependencies=[Depends(authorized),Depends(local_only)])
 def fans_setup():
     try: return {'ok':True,'message':controller.run_job('fans-setup',controller.setup_fans)}
@@ -333,7 +341,16 @@ def gaming_launch(data: GameLaunch):
 
 @app.get('/api/gaming/cover/{gid}/{kind}',dependencies=[Depends(authorized)])
 def gaming_cover(gid: str, kind: str):
-    # Solo immagini già scaricate da Steam sul PC: nessuna richiesta a internet.
+    # Solo immagini già sul PC: cache di Steam o icona dell'eseguibile del gioco. Nessuna richiesta a internet.
+    if kind == 'icon':
+        if not re.fullmatch(r'(epic|riot|gog|steam)-[A-Za-z0-9_-]{1,60}', gid): raise HTTPException(404,'Nessuna immagine')
+        dest = DATA_DIR / 'icons' / f'{gid}.png'
+        if not dest.is_file():
+            g = controller.booster.find(gid)
+            try: ok = g and gaming_boost.exe_icon(g.get('exe') or '', dest)
+            except Exception: logging.exception('Icona del gioco'); ok = None
+            if not ok: raise HTTPException(404,'Nessuna immagine')
+        return FileResponse(dest, media_type='image/png', headers={'Cache-Control':'private, max-age=86400'})
     m = re.fullmatch(r'steam-(\d{1,10})', gid)
     path = gaming_boost.steam_image(m.group(1), kind) if m and kind in gaming_boost.COVER_KINDS else None
     if not path: raise HTTPException(404,'Nessuna immagine')

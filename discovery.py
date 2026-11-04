@@ -195,9 +195,14 @@ def elevated_task(task: str, exe: str, args: str, allow_uac: bool) -> str:
 # ---------- ventole ----------
 FAN_TASKS = {'eco': 'PC ECO Control - Ventole ECO', 'normal': 'PC ECO Control - Ventole Normali',
              'off': 'PC ECO Control - Ventole Spente', 'off_pump': 'PC ECO Control - Ventole Spente Pompa',
-             'max': 'PC ECO Control - Ventole Massimo'}
+             'max': 'PC ECO Control - Ventole Massimo',
+             'manual_a': 'PC ECO Control - Ventole Manuale A', 'manual_b': 'PC ECO Control - Ventole Manuale B'}
 FAN_FILES = {'eco': 'PCECO-Eco.json', 'normal': 'PCECO-Normale.json', 'off': 'PCECO-Spente.json',
-             'off_pump': 'PCECO-Spente-Pompa.json', 'max': 'PCECO-Massimo.json'}
+             'off_pump': 'PCECO-Spente-Pompa.json', 'max': 'PCECO-Massimo.json',
+             'manual_a': 'PCECO-Manuale-A.json', 'manual_b': 'PCECO-Manuale-B.json'}
+# Regolazione di una ventola alla volta: NEXAR scrive uno dei due profili "Manuale" (A e B a turno, così Fan Control
+# ricarica sempre) e lo fa caricare con la sua attività. Solo questi due file diventano modificabili dall'utente.
+FAN_MANUAL = ('manual_a', 'manual_b')
 # Velocità fissa per profilo; None = tutto al BIOS (eco: dalla configurazione, solo ventole del case).
 FAN_LEVELS = {'off': 0, 'off_pump': 0, 'eco': None, 'normal': None, 'max': 100}
 # Massimo e Spente valgono per OGNI ventola che Fan Control vede: case, radiatore, pompa, chipset e scheda video.
@@ -206,6 +211,21 @@ ALL_FANS_LEVELS = ('max', 'off', 'off_pump')
 PUMP_MIN_PERCENT = 40
 FAN_PROFILES_VERSION = 3  # 2 = Massimo su tutte; 3 = Spente su tutte + variante con pompa al minimo
 FAN_EXCLUDE = ('cpu', 'pump', 'aio', 'nvidia', 'gpu', 'chipset')
+
+def user_sid() -> str:
+    """SID dell'utente che usa NEXAR (per dargli la scrittura dei soli profili Manuale)."""
+    if os.name != 'nt': return ''
+    try:
+        out = subprocess.run(['whoami', '/user', '/fo', 'csv', '/nh'], capture_output=True, text=True, timeout=10, **_no_window()).stdout
+        m = re.search(r'"(S-1-5-[0-9-]+)"', out)
+        return m.group(1) if m else ''
+    except Exception: return ''
+
+def fan_control_id(sensor_id: str) -> str:
+    """Dal sensore RPM di LibreHardwareMonitor al controllo corrispondente in Fan Control."""
+    m = re.match(r'^(/lpc/[^/]+)/\d+/fan/(\d+)$', sensor_id)
+    if m: return f'{m.group(1)}/control/{m.group(2)}'
+    return sensor_id.replace('/fan/', '/control/') if '/fan/' in sensor_id else ''
 
 def is_pump(nick: str, ident: str) -> bool:
     return any(w in (nick + ' ' + ident).lower() for w in ('pump', 'pompa', 'aio'))
@@ -252,11 +272,15 @@ def fancontrol_setup(exe: str, eco_percent: int, staging: Path) -> list[str]:
     """Scrive i profili nella cartella protetta di Fan Control e crea le attività per cambiarli senza UAC."""
     profiles, chosen = build_fan_profiles(exe, eco_percent)
     if not chosen: raise RuntimeError('Nessuna ventola del case rilevata (servono i sensori collegati)')
+    for k in FAN_MANUAL: profiles[k] = profiles['normal']
     staging.mkdir(parents=True, exist_ok=True)
     for level, prof in profiles.items():
         (staging / FAN_FILES[level]).write_text(json.dumps(prof, indent=2), encoding='utf-8')
     dest = Path(exe).parent / 'Configurations'
     script = ''.join(f"Copy-Item -LiteralPath {_q(staging / f)} -Destination {_q(dest / f)} -Force;" for f in FAN_FILES.values())
+    sid = user_sid()
+    if sid:
+        script += ''.join(f"& icacls.exe {_q(dest / FAN_FILES[k])} /grant {_q('*' + sid + ':(M)')} | Out-Null;" for k in FAN_MANUAL)
     for key, task in FAN_TASKS.items():
         script += task_script(task, exe, f'-c {FAN_FILES[key]}', at_logon=False, start=False)
     if not run_elevated(script, wait=True): raise RuntimeError('Conferma da amministratore annullata')

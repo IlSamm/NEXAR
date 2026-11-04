@@ -3,6 +3,7 @@ config.json
 state.json
 *.log
 fan_profiles/
+icons/
 umbrel/docker-compose-pronto.yml
 
 # Build e pacchetti (le release si scaricano da GitHub Releases)

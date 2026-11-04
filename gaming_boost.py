@@ -151,9 +151,11 @@ def epic_games(base=None):
         if not str(j.get('InstallLocation') or '') or not folder.is_dir(): continue
         ns, item = j.get('CatalogNamespace') or '', j.get('CatalogItemId') or ''
         ref = f'{ns}%3A{item}%3A{app}' if ns and item else app
+        exe = folder / str(j.get('LaunchExecutable') or '')
         found[app] = {'id': 'epic-' + re.sub(r'[^A-Za-z0-9_-]', '', app)[:60], 'name': str(j.get('DisplayName') or app),
                       'store': 'Epic', 'dir': str(folder), 'size': int(j.get('InstallSize') or 0), 'last': 0,
-                      'launch': f'com.epicgames.launcher://apps/{ref}?action=launch&silent=true', 'cover': False}
+                      'launch': f'com.epicgames.launcher://apps/{ref}?action=launch&silent=true', 'cover': False,
+                      'exe': str(exe) if j.get('LaunchExecutable') and exe.is_file() else ''}
     return list(found.values())
 
 RIOT_PRODUCTS = {'valorant': ('VALORANT', 'valorant'), 'league of legends': ('League of Legends', 'league_of_legends')}
@@ -169,8 +171,10 @@ def riot_games(base=None):
         prod = RIOT_PRODUCTS.get(folder.name.lower())
         client = client if Path(str(client)).is_file() else j.get('rc_default') or ''
         if not prod or not folder.is_dir() or not Path(str(client)).is_file(): continue
+        exes = sorted(d.glob('*.exe'), key=lambda x: -x.stat().st_size) if d.is_dir() else []
         out.append({'id': 'riot-' + prod[1], 'name': prod[0], 'store': 'Riot', 'dir': str(folder), 'size': 0, 'last': 0,
-                    'launch': [str(client), f'--launch-product={prod[1]}', '--launch-patchline=live'], 'cover': False})
+                    'launch': [str(client), f'--launch-product={prod[1]}', '--launch-patchline=live'], 'cover': False,
+                    'exe': str(exes[0]) if exes else ''})
     return out
 
 def gog_games():
@@ -189,8 +193,52 @@ def gog_games():
             except OSError: continue
             if Path(exe).is_file() and Path(path).is_dir():
                 out.append({'id': 'gog-' + re.sub(r'\D', '', sub)[:20], 'name': name, 'store': 'GOG', 'dir': path,
-                            'size': 0, 'last': 0, 'launch': [exe], 'cwd': path, 'cover': False})
+                            'size': 0, 'last': 0, 'launch': [exe], 'cwd': path, 'cover': False, 'exe': exe})
     return out
+
+def exe_icon(exe: str, dest: Path, size: int = 256):
+    """Icona grande (256 px) dell'eseguibile del gioco, salvata come PNG: copertina per Epic, Riot e GOG
+    senza scaricare niente da internet."""
+    if os.name != 'nt' or not exe or not Path(exe).is_file(): return None
+    from ctypes import wintypes
+    from PIL import Image
+    class ICONINFO(ctypes.Structure):
+        _fields_ = [('fIcon', wintypes.BOOL), ('x', wintypes.DWORD), ('y', wintypes.DWORD), ('mask', wintypes.HBITMAP), ('color', wintypes.HBITMAP)]
+    class BITMAP(ctypes.Structure):
+        _fields_ = [('type', wintypes.LONG), ('w', wintypes.LONG), ('h', wintypes.LONG), ('wb', wintypes.LONG),
+                    ('planes', wintypes.WORD), ('bpp', wintypes.WORD), ('bits', ctypes.c_void_p)]
+    class BMI(ctypes.Structure):
+        _fields_ = [('size', wintypes.DWORD), ('w', wintypes.LONG), ('h', wintypes.LONG), ('planes', wintypes.WORD), ('bits', wintypes.WORD),
+                    ('comp', wintypes.DWORD), ('img', wintypes.DWORD), ('xp', wintypes.LONG), ('yp', wintypes.LONG),
+                    ('used', wintypes.DWORD), ('imp', wintypes.DWORD)]
+    u32, g32, s32 = ctypes.WinDLL('user32'), ctypes.WinDLL('gdi32'), ctypes.WinDLL('shell32')
+    s32.SHDefExtractIconW.argtypes = [wintypes.LPCWSTR, ctypes.c_int, wintypes.UINT, ctypes.POINTER(wintypes.HICON), ctypes.c_void_p, wintypes.UINT]
+    u32.GetIconInfo.argtypes = [wintypes.HICON, ctypes.POINTER(ICONINFO)]
+    g32.GetObjectW.argtypes = [wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p]
+    u32.GetDC.restype = wintypes.HDC; u32.GetDC.argtypes = [wintypes.HWND]
+    u32.ReleaseDC.argtypes = [wintypes.HWND, wintypes.HDC]
+    g32.GetDIBits.argtypes = [wintypes.HDC, wintypes.HBITMAP, wintypes.UINT, wintypes.UINT, ctypes.c_void_p, ctypes.c_void_p, wintypes.UINT]
+    g32.DeleteObject.argtypes = [wintypes.HANDLE]; u32.DestroyIcon.argtypes = [wintypes.HICON]
+    hicon = wintypes.HICON()
+    if s32.SHDefExtractIconW(str(exe), 0, 0, ctypes.byref(hicon), None, size) != 0 or not hicon: return None
+    ii = ICONINFO(); u32.GetIconInfo(hicon, ctypes.byref(ii))
+    try:
+        bm = BITMAP(); g32.GetObjectW(ii.color, ctypes.sizeof(bm), ctypes.byref(bm))
+        w, h = bm.w, bm.h
+        if not 16 <= w <= 512 or not 16 <= h <= 512: return None
+        bmi = BMI(size=40, w=w, h=-h, planes=1, bits=32)
+        buf = ctypes.create_string_buffer(w * h * 4); dc = u32.GetDC(None)
+        g32.GetDIBits(dc, ii.color, 0, h, buf, ctypes.byref(bmi), 0); u32.ReleaseDC(None, dc)
+    finally:
+        for b in (ii.color, ii.mask):
+            if b: g32.DeleteObject(b)
+        u32.DestroyIcon(hicon)
+    img = Image.frombuffer('RGBA', (w, h), buf.raw, 'raw', 'BGRA', 0, 1)
+    if img.getextrema()[3][1] == 0: img.putalpha(255)   # icone vecchie senza trasparenza
+    img = img.crop(img.getbbox() or (0, 0, w, h))
+    if max(img.size) < 64: return None                  # troppo piccola per fare da copertina
+    dest.parent.mkdir(parents=True, exist_ok=True); img.save(dest, 'PNG')
+    return dest
 
 _lib_cache = {'at': 0.0, 'games': [], 'skipped': []}
 _lib_lock = threading.Lock()
