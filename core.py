@@ -145,6 +145,17 @@ def collect_sensors(url: str):
 HIGH_PERFORMANCE = '8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c'
 USB_SUSPEND = ('2a737441-1930-4402-8d77-b2bebba308a3', '48e6b7a6-50f5-4782-a5d4-53bb8f07e226')
 WIFI_SAVING = ('19cbb8fa-5279-450e-9fac-8a3d5fedd0c1', '12bbebe6-58d6-4636-95bb-3217ef867c1a')
+# AI ECO regolabile: livelli pronti e singole voci (config['eco']).
+ECO_DEFAULTS = {'level': 'balanced', 'turbo_off': True, 'park': 25, 'disk_idle': 10, 'pcie': True, 'usb': True, 'wifi': True,
+                'leds_off': True, 'fans_quiet': True, 'sleep_idle': 0}
+ECO_PRESETS = {
+    'light':    {'turbo_off': False, 'cpu': 100, 'park': 50, 'disk_idle': 20, 'pcie': False, 'usb': True, 'wifi': False,
+                 'leds_off': False, 'fans_quiet': False, 'monitor': 300, 'sleep_idle': 0},
+    'balanced': {'turbo_off': True, 'cpu': 90, 'park': 25, 'disk_idle': 10, 'pcie': True, 'usb': True, 'wifi': True,
+                 'leds_off': True, 'fans_quiet': True, 'monitor': 60, 'sleep_idle': 0},
+    'max':      {'turbo_off': True, 'cpu': 60, 'park': 10, 'disk_idle': 5, 'pcie': True, 'usb': True, 'wifi': True,
+                 'leds_off': True, 'fans_quiet': True, 'monitor': 30, 'sleep_idle': 20},
+}
 ECO_EXTRA = (('SUB_PROCESSOR', 'PERFBOOSTMODE', 0), ('SUB_PROCESSOR', 'PERFEPP', 80), ('SUB_PROCESSOR', 'CPMINCORES', 25),
              ('SUB_PCIEXPRESS', 'ASPM', 2), ('SUB_DISK', 'DISKIDLE', 600), (*USB_SUSPEND, 1), (*WIFI_SAVING, 3))
 GAMING_EXTRA = (('SUB_PROCESSOR', 'PERFBOOSTMODE', 2), ('SUB_PROCESSOR', 'PERFEPP', 0), ('SUB_PCIEXPRESS', 'ASPM', 0),
@@ -196,6 +207,71 @@ class Control:
 
     def save_state(self):
         with self.lock: json_save(STATE_FILE, self.state)
+
+    # ---------- AI ECO regolabile ----------
+    def eco_settings(self):
+        e = {**ECO_DEFAULTS, **self.config.get('eco', {})}
+        e['cpu'] = int(self.config.get('eco_cpu_max_percent', 90)); e['monitor'] = int(self.config.get('monitor_timeout_seconds', 60))
+        return e
+
+    def eco_power_extra(self):
+        e = self.eco_settings()
+        return (('SUB_PROCESSOR', 'PERFBOOSTMODE', 0 if e['turbo_off'] else 2), ('SUB_PROCESSOR', 'PERFEPP', 85 if e['turbo_off'] else 50),
+                ('SUB_PROCESSOR', 'CPMINCORES', int(e['park'])), ('SUB_PCIEXPRESS', 'ASPM', 2 if e['pcie'] else 0),
+                ('SUB_DISK', 'DISKIDLE', int(e['disk_idle']) * 60), (*USB_SUSPEND, 1 if e['usb'] else 0), (*WIFI_SAVING, 3 if e['wifi'] else 0))
+
+    def set_eco_settings(self, new):
+        """Un livello pronto (light/balanced/max) o singole voci; se AI ECO è attiva si applica subito."""
+        if not isinstance(new, dict): raise ValueError('Impostazioni AI ECO non valide')
+        if 'level' in new:
+            if new['level'] not in ECO_PRESETS: raise ValueError('Livello: light, balanced o max')
+            vals = dict(ECO_PRESETS[new['level']]); level = new['level']
+        else:
+            vals, level = {}, 'custom'
+            for k in ('turbo_off', 'pcie', 'usb', 'wifi', 'leds_off', 'fans_quiet'):
+                if k in new:
+                    if type(new[k]) is not bool: raise ValueError(f'{k}: true/false')
+                    vals[k] = new[k]
+            for k, lo, hi in (('cpu', 50, 100), ('park', 5, 100), ('disk_idle', 0, 60), ('monitor', 30, 3600), ('sleep_idle', 0, 240)):
+                if k in new:
+                    if type(new[k]) is not int or not lo <= new[k] <= hi: raise ValueError(f'{k}: {lo}–{hi}')
+                    vals[k] = new[k]
+            if not vals: raise ValueError('Niente da cambiare')
+        with self.lock:
+            eco = self.config.setdefault('eco', {})
+            for k, v in vals.items():
+                if k == 'cpu': self.config['eco_cpu_max_percent'] = v
+                elif k == 'monitor': self.config['monitor_timeout_seconds'] = v
+                else: eco[k] = v
+            eco['level'] = level
+            json_save(CONFIG_FILE, self.config)
+        applied = ''
+        if self.mode() == 'eco':
+            try: self.set_mode('eco', manual=False, quiet=True); applied = ' · applicato subito'
+            except Exception as ex: applied = ' · non applicato: ' + str(ex)[:80]
+        names = {'light': 'Leggero', 'balanced': 'Bilanciato', 'max': 'Massimo', 'custom': 'Personalizzato'}
+        self.log_event('AI ECO: profilo ' + names[level] + applied)
+        return {'settings': self.eco_settings(), 'message': 'AI ECO ' + names[level] + applied}
+
+    def eco_info(self):
+        st = self.state.get('stats', {})
+        avg = {m: round(wh / (st.get('modes', {}).get(m, 0) / 3600)) for m, wh in (st.get('mode_wh') or {}).items()
+               if st.get('modes', {}).get(m, 0) > 600}
+        return {'settings': self.eco_settings(), 'presets': ECO_PRESETS, 'avg_w': avg,
+                'price_eur_kwh': float(self.config.get('energy', {}).get('price_eur_kwh', 0.30))}
+
+    def eco_sleep_check(self, now_idle=None):
+        """Sospensione automatica: in AI ECO, con Codex/Claude fermi e nessuno al PC da N minuti."""
+        minutes = int(self.eco_settings().get('sleep_idle') or 0)
+        if not minutes or self.mode() != 'eco' or self.booster.active or self.power_plan: return False
+        idle = pc_power.idle_seconds() if now_idle is None else now_idle
+        if idle < 60: self.eco_slept = False; return False
+        if getattr(self, 'eco_slept', False) or idle < minutes * 60 or any(self.processes().values()): return False
+        self.eco_slept = True
+        self.notify(f'💤 AI ECO: l’AI ha finito e il PC è inattivo da {minutes} minuti, lo metto in sospensione.')
+        self.log_event('AI ECO: sospensione automatica')
+        self.power_action('sleep')
+        return True
 
     # ---------- Ottimizza: storico e pulizia automatica ----------
     def record_clean(self, freed, kind):
@@ -395,7 +471,7 @@ class Control:
             except RuntimeError: pass  # impostazione nascosta su alcuni PC
         # Risparmio vero in AI ECO (turbo spento, PCIe/USB/Wi-Fi a risparmio, dischi meccanici fermi dopo 10 min);
         # in Gaming il contrario. Alcune voci mancano su certi PC: si saltano.
-        for sub, setting, value in (ECO_EXTRA if mode == 'eco' else GAMING_EXTRA):
+        for sub, setting, value in (self.eco_power_extra() if mode == 'eco' else GAMING_EXTRA):
             try: power('/setacvalueindex', guid, sub, setting, value)
             except RuntimeError: pass
         power('/setacvalueindex', guid, 'SUB_VIDEO', 'VIDEOIDLE',timeout)
@@ -662,7 +738,7 @@ class Control:
                 self.gaming_declined = value != 'gaming' and bool(self.booster.running)
                 self.gaming_owned = False
             notes = ['Energia: '+MODES[value]]
-            fans = {'eco':'eco','normal':'normal','gaming':self.config.get('fans',{}).get('gaming_level','normal')}[value]
+            fans = {'eco':'eco' if self.eco_settings()['fans_quiet'] else 'normal','normal':'normal','gaming':self.config.get('fans',{}).get('gaming_level','normal')}[value]
             # Gaming Boost: parte con Gaming e rimette tutto com'era quando si passa ad altra modalità.
             boost = (lambda: self.booster.start()) if value == 'gaming' else (lambda: self.booster.stop())
             for cb in (lambda: self.rgb_mode(value), lambda: self.fans_level(fans), boost):
@@ -694,7 +770,8 @@ class Control:
             msg = self.rgb_color(gaming_color, int(rgb.get('brightness', 100)), remember=False)
             self.state['rgb_gaming'] = True; self.save_state()
             return 'Luci Gaming: ' + msg
-        note = self.rgb_profile(value == 'eco') if value == 'eco' or not notes else ''
+        eco_off = value == 'eco' and self.eco_settings()['leds_off']
+        note = self.rgb_profile(eco_off) if eco_off or not notes else ''
         return ' · '.join(n for n in notes + [note] if n)
 
     def set_auto(self, enable):
@@ -1013,7 +1090,9 @@ class Control:
             st.update(since=today, total_wh=max(0.0,seed), total_cost=max(0.0,seed)/1000*price, on_s=0.0, modes={})
         cost=wh/1000*price
         st['total_wh']=st.get('total_wh',0.0)+wh; st['total_cost']=st.get('total_cost',0.0)+cost; st['on_s']=st.get('on_s',0.0)+seconds
-        if mode: st.setdefault('modes',{})[mode]=st['modes'].get(mode,0.0)+seconds
+        if mode:
+            ms=st.setdefault('modes',{}); ms[mode]=ms.get(mode,0.0)+seconds
+            mw=st.setdefault('mode_wh',{}); mw[mode]=mw.get(mode,0.0)+wh
         d=st.setdefault('days',{}).setdefault(today,{'wh':0.0,'cost':0.0,'s':0.0,'peak':0.0})
         d['wh']+=wh; d['cost']+=cost; d['s']+=seconds; d['peak']=max(d['peak'],round(watts,1))
         if mode: d[mode]=d.get(mode,0.0)+seconds
@@ -1073,6 +1152,8 @@ class Control:
                 t=self.telemetry()
                 now=time.monotonic()
                 if t.get('power'): self.add_energy(t['power']['total'], min(60.0, now-last), t, self.mode())
+                try: self.eco_sleep_check()
+                except Exception: logging.exception('Sospensione AI ECO')
                 last=now
                 # Protezione sempre attiva (anche ad avvisi spenti): CPU calda con ventole case rallentate.
                 # Con le ventole del case spente conta anche la GPU, che scarica il calore dentro il case.

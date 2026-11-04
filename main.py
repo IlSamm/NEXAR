@@ -342,6 +342,28 @@ def gaming_cover(gid: str, kind: str):
     if not path: raise HTTPException(404,'Nessuna immagine')
     return FileResponse(path, media_type='image/png' if kind == 'logo' else 'image/jpeg', headers={'Cache-Control':'private, max-age=86400'})
 
+@app.get('/api/eco',dependencies=[Depends(authorized)])
+def eco_info():
+    return controller.eco_info()
+
+class EcoSettings(BaseModel):
+    level: str | None = None
+    turbo_off: bool | None = None
+    pcie: bool | None = None
+    usb: bool | None = None
+    wifi: bool | None = None
+    leds_off: bool | None = None
+    fans_quiet: bool | None = None
+    cpu: int | None = None
+    park: int | None = None
+    disk_idle: int | None = None
+    monitor: int | None = None
+    sleep_idle: int | None = None
+@app.post('/api/eco',dependencies=[Depends(authorized)])
+def eco_save(data: EcoSettings):
+    try: r = controller.set_eco_settings(data.model_dump(exclude_none=True)); return {'ok':True,**r}
+    except (ValueError,RuntimeError) as ex: raise HTTPException(400,str(ex))
+
 @app.get('/api/stats',dependencies=[Depends(authorized)])
 def stats():
     return controller.stats_summary()

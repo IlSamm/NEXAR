@@ -92,7 +92,7 @@ function ask(title,text,{danger=true,ico='power',yes='Conferma'}={}){
 }
 function navigate(view){
  if(!titles[view])return;
- if(view==='settings'&&!demo){loadSettings();loadEvents();}
+ if(view==='settings'){if(!demo){loadSettings();loadEvents();}loadEco();}
  if(view==='lights')loadRgbDevices();
  if(view==='optimize')loadOptimize();
  if(view==='gaming')loadGaming(false,true);
@@ -103,7 +103,7 @@ function navigate(view){
  document.querySelectorAll('.page').forEach(p=>p.classList.toggle('active',p.id==='page-'+view));
  if(curView!==view)pageScan();curView=view;setZone();
  document.querySelectorAll('.page.active .tabs').forEach(inkTabs);
- $('page-title').textContent=titles[view][0];$('page-desc').textContent=titles[view][1];
+ $('page-title').textContent=titles[view][0];$('page-desc').textContent=view==='home'?greeting():titles[view][1];
  window.scrollTo({top:0});
 }
 function setBar(id,v,max=100){$(id).style.width=(typeof v==='number'?Math.max(0,Math.min(100,v/max*100)):0)+'%';}
@@ -402,7 +402,7 @@ async function toggleAuto(){
  if(demo){notify('Interruttore dimostrativo.');return;}if(!current||busy)return;
  busy=true;try{const r=await req('/api/auto','POST',{enabled:!current.auto_enabled});notify('✓ '+r.message);await refresh();}catch(ex){notify('⚠ '+ex.message,true);}finally{busy=false;}
 }
-const FIELDS={'cfg-cpu':'eco_cpu_max_percent','cfg-monitor':'monitor_timeout_seconds','cfg-delay':'restore_delay_seconds','cfg-cpu-alert':'cpu_temp_alert','cfg-gpu-alert':'gpu_temp_alert',
+const FIELDS={'cfg-delay':'restore_delay_seconds','cfg-cpu-alert':'cpu_temp_alert','cfg-gpu-alert':'gpu_temp_alert',
  'cfg-price':'energy_price_cents','cfg-psu':'psu_watts','cfg-monitor-w':'monitor_watts','cfg-extra':'extra_watts'};
 async function loadSettings(){
  if((!key&&!tgInit)||demo)return;
@@ -419,12 +419,6 @@ async function loadEvents(){
   data.events.slice(0,30).forEach(item=>{const row=el('div','event');row.append(el('time','',(item.at||'—').replace('T',' ').slice(5,16)),el('span','',item.message||''));box.append(row);});
  }catch(ex){notify('Registro: '+ex.message,true);}
 }
-$('settings-form').addEventListener('submit',async ev=>{
- ev.preventDefault();if(demo){notify('Anteprima: nessuna impostazione modificata.');return;}if(!key&&!tgInit)return;
- const fields={alerts_enabled:$('cfg-alerts').checked,psu_class:$('cfg-psu-class').value,gaming_fans:$('cfg-gaming-fans').value,anim_style:$('cfg-anim').value};
- Object.entries(FIELDS).forEach(([id,f])=>fields[f]=Number.parseInt($(id).value,10));
- try{await req('/api/settings','POST',fields);notify('✓ Impostazioni salvate.');await loadEvents();await refresh();}catch(ex){notify('⚠ '+ex.message,true);}
-});
 $('tg-pair-start').addEventListener('click',async()=>{
  if(demo){notify('Anteprima: configurazione non disponibile.');return;}
  const token=$('bot-token').value.trim();if(!token){notify('Inserisci il token fornito da @BotFather.',true);return;}
@@ -949,12 +943,126 @@ function cleanFinish(message,ok=true){
 }
 function cleanClose(){const h=cfx.h;cfx.h=null;cfx.box=null;h?.close();}
 function pageScan(){}
-$('cfg-anim').addEventListener('change',()=>{if(current)current.anim_style=$('cfg-anim').value;});
 $('cfg-anim-try').addEventListener('click',e=>{
  // Anteprima dello stile scelto: nessuna modalità viene cambiata.
  if(current)current.anim_style=$('cfg-anim').value;const m=current?.mode||'normal';
  const s=modeSceneOpen(m,e.currentTarget);setTimeout(()=>modeSceneDone(s,'Energia: '+MODE_FX[m].t+' · RGB: profilo applicato · Ventole: profilo attuale'),1000);
 });
+/* ---------- impostazioni: sezioni, salvataggio automatico, AI ECO ---------- */
+function flashSaved(panel){const s=panel?.querySelector('.saved');if(!s)return;s.textContent='✓ Salvato';s.classList.remove('show');void s.offsetWidth;s.classList.add('show');clearTimeout(s._t);s._t=setTimeout(()=>s.classList.remove('show'),1800);}
+function openSettings(section){
+ if(curView!=='settings')navigate('settings');
+ const b=document.querySelector(`#set-nav [data-set="${section}"]`);if(b)b.click();
+}
+document.querySelectorAll('#set-nav [data-set]').forEach(b=>b.addEventListener('click',()=>{
+ document.querySelectorAll('#set-nav [data-set]').forEach(x=>x.classList.toggle('selected',x===b));
+ document.querySelectorAll('.set-panel').forEach(p=>p.hidden=p.dataset.set!==b.dataset.set);
+ if(b.dataset.set==='eco')loadEco();if(b.dataset.set==='system')loadEvents();
+ b.scrollIntoView({block:'nearest',inline:'center',behavior:'smooth'});
+}));
+async function saveSetting(patch,panel){
+ if(demo){notify('Anteprima: nessuna impostazione modificata.');return;}
+ try{await req('/api/settings','POST',patch);flashSaved(panel);refresh();}catch(ex){notify('⚠ '+ex.message,true);loadSettings();}
+}
+Object.entries(FIELDS).forEach(([id,f])=>$(id).addEventListener('change',()=>{
+ const i=$(id),v=Number.parseInt(i.value,10);
+ if(Number.isNaN(v)||v<+i.min||v>+i.max){notify(`⚠ Valore ammesso: da ${i.min} a ${i.max}`,true);loadSettings();return;}
+ saveSetting({[f]:v},i.closest('.set-panel'));
+}));
+[['cfg-psu-class','psu_class'],['cfg-gaming-fans','gaming_fans'],['cfg-anim','anim_style']].forEach(([id,f])=>$(id).addEventListener('change',()=>{
+ if(f==='anim_style'&&current)current.anim_style=$(id).value;saveSetting({[f]:$(id).value},$(id).closest('.set-panel'));}));
+$('cfg-alerts').addEventListener('change',()=>saveSetting({alerts_enabled:$('cfg-alerts').checked},$('cfg-alerts').closest('.set-panel')));
+
+let ecoData=null;
+const DEMO_ECO={settings:{level:'balanced',turbo_off:true,cpu:90,park:25,disk_idle:10,pcie:true,usb:true,wifi:true,leds_off:true,fans_quiet:true,monitor:60,sleep_idle:0},avg_w:{eco:92,normal:131},price_eur_kwh:.3};
+async function loadEco(){if(demo){renderEco(DEMO_ECO);return;}try{renderEco(await req('/api/eco'));}catch(ex){}}
+function renderEco(d){
+ ecoData=d;const e=d.settings;
+ document.querySelectorAll('#eco-levels [data-level]').forEach(b=>b.classList.toggle('selected',b.dataset.level===e.level));
+ $('eco-custom').hidden=e.level!=='custom';
+ document.querySelectorAll('[data-eco]').forEach(t=>t.setAttribute('aria-checked',e[t.dataset.eco]?'true':'false'));
+ document.querySelectorAll('[data-eco-range]').forEach(r=>{r.value=e[r.dataset.ecoRange];paintRange(r);});
+ document.querySelectorAll('[data-eco-select]').forEach(s=>{const v=String(e[s.dataset.ecoSelect]);
+  if(![...s.options].some(o=>o.value===v))s.append(new Option(v,v));s.value=v;});
+ const a=d.avg_w||{},g=$('eco-gain');g.replaceChildren();
+ if(a.eco&&a.normal&&a.normal>a.eco){
+  const diff=a.normal-a.eco,month=diff/1000*24*30*(d.price_eur_kwh||.3);
+  g.className='eco-gain ok';const big=el('b','',`−${diff} W`);
+  const t=el('div');t.append(el('strong','','Risparmio misurato su questo PC'),el('span','',`In AI ECO ${a.eco} W in media, in Normale ${a.normal} W · circa ${eur(month)} al mese se resta acceso`));
+  g.append(big,t);
+ }else{g.className='eco-gain';const t=el('div');t.append(el('strong','','Il risparmio si misura da solo'),el('span','','Usa AI ECO e Normale per un po’: qui comparirà quanti watt risparmi davvero.'));g.append(icon('leaf'),t);}
+}
+function paintRange(r){
+ const p=(r.value-r.min)/(r.max-r.min)*100;r.style.setProperty('--fill',p+'%');
+ const o=r.closest('.rng')?.querySelector('output');if(o)o.textContent=r.value+'%';
+}
+async function saveEco(patch){
+ if(demo){notify('Anteprima: comando non attivo.');return;}
+ try{const r=await req('/api/eco','POST',patch);notify('✓ '+r.message);renderEco({...ecoData,settings:r.settings});flashSaved($('set-eco'));refresh();}
+ catch(ex){notify('⚠ '+ex.message,true);loadEco();}
+}
+document.querySelectorAll('#eco-levels [data-level]').forEach(b=>b.addEventListener('click',()=>saveEco({level:b.dataset.level})));
+document.querySelectorAll('[data-eco]').forEach(t=>t.addEventListener('click',()=>saveEco({[t.dataset.eco]:t.getAttribute('aria-checked')!=='true'})));
+document.querySelectorAll('[data-eco-range]').forEach(r=>{r.addEventListener('input',()=>paintRange(r));r.addEventListener('change',()=>saveEco({[r.dataset.ecoRange]:+r.value}));});
+document.querySelectorAll('[data-eco-select]').forEach(s=>s.addEventListener('change',()=>saveEco({[s.dataset.ecoSelect]:+s.value})));
+
+/* ---------- ricerca rapida (Ctrl+K) e scorciatoie ---------- */
+const PAGES=[['home','Panoramica','home'],['gaming','Gaming','game'],['optimize','Ottimizza','clean'],['energy','Consumi','plug'],['lights','Luci','bulb'],
+ ['cooling','Ventole','fan'],['power','Accensione','power'],['links','Collegamenti','link'],['settings','Impostazioni','sliders']];
+function paletteItems(){
+ const it=PAGES.map(([v,t,ic],i)=>({t,s:`Pagina · ${i+1}`,ic,run:()=>navigate(v)}));
+ it.push({t:'AI ECO',s:'Modalità',ic:'leaf',run:()=>action('eco')},{t:'Normale',s:'Modalità',ic:'bolt',run:()=>action('normal')},{t:'Gaming',s:'Modalità',ic:'game',run:()=>action('gaming')},
+  {t:'Ottimizza ora',s:'Pulizia sicura e DNS',ic:'clean',run:()=>{navigate('optimize');setTimeout(quickOptimize,300);}},
+  {t:'Spegni monitor',s:'Azione',ic:'monitor',run:()=>action('screen')},{t:'LED spenti',s:'Luci',ic:'bulb',run:()=>action('rgb-eco')},{t:'LED accesi',s:'Luci',ic:'palette',run:()=>action('rgb-normal')},
+  {t:'Ventole silenziose',s:'Ventole',ic:'fan',run:()=>action('fans-eco')},{t:'Ventole normali',s:'Ventole',ic:'fan',run:()=>action('fans-normal')},
+  {t:'Prova la rete',s:'Ottimizza',ic:'wave',run:()=>{navigate('optimize');optTabGo('net');post('/api/optimize/net',{});}},
+  {t:'Cerca file grandi',s:'Ottimizza',ic:'search',run:()=>{navigate('optimize');optTabGo('large');post('/api/optimize/large/scan',{});}},
+  {t:'Programmi all’avvio',s:'Ottimizza',ic:'power',run:()=>{navigate('optimize');optTabGo('startup');}},
+  {t:'Statistiche dei consumi',s:'Consumi',ic:'plug',run:()=>{navigate('energy');setTimeout(()=>document.querySelector('.stats-card')?.scrollIntoView({behavior:'smooth'}),200);}},
+  {t:'Impostazioni AI ECO',s:'Impostazioni',ic:'leaf',run:()=>openSettings('eco')},{t:'Avvisi di temperatura',s:'Impostazioni',ic:'temp',run:()=>openSettings('alerts')},
+  {t:'Prezzo dell’energia',s:'Impostazioni',ic:'plug',run:()=>openSettings('energy')},{t:'Animazioni',s:'Impostazioni',ic:'palette',run:()=>openSettings('look')},
+  {t:'Telegram',s:'Impostazioni',ic:'send',run:()=>openSettings('telegram')},{t:'Aggiornamenti',s:'Impostazioni',ic:'refresh',run:()=>openSettings('updates')},
+  {t:'Spegni il PC',s:'Accensione',ic:'power',run:()=>navigate('power')});
+ (gameData?.games||[]).filter(g=>!g.hidden).slice(0,12).forEach(g=>it.push({t:'Gioca a '+g.name,s:g.store,ic:'play',run:()=>launchGame(g)}));
+ return it;
+}
+let palSel=0,palList=[];
+function paletteOpen(){
+ const p=$('palette');if(!p.hidden)return;p.hidden=false;$('pal-q').value='';paletteRender();setTimeout(()=>$('pal-q').focus(),10);
+}
+function paletteClose(){$('palette').hidden=true;}
+function norm2(t){return t.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');}
+function paletteRender(){
+ const q=norm2($('pal-q').value.trim());const all=paletteItems();
+ palList=q?all.filter(x=>norm2(x.t+' '+x.s).includes(q)):all;palSel=0;
+ const box=$('pal-list');box.replaceChildren();
+ if(!palList.length){box.append(el('p','pal-empty','Nessun risultato'));return;}
+ palList.slice(0,40).forEach((x,i)=>{const b=el('button','pal-item'+(i===0?' sel':''));b.type='button';const ic=el('span','pal-ico');ic.append(icon(x.ic));
+  const t=el('div');t.append(el('b','',x.t),el('small','',x.s));b.append(ic,t);
+  b.addEventListener('mousemove',()=>{if(palSel!==i){palSel=i;paletteMark();}});b.addEventListener('click',()=>paletteRun(i));box.append(b);});
+}
+function paletteMark(){[...$('pal-list').children].forEach((b,i)=>b.classList.toggle('sel',i===palSel));$('pal-list').children[palSel]?.scrollIntoView({block:'nearest'});}
+function paletteRun(i){const x=palList[i];if(!x)return;paletteClose();x.run();}
+$('pal-q').addEventListener('input',paletteRender);
+$('pal-q').addEventListener('keydown',e=>{
+ if(e.key==='ArrowDown'){e.preventDefault();palSel=Math.min(palList.length-1,palSel+1);paletteMark();}
+ else if(e.key==='ArrowUp'){e.preventDefault();palSel=Math.max(0,palSel-1);paletteMark();}
+ else if(e.key==='Enter'){e.preventDefault();paletteRun(palSel);}
+ else if(e.key==='Escape'){paletteClose();}
+});
+$('palette').addEventListener('click',e=>{if(e.target===$('palette'))paletteClose();});
+document.querySelectorAll('[data-palette]').forEach(b=>b.addEventListener('click',paletteOpen));
+document.addEventListener('keydown',e=>{
+ if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){e.preventDefault();$('palette').hidden?paletteOpen():paletteClose();return;}
+ const typing=/^(input|textarea|select)$/i.test(document.activeElement?.tagName||'')||document.querySelector('dialog[open]')||!$('palette').hidden;
+ if(typing||e.ctrlKey||e.metaKey||e.altKey)return;
+ if(/^[1-9]$/.test(e.key)){const p=PAGES[+e.key-1];if(p)navigate(p[0]);}
+});
+function greeting(){
+ const d=new Date(),h=d.getHours();
+ const hi=h<5?'Buonanotte':h<13?'Buongiorno':h<18?'Buon pomeriggio':'Buonasera';
+ return `${hi} · ${d.toLocaleDateString('it-IT',{weekday:'long',day:'numeric',month:'long'})}`;
+}
 /* ---------- statistiche (consumi da sempre) ---------- */
 let statsData=null,statMetric='kwh',statSel=null;
 const DEMO_STATS=(()=>{const days=[];const now=new Date();for(let i=29;i>=0;i--){const d=new Date(now-i*864e5);const h=6+Math.random()*9,k=h*(.11+Math.random()*.08);

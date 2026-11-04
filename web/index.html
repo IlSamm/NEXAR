@@ -92,6 +92,7 @@
    <button data-view="links"><span class="nav-ico n-links"><svg class="i"><use href="#i-link"/></svg></span>Collegamenti<i class="badge" id="links-badge" hidden></i></button>
    <button data-view="settings"><span class="nav-ico n-settings"><svg class="i"><use href="#i-sliders"/></svg></span>Impostazioni</button>
   </nav>
+  <button class="rail-search" type="button" data-palette><svg class="i"><use href="#i-search"/></svg>Cerca<kbd>Ctrl K</kbd></button>
   <div class="rail-foot"><div class="conn"><i class="dot" id="conn-dot"></i><span id="conn-text">Connessione…</span></div></div>
  </aside>
 
@@ -100,6 +101,7 @@
    <img class="top-logo" src="/assets/logo.png" alt="">
    <div class="top-title"><h1 id="page-title">Panoramica</h1><p id="page-desc">—</p></div>
    <div class="top-actions">
+    <button class="icon-btn search-btn" type="button" data-palette aria-label="Cerca (Ctrl+K)"><svg class="i"><use href="#i-search"/></svg></button>
     <span class="mode-pill" id="mode-pill"><i class="dot"></i><span>—</span></span>
     <button class="icon-btn power-btn" data-view="power" aria-label="Accensione e spegnimento"><svg class="i"><use href="#i-power"/></svg></button>
    </div>
@@ -509,55 +511,103 @@
 
    <!-- IMPOSTAZIONI -->
    <section class="page" id="page-settings">
-    <form id="settings-form" class="settings">
-     <section class="card">
-      <div class="card-head"><div><h3>Modalità e avvisi</h3><p>Valgono dal prossimo cambio di modalità</p></div></div>
-      <div class="fields">
-       <label>Limite CPU in AI ECO<span class="suffix"><input type="number" id="cfg-cpu" min="50" max="100" required><i>%</i></span></label>
-       <label>Spegni monitor dopo<span class="suffix"><input type="number" id="cfg-monitor" min="30" max="3600" required><i>s</i></span></label>
-       <label>Torna a Normale dopo l'AI<span class="suffix"><input type="number" id="cfg-delay" min="30" max="7200" required><i>s</i></span></label>
-       <label>Avviso temperatura CPU<span class="suffix"><input type="number" id="cfg-cpu-alert" min="70" max="99" required><i>°C</i></span></label>
-       <label>Avviso temperatura GPU<span class="suffix"><input type="number" id="cfg-gpu-alert" min="60" max="94" required><i>°C</i></span></label>
-       <label>Ventole in Gaming<select id="cfg-gaming-fans"><option value="normal">Normali (curva BIOS)</option><option value="max">Al massimo</option></select></label>
-       <label>Animazioni<span class="anim-pick"><select id="cfg-anim"><option value="liquid">Liquido</option><option value="discreet">Discreto</option><option value="off">Spente</option></select><button class="btn small" type="button" id="cfg-anim-try">Prova</button></span></label>
-       <label class="check"><input type="checkbox" id="cfg-alerts"><span>Avvisi Telegram per temperatura alta</span></label>
-      </div>
-     </section>
-     <section class="card">
-      <div class="card-head"><div><h3>Energia</h3><p>Rendono la stima dei consumi più precisa</p></div></div>
-      <div class="fields">
-       <label>Prezzo dell'energia<span class="suffix"><input type="number" id="cfg-price" min="5" max="100" required><i>c€/kWh</i></span></label>
-       <label>Potenza alimentatore<span class="suffix"><input type="number" id="cfg-psu" min="300" max="1600" step="50" required><i>W</i></span></label>
-       <label>Classe alimentatore<select id="cfg-psu-class"><option value="bronze">80 PLUS Bronze</option><option value="gold">80 PLUS Gold</option><option value="platinum">80 PLUS Platinum</option><option value="titanium">80 PLUS Titanium</option></select></label>
-       <label>Monitor (0 = escludi)<span class="suffix"><input type="number" id="cfg-monitor-w" min="0" max="200" required><i>W</i></span></label>
-       <label>Periferiche USB<span class="suffix"><input type="number" id="cfg-extra" min="0" max="60" required><i>W</i></span></label>
-      </div>
-     </section>
-     <div class="form-actions"><button type="submit" class="btn primary">Salva impostazioni</button></div>
-    </form>
-    <div class="two-col">
-     <section class="card">
-      <div class="card-head"><div><h3>Telegram</h3><p id="telegram-indicator">—</p></div><a class="tag tg-link" id="tg-bot-link" href="https://t.me/" target="_blank" rel="noopener noreferrer" hidden>@bot</a></div>
-      <p class="tg-error" id="tg-error" hidden></p>
-      <p class="muted small-text" id="tg-help">Usa il tuo bot: token da <a href="https://t.me/BotFather" target="_blank" rel="noopener noreferrer">@BotFather</a> (/mybots → il bot → API Token), incollalo qui e abbina il telefono con il codice temporaneo.</p>
-      <div class="inline-form local-only"><input type="password" id="bot-token" autocomplete="off" placeholder="Token: 123456789:AA…" aria-label="Token del bot Telegram"><button class="btn primary" type="button" id="tg-pair-start">Collega</button></div>
-      <div id="tg-pair-code" hidden><p class="muted small-text">Apri <strong id="tg-pair-name"></strong> e invia entro 10 minuti:</p><div class="inline-form"><code class="pair-command" id="tg-pair-command"></code><button type="button" class="btn" id="tg-pair-copy">Copia</button></div></div>
-      <p class="fineprint">Nel bot: <b>/start</b> apre la dashboard. Gli avvisi del PC (temperature, partite, pulizie, aggiornamenti) arrivano da soli.</p>
-     </section>
-     <section class="card">
-      <div class="card-head"><div><h3>Registro</h3><p>Ultime operazioni</p></div><button class="icon-btn" type="button" id="refresh-events" aria-label="Aggiorna"><svg class="i"><use href="#i-refresh"/></svg></button></div>
-      <div class="events" id="events-list"><p class="muted">Nessun evento.</p></div>
-     </section>
+    <div class="set-layout">
+     <nav class="set-nav" id="set-nav" aria-label="Sezioni delle impostazioni">
+      <button type="button" class="selected" data-set="eco"><span class="nav-ico n-cooling"><svg class="i"><use href="#i-leaf"/></svg></span><div><b>AI ECO</b><small>Quanto risparmia il PC</small></div></button>
+      <button type="button" data-set="alerts"><span class="nav-ico n-power"><svg class="i"><use href="#i-temp"/></svg></span><div><b>Avvisi e automazioni</b><small>Temperature, ritorno a Normale</small></div></button>
+      <button type="button" data-set="energy"><span class="nav-ico n-energy"><svg class="i"><use href="#i-plug"/></svg></span><div><b>Energia e costi</b><small>Prezzo e alimentatore</small></div></button>
+      <button type="button" data-set="look"><span class="nav-ico n-lights"><svg class="i"><use href="#i-palette"/></svg></span><div><b>Aspetto e Gaming</b><small>Animazioni, ventole in Gaming</small></div></button>
+      <button type="button" data-set="telegram"><span class="nav-ico n-links"><svg class="i"><use href="#i-send"/></svg></span><div><b>Telegram</b><small id="set-tg-sub">Bot e avvisi</small></div></button>
+      <button type="button" data-set="updates"><span class="nav-ico n-home"><svg class="i"><use href="#i-refresh"/></svg></span><div><b>Aggiornamenti</b><small id="set-upd-sub">Versione</small></div></button>
+      <button type="button" data-set="system"><span class="nav-ico n-settings"><svg class="i"><use href="#i-cpu"/></svg></span><div><b>Sistema</b><small>Hardware e registro</small></div></button>
+     </nav>
+     <div class="set-body">
+
+      <section class="card set-panel" data-set="eco" id="set-eco">
+       <div class="card-head"><div><h3>AI ECO</h3><p>Cosa fa il PC per consumare meno mentre l'AI lavora. Se AI ECO è attiva, ogni modifica vale subito.</p></div><span class="saved"></span></div>
+       <div class="eco-levels" id="eco-levels">
+        <button type="button" data-level="light"><span class="lv-dots"><i></i></span><b>Leggero</b><small>Spegne solo il monitor e mette in pausa i dischi</small></button>
+        <button type="button" data-level="balanced"><span class="lv-dots"><i></i><i></i></span><b>Bilanciato</b><small>Turbo spento, LED spenti, ventole silenziose</small></button>
+        <button type="button" data-level="max"><span class="lv-dots"><i></i><i></i><i></i></span><b>Massimo</b><small>Tutto al minimo e sospende quando l'AI finisce</small></button>
+       </div>
+       <p class="eco-custom" id="eco-custom" hidden>Profilo personalizzato: hai cambiato qualche voce qui sotto.</p>
+       <div class="eco-gain" id="eco-gain"></div>
+       <div class="set-group"><h4>Processore</h4>
+        <div class="set-row"><div><b>Turbo spento</b><small>Il risparmio più grande quando il PC lavora</small></div><button class="toggle" type="button" data-eco="turbo_off" role="switch" aria-label="Turbo spento"><span></span></button></div>
+        <div class="set-row range"><div><b>Velocità massima della CPU</b><small>Sotto il 100% la CPU non sale oltre questa soglia</small></div><div class="rng"><input type="range" min="50" max="100" step="5" data-eco-range="cpu" aria-label="Velocità massima CPU"><output id="eco-cpu-v">—</output></div></div>
+        <div class="set-row range"><div><b>Core sempre accesi</b><small>Gli altri si spengono quando non servono</small></div><div class="rng"><input type="range" min="5" max="100" step="5" data-eco-range="park" aria-label="Core sempre accesi"><output id="eco-park-v">—</output></div></div>
+       </div>
+       <div class="set-group"><h4>Schermo, dischi e periferiche</h4>
+        <div class="set-row"><div><b>Spegni il monitor dopo</b><small>Senza mouse e tastiera</small></div><select data-eco-select="monitor" aria-label="Spegni il monitor dopo"><option value="30">30 secondi</option><option value="60">1 minuto</option><option value="120">2 minuti</option><option value="300">5 minuti</option><option value="600">10 minuti</option></select></div>
+        <div class="set-row"><div><b>Ferma i dischi meccanici dopo</b><small>Circa 5 W in meno per disco</small></div><select data-eco-select="disk_idle" aria-label="Ferma i dischi dopo"><option value="0">Mai</option><option value="5">5 minuti</option><option value="10">10 minuti</option><option value="20">20 minuti</option></select></div>
+        <div class="set-row"><div><b>PCIe a risparmio</b><small>Scheda video e SSD in stato a basso consumo</small></div><button class="toggle" type="button" data-eco="pcie" role="switch" aria-label="PCIe a risparmio"><span></span></button></div>
+        <div class="set-row"><div><b>USB a risparmio</b><small>Le porte inutilizzate si fermano</small></div><button class="toggle" type="button" data-eco="usb" role="switch" aria-label="USB a risparmio"><span></span></button></div>
+        <div class="set-row"><div><b>Wi-Fi a risparmio</b><small>Non tocca il cavo di rete</small></div><button class="toggle" type="button" data-eco="wifi" role="switch" aria-label="Wi-Fi a risparmio"><span></span></button></div>
+       </div>
+       <div class="set-group"><h4>Luci, ventole e sospensione</h4>
+        <div class="set-row"><div><b>LED spenti</b><small>Si riaccendono tornando a Normale</small></div><button class="toggle" type="button" data-eco="leds_off" role="switch" aria-label="LED spenti in AI ECO"><span></span></button></div>
+        <div class="set-row"><div><b>Ventole silenziose</b><small>Solo quelle del case, con protezione a 80 °C</small></div><button class="toggle" type="button" data-eco="fans_quiet" role="switch" aria-label="Ventole silenziose in AI ECO"><span></span></button></div>
+        <div class="set-row"><div><b>Sospendi quando l'AI ha finito</b><small>Se Codex e Claude sono fermi e nessuno usa il PC da…</small></div><select data-eco-select="sleep_idle" aria-label="Sospendi dopo"><option value="0">Mai</option><option value="10">10 minuti</option><option value="20">20 minuti</option><option value="30">30 minuti</option><option value="60">1 ora</option></select></div>
+       </div>
+      </section>
+
+      <section class="card set-panel" data-set="alerts" hidden>
+       <div class="card-head"><div><h3>Avvisi e automazioni</h3><p>Ti scrive su Telegram se qualcosa scalda e gestisce il ritorno a Normale</p></div><span class="saved"></span></div>
+       <div class="set-group">
+        <div class="set-row"><div><b>Avvisi di temperatura</b><small>Messaggio su Telegram quando CPU o GPU scaldano troppo</small></div><label class="toggle-check"><input type="checkbox" id="cfg-alerts"><span></span></label></div>
+        <div class="set-row"><div><b>Soglia processore</b><small>Avviso sopra questa temperatura</small></div><span class="suffix"><input type="number" id="cfg-cpu-alert" min="70" max="99"><i>°C</i></span></div>
+        <div class="set-row"><div><b>Soglia scheda video</b><small>Avviso sopra questa temperatura</small></div><span class="suffix"><input type="number" id="cfg-gpu-alert" min="60" max="94"><i>°C</i></span></div>
+        <div class="set-row"><div><b>Torna a Normale dopo l'AI</b><small>Con l'automazione AI attiva, attesa dopo che Codex e Claude si fermano</small></div><span class="suffix"><input type="number" id="cfg-delay" min="30" max="7200"><i>s</i></span></div>
+       </div>
+      </section>
+
+      <section class="card set-panel" data-set="energy" hidden>
+       <div class="card-head"><div><h3>Energia e costi</h3><p>Rendono più precisi consumi, costi e statistiche</p></div><span class="saved"></span></div>
+       <div class="set-group">
+        <div class="set-row"><div><b>Prezzo dell'energia</b><small>Dalla tua bolletta, tasse comprese</small></div><span class="suffix"><input type="number" id="cfg-price" min="5" max="100"><i>c€/kWh</i></span></div>
+        <div class="set-row"><div><b>Potenza alimentatore</b><small>Scritta sull'etichetta</small></div><span class="suffix"><input type="number" id="cfg-psu" min="300" max="1600" step="50"><i>W</i></span></div>
+        <div class="set-row"><div><b>Classe alimentatore</b><small>Efficienza 80 PLUS</small></div><select id="cfg-psu-class"><option value="bronze">80 PLUS Bronze</option><option value="gold">80 PLUS Gold</option><option value="platinum">80 PLUS Platinum</option><option value="titanium">80 PLUS Titanium</option></select></div>
+        <div class="set-row"><div><b>Monitor</b><small>Watt del monitor da contare (0 = escludi)</small></div><span class="suffix"><input type="number" id="cfg-monitor-w" min="0" max="200"><i>W</i></span></div>
+        <div class="set-row"><div><b>Periferiche USB</b><small>Mouse, tastiera, cuffie…</small></div><span class="suffix"><input type="number" id="cfg-extra" min="0" max="60"><i>W</i></span></div>
+       </div>
+      </section>
+
+      <section class="card set-panel" data-set="look" hidden>
+       <div class="card-head"><div><h3>Aspetto e Gaming</h3><p>Come si muove l'app e cosa fa il PC quando giochi</p></div><span class="saved"></span></div>
+       <div class="set-group">
+        <div class="set-row"><div><b>Animazioni</b><small>Cambio modalità e pulizia</small></div><span class="anim-pick"><select id="cfg-anim" aria-label="Animazioni"><option value="liquid">Liquido</option><option value="discreet">Discreto</option><option value="off">Spente</option></select><button class="btn small" type="button" id="cfg-anim-try">Prova</button></span></div>
+        <div class="set-row"><div><b>Ventole in Gaming</b><small>Anche dalla pagina Gaming</small></div><select id="cfg-gaming-fans" aria-label="Ventole in Gaming"><option value="normal">Normali (curva BIOS)</option><option value="max">Al massimo</option></select></div>
+        <div class="set-row"><div><b>Scorciatoie</b><small><kbd>Ctrl</kbd> + <kbd>K</kbd> cerca pagine e azioni · <kbd>1</kbd>–<kbd>9</kbd> cambiano pagina</small></div></div>
+       </div>
+      </section>
+
+      <section class="card set-panel" data-set="telegram" hidden>
+       <div class="card-head"><div><h3>Telegram</h3><p id="telegram-indicator">—</p></div><a class="tag tg-link" id="tg-bot-link" href="https://t.me/" target="_blank" rel="noopener noreferrer" hidden>@bot</a></div>
+       <p class="tg-error" id="tg-error" hidden></p>
+       <p class="muted small-text" id="tg-help">Usa il tuo bot: token da <a href="https://t.me/BotFather" target="_blank" rel="noopener noreferrer">@BotFather</a> (/mybots → il bot → API Token), incollalo qui e abbina il telefono con il codice temporaneo.</p>
+       <div class="inline-form local-only"><input type="password" id="bot-token" autocomplete="off" placeholder="Token: 123456789:AA…" aria-label="Token del bot Telegram"><button class="btn primary" type="button" id="tg-pair-start">Collega</button></div>
+       <div id="tg-pair-code" hidden><p class="muted small-text">Apri <strong id="tg-pair-name"></strong> e invia entro 10 minuti:</p><div class="inline-form"><code class="pair-command" id="tg-pair-command"></code><button type="button" class="btn" id="tg-pair-copy">Copia</button></div></div>
+       <p class="fineprint">Nel bot: <b>/start</b> apre la dashboard. Gli avvisi del PC (temperature, partite, pulizie, aggiornamenti) arrivano da soli.</p>
+      </section>
+
+      <section class="card set-panel" data-set="updates" hidden>
+       <div class="card-head"><div><h3>Aggiornamenti</h3><p id="upd-text">—</p></div><span class="tag" id="upd-version">v—</span></div>
+       <div class="set-group">
+        <div class="set-row"><div><b>Aggiorna da solo</b><small>Controlla ogni 6 ore, installa e riparte</small></div><button class="toggle" id="upd-auto" type="button" role="switch" aria-checked="true" aria-label="Aggiornamenti automatici"><span></span></button></div>
+       </div>
+       <div class="btn-row"><button class="btn" type="button" id="upd-check"><svg class="i"><use href="#i-refresh"/></svg>Controlla ora</button><button class="btn primary" type="button" id="upd-install" hidden>Installa aggiornamento</button></div>
+      </section>
+
+      <section class="card set-panel" data-set="system" hidden>
+       <div class="card-head"><div><h3>Sistema</h3><p>Il tuo PC e le ultime operazioni di NEXAR</p></div><button class="btn small" type="button" id="logout">Esci</button></div>
+       <div class="hw">
+        <div><span>Scheda madre</span><b id="hw-mb">—</b></div><div><span>Processore</span><b id="hw-cpu-name">—</b></div><div><span>Scheda video</span><b id="hw-gpu-name">—</b></div><div><span>Dissipatore</span><b id="hw-cooler">—</b></div>
+       </div>
+       <div class="sub-head reg-head"><b>Registro</b><button class="icon-btn small" type="button" id="refresh-events" aria-label="Aggiorna registro"><svg class="i"><use href="#i-refresh"/></svg></button></div>
+       <div class="events" id="events-list"><p class="muted">Nessun evento.</p></div>
+      </section>
+     </div>
     </div>
-    <section class="card">
-     <div class="card-head"><div><h3>Aggiornamenti</h3><p id="upd-text">—</p></div><span class="tag" id="upd-version">v—</span></div>
-     <div class="switch-row upd-row"><div><b>Aggiorna da solo</b><small>Controlla ogni 6 ore, installa e riparte</small></div><button class="toggle" id="upd-auto" role="switch" aria-checked="true" aria-label="Aggiornamenti automatici"><span></span></button></div>
-     <div class="btn-row"><button class="btn" type="button" id="upd-check"><svg class="i"><use href="#i-refresh"/></svg>Controlla ora</button><button class="btn primary" type="button" id="upd-install" hidden>Installa aggiornamento</button></div>
-    </section>
-    <section class="card hw">
-     <div><span>Scheda madre</span><b id="hw-mb">—</b></div><div><span>Processore</span><b id="hw-cpu-name">—</b></div><div><span>Scheda video</span><b id="hw-gpu-name">—</b></div><div><span>Dissipatore</span><b id="hw-cooler">—</b></div>
-     <button class="btn small" type="button" id="logout">Esci</button>
-    </section>
    </section>
 
    <!-- ALTRO (telefono) -->
@@ -589,5 +639,12 @@
   <div class="sheet-actions"><button class="btn" value="no">Annulla</button><button class="btn primary" value="yes" id="confirm-yes">Conferma</button></div>
  </form>
 </dialog>
+<div class="palette" id="palette" hidden>
+ <div class="pal-box" role="dialog" aria-label="Cerca pagine e azioni">
+  <label class="pal-input"><svg class="i"><use href="#i-search"/></svg><input id="pal-q" placeholder="Cerca una pagina, un'azione o un gioco…" autocomplete="off" aria-label="Cerca"><kbd>Esc</kbd></label>
+  <div class="pal-list" id="pal-list"></div>
+  <div class="pal-foot"><span><kbd>↑</kbd><kbd>↓</kbd> scegli</span><span><kbd>Invio</kbd> apri</span><span><kbd>1</kbd>–<kbd>9</kbd> pagine</span></div>
+ </div>
+</div>
 <div class="toast" role="status" id="toast"></div>
 </body></html>

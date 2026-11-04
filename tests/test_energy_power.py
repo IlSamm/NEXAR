@@ -226,3 +226,39 @@ def test_lifetime_stats_and_records(tmp_path, monkeypatch):
     d = s['days'][-1]
     assert d['kwh'] == 0.35 and d['peak'] == 300 and d['cpu_temp'] == 71 and d['modes'] == {'gaming': 1.0, 'eco': 0.5}
     assert s['months'][-1]['kwh'] == 0.35 and s['co2_kg'] == 0.1
+
+
+def test_eco_levels_and_custom(tmp_path, monkeypatch):
+    import core, pytest
+    monkeypatch.setattr(core, 'STATE_FILE', tmp_path / 'state.json')
+    monkeypatch.setattr(core, 'CONFIG_FILE', tmp_path / 'config.json')
+    c = core.Control({})
+    monkeypatch.setattr(c, 'mode', lambda: 'normal')          # non in ECO: niente da applicare subito
+    r = c.set_eco_settings({'level': 'max'})
+    e = r['settings']
+    assert e['level'] == 'max' and e['cpu'] == 60 and e['turbo_off'] and e['sleep_idle'] == 20 and e['monitor'] == 30
+    extra = dict(((s, k), v) for s, k, v in c.eco_power_extra())
+    assert extra[('SUB_PROCESSOR', 'PERFBOOSTMODE')] == 0 and extra[('SUB_DISK', 'DISKIDLE')] == 300 and extra[('SUB_PCIEXPRESS', 'ASPM')] == 2
+    e = c.set_eco_settings({'turbo_off': False, 'cpu': 85})['settings']
+    assert e['level'] == 'custom' and e['turbo_off'] is False and e['cpu'] == 85 and e['park'] == 10
+    assert dict(((s, k), v) for s, k, v in c.eco_power_extra())[('SUB_PROCESSOR', 'PERFBOOSTMODE')] == 2
+    for bad in ({'cpu': 20}, {'level': 'turbo'}, {'pcie': 'si'}, {}):
+        with pytest.raises(ValueError): c.set_eco_settings(bad)
+
+def test_eco_sleep_only_when_ai_done_and_idle(tmp_path, monkeypatch):
+    import core
+    monkeypatch.setattr(core, 'STATE_FILE', tmp_path / 'state.json')
+    monkeypatch.setattr(core, 'CONFIG_FILE', tmp_path / 'config.json')
+    c = core.Control({'eco': {'sleep_idle': 20}})
+    slept = []
+    monkeypatch.setattr(c, 'mode', lambda: 'eco')
+    monkeypatch.setattr(c, 'power_action', lambda kind, **k: slept.append(kind))
+    running = {'codex': True}
+    monkeypatch.setattr(c, 'processes', lambda: running)
+    assert not c.eco_sleep_check(now_idle=30 * 60)               # l'AI lavora ancora
+    running['codex'] = False
+    assert not c.eco_sleep_check(now_idle=10 * 60)               # inattivo da troppo poco
+    assert c.eco_sleep_check(now_idle=25 * 60) and slept == ['sleep']
+    assert not c.eco_sleep_check(now_idle=26 * 60)               # una volta sola per pausa
+    c.eco_sleep_check(now_idle=5)                                # torni al PC: si riarma
+    assert c.eco_sleep_check(now_idle=21 * 60) and slept == ['sleep', 'sleep']
