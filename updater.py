@@ -68,21 +68,36 @@ def spawn_detached(args):
 # Script batch leggibile (niente PowerShell nascosto: gli antivirus lo considerano un segnale di malware).
 SWAP = r'''@echo off
 rem NEXAR {version}: attende la chiusura dell'app, sostituisce il programma e la riavvia.
-echo %date% %time% aggiornamento {version}>>"{log}"
+rem Pause con ping: "timeout" si rifiuta di partire senza console (stdin rediretto) e non aspetterebbe.
+rem Le redirezioni >> stanno davanti: "...=8>>file" verrebbe letto come handle 8 e la riga andrebbe persa.
+>>"{log}" echo %date% %time% aggiornamento {version}
 set /a n=0
 :wait
 tasklist /FI "PID eq {pid}" 2>nul | find "{pid}" >nul || goto copy
 set /a n+=1
 if %n% geq 90 goto copy
-timeout /t 1 /nobreak >nul
+ping -n 2 127.0.0.1 >nul
 goto wait
 :copy
-timeout /t 2 /nobreak >nul
+rem Altre copie di NEXAR rimaste aperte (una seconda finestra, o l'app bloccata in chiusura)
+rem terrebbero bloccati i file e l'aggiornamento resterebbe a metà: si chiudono.
+taskkill /F /IM {exe} >nul 2>&1
+ping -n 3 127.0.0.1 >nul
 rem Solo il programma: _internal viene rispecchiata, l'exe sostituito. Nient'altro nella cartella viene cancellato.
 robocopy "{src}\_internal" "{dst}\_internal" /MIR /R:5 /W:2 /NFL /NDL /NJH /NJS >nul
-echo %date% %time% robocopy=%errorlevel%>>"{log}"
-copy /y "{src}\NEXAR.exe" "{dst}\NEXAR.exe" >nul
-start "" /d "{dst}" "{dst}\NEXAR.exe"
+set rc=%errorlevel%
+set ok=no
+set /a c=0
+:exe
+copy /y "{src}\{exe}" "{dst}\{exe}" >nul 2>&1
+if not errorlevel 1 set ok=si& goto done
+set /a c+=1
+if %c% geq 15 goto done
+ping -n 3 127.0.0.1 >nul
+goto exe
+:done
+>>"{log}" echo %date% %time% robocopy=%rc% exe=%ok% attesa=%n%s
+start "" /d "{dst}" "{dst}\{exe}"
 '''
 
 class Updater:
@@ -142,7 +157,7 @@ class Updater:
         src = safe_extract(zip_path, work / 'staging')
         script = work / 'swap.cmd'
         # cmd legge i .bat nella codepage OEM della console.
-        script.write_text(SWAP.format(pid=os.getpid(), src=src, dst=self.install_dir, log=self.data_dir / 'update.log',
+        script.write_text(SWAP.format(pid=os.getpid(), src=src, dst=self.install_dir, log=self.data_dir / 'update.log', exe='NEXAR.exe',
                                       version=rel['tag']), encoding='oem' if os.name == 'nt' else 'ascii', errors='replace')
         spawn_detached(['cmd.exe', '/d', '/c', str(script)])
         self.ctrl.log_event(f'⬆️ Installazione NEXAR {rel["tag"]}: riavvio')
@@ -153,10 +168,16 @@ class Updater:
     def exit_soon(self):
         time.sleep(3)  # lascia partire la risposta HTTP e l'avviso Telegram
         for hook in self.exit_hooks:
-            try: hook()
-            except Exception: logging.exception('Chiusura per aggiornamento')
-        time.sleep(4)
+            # Ognuno con un limite: una finestra che non si chiude non deve bloccare l'aggiornamento.
+            t = threading.Thread(target=self._run_hook, args=(hook,), daemon=True, name='update-exit-hook')
+            t.start(); t.join(5)
+        time.sleep(2)
         os._exit(0)
+
+    @staticmethod
+    def _run_hook(hook):
+        try: hook()
+        except Exception: logging.exception('Chiusura per aggiornamento')
 
     def loop(self, stop: threading.Event):
         if stop.wait(90) or not self.frozen: return

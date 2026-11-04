@@ -55,7 +55,11 @@ def test_spawn_falls_back_when_breakaway_denied(monkeypatch):
     assert updater.spawn_detached(['x']) == 'proc' and len(calls) == 2
 
 def test_swap_script_is_plain_batch():
-    s = updater.SWAP.format(pid=1234, src=r'C:\T\NEXAR', dst=r'C:\P\NEXAR', log=r'C:\D\update.log', version='v9.9.9')
+    s = updater.SWAP.format(pid=1234, src=r'C:\T\NEXAR', dst=r'C:\P\NEXAR', log=r'C:\D\update.log', version='v9.9.9', exe='NEXAR.exe')
     low = s.lower()
     assert 'powershell' not in low and 'encodedcommand' not in low and 'bypass' not in low
     assert r'robocopy "C:\T\NEXAR\_internal" "C:\P\NEXAR\_internal" /MIR' in s and 'PID eq 1234' in s
+    # le righe di log non devono finire su un handle: "=8>>file" perderebbe la riga
+    assert not any(l.startswith('echo') and '>>' in l for l in s.splitlines())
+    assert 'taskkill /F /IM NEXAR.exe' in s and r'copy /y "C:\T\NEXAR\NEXAR.exe" "C:\P\NEXAR\NEXAR.exe"' in s
+    assert 'timeout /t' not in s  # senza console non aspetta

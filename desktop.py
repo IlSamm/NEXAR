@@ -5,6 +5,7 @@ Chiudendo la finestra l'app resta vicino all'orologio: automazione AI, Telegram 
 import logging
 import os
 import socket
+import subprocess
 import sys
 import threading
 import time
@@ -62,7 +63,7 @@ if os.name == 'nt':
     user32.ShowWindowAsync.argtypes = [wintypes.HWND, ctypes.c_int]
     user32.SetWindowPos.argtypes = [wintypes.HWND, wintypes.HWND, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_uint]
 
-WM_CLOSE, WM_NCCALCSIZE, WM_SYSCOMMAND, WM_APP_DRAG = 0x10, 0x83, 0x112, 0x8001
+WM_CLOSE, WM_NCCALCSIZE, WM_SYSCOMMAND, WM_APP_DRAG, WM_APP_SHOW = 0x10, 0x83, 0x112, 0x8001, 0x8002
 WM_WINDOWPOSCHANGING, WM_WINDOWPOSCHANGED = 0x46, 0x47
 if os.name == 'nt':
     class WINDOWPOS(ctypes.Structure):
@@ -71,10 +72,10 @@ if os.name == 'nt':
 # SC_MOVE|HTCAPTION e SC_SIZE|WMSZ_*: gli stessi comandi che usa Windows trascinando la barra o il bordo
 SC_DRAG = {'caption': 0xF012, 'top': 0xF003, 'topleft': 0xF004, 'topright': 0xF005}
 
-def find_hwnd(title='NEXAR'):
-    """Finestra principale di questo processo (anche se è ancora nascosta)."""
+def find_hwnd(title='NEXAR', pid=None):
+    """Finestra principale di questo processo (anche se è ancora nascosta), o di quello indicato."""
     found = []
-    pid = os.getpid()
+    pid = pid or os.getpid()
     @ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.HWND, wintypes.LPARAM)
     def cb(h, _):
         owner = wintypes.DWORD()
@@ -87,6 +88,42 @@ def find_hwnd(title='NEXAR'):
     user32.EnumWindows(cb, 0)
     return found[0] if found else None
 
+# ---------------- una sola NEXAR alla volta ----------------
+# Una seconda copia aperta (doppio clic sull'icona, avvio automatico) terrebbe bloccati i file
+# del programma e farebbe fallire gli aggiornamenti: si porta avanti la finestra già aperta e si esce.
+_instance_mutex = None
+
+def claim_single_instance():
+    """True se questa è l'unica NEXAR aperta. Il mutex sparisce da solo quando il processo termina."""
+    global _instance_mutex
+    if os.name != 'nt': return True
+    k32 = ctypes.WinDLL('kernel32', use_last_error=True)
+    k32.CreateMutexW.restype = wintypes.HANDLE
+    k32.CreateMutexW.argtypes = [ctypes.c_void_p, wintypes.BOOL, wintypes.LPCWSTR]
+    _instance_mutex = k32.CreateMutexW(None, False, r'Local\NEXAR.app')
+    return ctypes.get_last_error() != 183  # ERROR_ALREADY_EXISTS
+
+def other_instance_pids():
+    me, exe = os.getpid(), os.path.basename(sys.executable).lower()
+    try:
+        out = subprocess.run(['tasklist', '/FO', 'CSV', '/NH', '/FI', f'IMAGENAME eq {exe}'], capture_output=True,
+                             text=True, timeout=10, creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0)).stdout
+    except Exception: return []
+    pids = []
+    for line in out.splitlines():
+        parts = [x.strip('"') for x in line.split('","')]
+        if len(parts) > 1 and parts[1].isdigit() and int(parts[1]) != me: pids.append(int(parts[1]))
+    return pids
+
+def show_other_instance():
+    for pid in other_instance_pids():
+        h = find_hwnd(pid=pid)
+        if h:
+            user32.AllowSetForegroundWindow(pid)  # noi siamo in primo piano (appena cliccati): passiamo il permesso
+            user32.PostMessageW(h, WM_APP_SHOW, 0, 0)
+            return True
+    return False
+
 class WindowApi:
     """Comandi della barra disegnata dalla dashboard (window.pywebview.api.win_*)."""
     def __init__(self):
@@ -95,6 +132,7 @@ class WindowApi:
         self._proc = None
         self._orig = None
         self._nested = 0
+        self.on_show = None  # chiamata quando un'altra copia di NEXAR chiede di mostrare la finestra
 
     def _attach(self, window):
         self._window = window
@@ -116,6 +154,9 @@ class WindowApi:
                 if user32.GetAsyncKeyState(button) & 0x8000:
                     user32.ReleaseCapture()
                     user32.SendMessageW(h, WM_SYSCOMMAND, wp, 0)
+                return 0
+            if msg == WM_APP_SHOW:
+                if self.on_show: threading.Thread(target=self.on_show, daemon=True).start()
                 return 0
             if msg == WM_WINDOWPOSCHANGED:
                 self._nested += 1
@@ -168,6 +209,9 @@ class WindowApi:
         return {'max': bool(self._hwnd and user32.IsZoomed(self._hwnd))}
 
 def run():
+    if not claim_single_instance():
+        show_other_instance()
+        return
     port = int(config.get('web', {}).get('port', 8765))
     url = f"http://127.0.0.1:{port}/#access={config.get('access_token', '')}"
     api = WindowApi()
@@ -191,6 +235,8 @@ def run():
 
     def show(icon=None, item=None):
         window.show(); window.restore()
+        if api._hwnd: user32.SetForegroundWindow(api._hwnd)
+    api.on_show = show
     def set_mode(mode):
         def cb(icon, item):
             try: controller.set_mode(mode)
