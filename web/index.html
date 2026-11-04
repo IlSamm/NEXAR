@@ -67,16 +67,18 @@
  <aside class="rail">
   <div class="brand"><img src="/assets/logo.png" alt=""><div><strong>NEXAR</strong><span id="app-version">PC control</span></div></div>
   <nav class="rail-nav" aria-label="Menu principale">
-   <button data-view="home" class="active"><svg class="i"><use href="#i-home"/></svg>Panoramica</button>
-   <button data-view="gaming"><svg class="i"><use href="#i-game"/></svg>Gaming</button>
-   <button data-view="optimize"><svg class="i"><use href="#i-clean"/></svg>Ottimizza</button>
-   <button data-view="energy"><svg class="i"><use href="#i-plug"/></svg>Consumi</button>
-   <button data-view="lights"><svg class="i"><use href="#i-bulb"/></svg>Luci</button>
-   <button data-view="cooling"><svg class="i"><use href="#i-fan"/></svg>Ventole</button>
-   <button data-view="power"><svg class="i"><use href="#i-power"/></svg>Accensione</button>
-   <div class="rail-sep"></div>
-   <button data-view="links"><svg class="i"><use href="#i-link"/></svg>Collegamenti<i class="badge" id="links-badge" hidden></i></button>
-   <button data-view="settings"><svg class="i"><use href="#i-sliders"/></svg>Impostazioni</button>
+   <small class="nav-sec">Controllo</small>
+   <button data-view="home" class="active"><span class="nav-ico n-home"><svg class="i"><use href="#i-home"/></svg></span>Panoramica</button>
+   <button data-view="gaming"><span class="nav-ico n-gaming"><svg class="i"><use href="#i-game"/></svg></span>Gaming</button>
+   <button data-view="optimize"><span class="nav-ico n-optimize"><svg class="i"><use href="#i-clean"/></svg></span>Ottimizza</button>
+   <small class="nav-sec">Hardware</small>
+   <button data-view="energy"><span class="nav-ico n-energy"><svg class="i"><use href="#i-plug"/></svg></span>Consumi</button>
+   <button data-view="lights"><span class="nav-ico n-lights"><svg class="i"><use href="#i-bulb"/></svg></span>Luci</button>
+   <button data-view="cooling"><span class="nav-ico n-cooling"><svg class="i"><use href="#i-fan"/></svg></span>Ventole</button>
+   <button data-view="power"><span class="nav-ico n-power"><svg class="i"><use href="#i-power"/></svg></span>Accensione</button>
+   <small class="nav-sec">Sistema</small>
+   <button data-view="links"><span class="nav-ico n-links"><svg class="i"><use href="#i-link"/></svg></span>Collegamenti<i class="badge" id="links-badge" hidden></i></button>
+   <button data-view="settings"><span class="nav-ico n-settings"><svg class="i"><use href="#i-sliders"/></svg></span>Impostazioni</button>
   </nav>
   <div class="rail-foot"><div class="conn"><i class="dot" id="conn-dot"></i><span id="conn-text">Connessione…</span></div></div>
  </aside>
@@ -408,24 +410,17 @@
      <div class="opt-hero-main">
       <span class="zone-tag"><i></i>ZONA OTTIMIZZA</span>
       <h2 id="opt-title">Controllo il PC…</h2>
-      <ul class="opt-tips" id="opt-tips"></ul>
+      <p class="opt-lead" id="opt-lead">Analisi in corso</p>
       <div class="btn-row">
        <button class="btn primary big-btn" type="button" id="opt-quick"><svg class="i"><use href="#i-clean"/></svg><span id="opt-quick-label">Ottimizza ora</span></button>
        <button class="btn glass big-btn" type="button" id="opt-scan"><svg class="i"><use href="#i-refresh"/></svg>Analizza</button>
       </div>
-      <ol class="opt-steps" id="opt-steps" hidden></ol>
+      <div class="opt-chips"><span class="oc-main"><svg class="i"><use href="#i-check"/></svg>Liberati con NEXAR <b id="opt-freed">—</b></span><span id="opt-freed-sub">—</span></div>
      </div>
-     <div class="opt-freed">
-      <small>Liberati con NEXAR</small><b id="opt-freed">—</b><span id="opt-freed-sub">—</span>
-     </div>
+     <ul id="opt-tips" hidden></ul><ol id="opt-steps" hidden></ol>
     </section>
 
-    <div class="opt-stats2">
-     <button class="ostat c-cyan" type="button" data-go="clean"><span class="tile-ico"><svg class="i"><use href="#i-clean"/></svg></span><div><small>Da pulire</small><b id="opt-st-junk">—</b><span id="opt-st-junk-sub">file inutili</span></div></button>
-     <button class="ostat c-teal" type="button" data-go="disks"><span class="tile-ico"><svg class="i"><use href="#i-disk"/></svg></span><div><small>Disco C libero</small><b id="opt-st-disk">—</b><span id="opt-st-disk-sub">—</span></div></button>
-     <button class="ostat c-violet" type="button" data-go="startup"><span class="tile-ico"><svg class="i"><use href="#i-power"/></svg></span><div><small>App all'avvio</small><b id="opt-st-startup">—</b><span>partono con Windows</span></div></button>
-     <button class="ostat c-amber" type="button" data-go="apps"><span class="tile-ico"><svg class="i"><use href="#i-ram"/></svg></span><div><small>RAM in uso</small><b id="opt-st-ram">—</b><span id="opt-st-ram-sub">—</span></div></button>
-    </div>
+    <div class="checks" id="opt-checks"></div>
 
     <div class="tabs opt-tabs" id="opt-tabs" role="tablist">
      <button class="selected" data-panel="clean" role="tab"><svg class="i"><use href="#i-clean"/></svg>Pulizia<em id="tb-clean"></em></button>

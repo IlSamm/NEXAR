@@ -526,15 +526,29 @@ function renderOptimize(d){
  $('opt-tips').replaceChildren(...(h.tips.length?h.tips.map(([ic,t,go])=>{const li=el('li');li.append(icon(ic),document.createTextNode(t));
   if(go){li.classList.add('link');li.addEventListener('click',()=>optTabGo(go));}return li;}):[(()=>{const li=el('li','ok');li.append(icon('check'),document.createTextNode('Tutto in ordine'));return li;})()]));
  countUp($('opt-freed'),d.freed_total||0,v=>bytes(v));
- const last=(d.history||[])[0];$('opt-freed-sub').textContent=last?`ultima pulizia ${ago(last.at)}`+(d.auto&&d.auto_next?` · prossima automatica ${ago2(d.auto_next)}`:''):d.auto?'pulizia automatica attiva':'nessuna pulizia ancora';
- // statistiche
- $('opt-st-junk').textContent=d.report?bytes(d.report.total):'—';$('opt-st-junk-sub').textContent=d.report?`analisi delle ${d.report.at.slice(11,16)}`:'analisi in corso';
- $('opt-st-disk').textContent=h.c?bytes(h.c.free):'—';$('opt-st-disk-sub').textContent=h.c?`su ${bytes(h.c.total)} (${Math.round(100-h.c.percent)}% libero)`:'—';
- $('opt-st-startup').textContent=(d.startup||[]).length?`${h.on} attive`:'—';
- $('opt-st-ram').textContent=d.memory?Math.round(h.ram)+'%':'—';$('opt-st-ram-sub').textContent=d.memory?.total?`${bytes(d.memory.used)} di ${bytes(d.memory.total)}`:'—';
+ const last=(d.history||[])[0];$('opt-freed-sub').textContent=(d.auto?'Pulizia automatica attiva':'Pulizia automatica spenta')+(last?` · ultima pulizia ${ago(last.at)}`:'');
+ renderChecks(d,h);
  $('tb-clean').textContent=d.report?bytes(d.report.total):'';$('tb-startup').textContent=h.on||'';$('tb-large').textContent=d.large?.count||'';
  renderClean(d);renderStartup(d.startup||[]);renderDisks(d);renderLarge(d.large);renderNet(d.net);renderOptHistory(d);
  renderZones();
+}
+function renderChecks(d,h){
+ // Controllo salute: sei voci con stato colorato; toccandole si apre la scheda giusta.
+ const rep=d.report,c=h.c,free=c?c.free/c.total:null,hd=d.health?.disks,net=d.net,GB=2**30;
+ const items=[
+  ['clean','File inutili',rep?bytes(rep.total):'…',!rep?'none':rep.total<.5*GB?'ok':rep.total<3*GB?'warn':'bad',rep?(rep.total<.5*GB?'Già pulito':'Si possono pulire'):'Analisi in corso','clean'],
+  ['disk','Disco C',c?bytes(c.free)+' liberi':'—',free==null?'none':free>=.2?'ok':free>=.1?'warn':'bad',free==null?'—':`${Math.round(free*100)}% libero su ${bytes(c.total)}`,'large'],
+  ['power','Avvio di Windows',(d.startup||[]).length?`${h.on} app`:'—',!(d.startup||[]).length?'none':h.on<=8?'ok':h.on<=14?'warn':'bad',h.on<=8?'Avvio leggero':'Si può alleggerire','startup'],
+  ['ram','Memoria',d.memory?Math.round(h.ram)+'% in uso':'—',!d.memory?'none':h.ram<=65?'ok':h.ram<=80?'warn':'bad',d.memory?.total?`${bytes(d.memory.used)} di ${bytes(d.memory.total)}`:'—','apps'],
+  ['check','Salute dischi',hd?`${hd.filter(x=>x.ok).length} su ${hd.length} ok`:'Non controllata',hd?(hd.every(x=>x.ok)?'ok':'bad'):'none',hd?(hd.every(x=>x.ok)?'Tutti in salute':'Un disco va controllato'):'Tocca per controllare','disks'],
+  ['wave','Rete',net?.internet?.ms!=null?net.internet.ms+' ms':'Non provata',!net?'none':['ottima','buona'].includes(net.quality)?'ok':net.quality==='lenta'?'warn':'bad',net?`Connessione ${net.quality}`:'Tocca per provare','net']];
+ const LBL={ok:'OK',warn:'Attenzione',bad:'Da sistemare',none:'Da fare'};
+ const box=$('opt-checks');box.replaceChildren();
+ items.forEach(([ic,name,val,s,sub,go])=>{const b=el('button','chk s-'+s);b.type='button';const i=el('span','chk-ico');i.append(icon(ic));
+  const t=el('div');t.append(el('small','',name),el('b','',val),el('span','',sub));b.append(i,t,el('em','',LBL[s]));
+  b.addEventListener('click',()=>{optTabGo(go);$('opt-tabs').scrollIntoView({block:'start',behavior:'smooth'});});box.append(b);});
+ const todo=items.filter(x=>x[3]==='warn'||x[3]==='bad').length;
+ $('opt-lead').textContent=!rep?'Analizzo file, dischi, avvio e memoria…':(todo?`${todo} ${todo>1?'controlli':'controllo'} su ${items.length} da sistemare`:'Tutti i controlli sono a posto')+` · analisi delle ${rep.at.slice(11,16)}`;
 }
 function ago2(ts){const d=(ts-Date.now()/1000)/86400;return d<=0?'a breve':d<1?'oggi':d<2?'domani':`tra ${Math.round(d)} giorni`;}
 function renderClean(d){
