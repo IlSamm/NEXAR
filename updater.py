@@ -65,17 +65,24 @@ def spawn_detached(args):
     try: return subprocess.Popen(args, creationflags=base | CREATE_BREAKAWAY_FROM_JOB, **io)
     except OSError: return subprocess.Popen(args, creationflags=base | getattr(subprocess, 'DETACHED_PROCESS', 0), **io)
 
-SWAP = r'''$ErrorActionPreference = 'Continue'
-$log = '{log}'
-"$(Get-Date -Format s) aggiornamento {version}" | Out-File $log -Append -Encoding utf8
-try {{ Wait-Process -Id {pid} -Timeout 90 -ErrorAction SilentlyContinue }} catch {{}}
-Start-Sleep -Seconds 2
-# Solo il programma: _internal viene rispecchiata, l'exe sostituito. Nient'altro nella cartella viene cancellato.
-robocopy '{src}\_internal' '{dst}\_internal' /MIR /R:5 /W:2 /NFL /NDL /NJH /NJS | Out-Null
-$rc = $LASTEXITCODE
-Copy-Item -LiteralPath '{src}\NEXAR.exe' -Destination '{dst}\NEXAR.exe' -Force
-"$(Get-Date -Format s) robocopy=$rc" | Out-File $log -Append -Encoding utf8
-Start-Process -FilePath '{dst}\NEXAR.exe' -WorkingDirectory '{dst}'
+# Script batch leggibile (niente PowerShell nascosto: gli antivirus lo considerano un segnale di malware).
+SWAP = r'''@echo off
+rem NEXAR {version}: attende la chiusura dell'app, sostituisce il programma e la riavvia.
+echo %date% %time% aggiornamento {version}>>"{log}"
+set /a n=0
+:wait
+tasklist /FI "PID eq {pid}" 2>nul | find "{pid}" >nul || goto copy
+set /a n+=1
+if %n% geq 90 goto copy
+timeout /t 1 /nobreak >nul
+goto wait
+:copy
+timeout /t 2 /nobreak >nul
+rem Solo il programma: _internal viene rispecchiata, l'exe sostituito. Nient'altro nella cartella viene cancellato.
+robocopy "{src}\_internal" "{dst}\_internal" /MIR /R:5 /W:2 /NFL /NDL /NJH /NJS >nul
+echo %date% %time% robocopy=%errorlevel%>>"{log}"
+copy /y "{src}\NEXAR.exe" "{dst}\NEXAR.exe" >nul
+start "" /d "{dst}" "{dst}\NEXAR.exe"
 '''
 
 class Updater:
@@ -133,10 +140,11 @@ class Updater:
         if download(rel['zip'], zip_path) != expected: raise RuntimeError('File scaricato danneggiato (hash diverso)')
         self.set_status('installing', 'Installazione…')
         src = safe_extract(zip_path, work / 'staging')
-        script = work / 'swap.ps1'
+        script = work / 'swap.cmd'
+        # cmd legge i .bat nella codepage OEM della console.
         script.write_text(SWAP.format(pid=os.getpid(), src=src, dst=self.install_dir, log=self.data_dir / 'update.log',
-                                      version=rel['tag']), encoding='utf-8-sig')
-        spawn_detached(['powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', str(script)])
+                                      version=rel['tag']), encoding='oem' if os.name == 'nt' else 'ascii', errors='replace')
+        spawn_detached(['cmd.exe', '/d', '/c', str(script)])
         self.ctrl.log_event(f'⬆️ Installazione NEXAR {rel["tag"]}: riavvio')
         self.ctrl.notify(f'⬆️ Installo NEXAR {rel["tag"].lstrip("v")}: torno online tra poco.')
         threading.Thread(target=self.exit_soon, daemon=True, name='update-exit').start()

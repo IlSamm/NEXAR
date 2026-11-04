@@ -1,6 +1,6 @@
 ﻿"""Ricerca automatica dei programmi esterni: l'utente non deve scrivere percorsi a mano."""
 from __future__ import annotations
-import base64
+import time
 import ctypes
 import json
 import logging
@@ -159,10 +159,18 @@ def task_script(task: str, exe: str, args: str, at_logon=True, start=True) -> st
         + (f"Start-ScheduledTask -TaskName {_q(task)};" if start else '')
     )
 
+def script_file(script: str) -> Path:
+    """Lo script admin va in un file .ps1 leggibile (in %TEMP%\\NEXAR): niente comandi codificati in base64,
+    che gli antivirus associano ai malware."""
+    folder = Path(os.environ.get('TEMP') or Path.home()) / 'NEXAR'
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / f'nexar-admin-{os.getpid()}-{int(time.time() * 1000)}.ps1'
+    path.write_text('# NEXAR: operazione da amministratore richiesta dall\'utente\n' + script, encoding='utf-8-sig')
+    return path
+
 def run_elevated(script: str, wait=False) -> bool:
     """Una sola richiesta UAC per tutto lo script PowerShell."""
-    encoded = base64.b64encode(script.encode('utf-16-le')).decode()
-    args = f'-NoProfile -WindowStyle Hidden -EncodedCommand {encoded}'
+    args = f'-NoProfile -ExecutionPolicy RemoteSigned -File "{script_file(script)}"'
     if not wait:
         return ctypes.windll.shell32.ShellExecuteW(None, 'runas', 'powershell.exe', args, None, 0) > 32
     # ShellExecuteEx per poter attendere la fine della copia dei profili.

@@ -53,3 +53,9 @@ def test_spawn_falls_back_when_breakaway_denied(monkeypatch):
         return 'proc'
     monkeypatch.setattr(updater.subprocess, 'Popen', fake_popen)
     assert updater.spawn_detached(['x']) == 'proc' and len(calls) == 2
+
+def test_swap_script_is_plain_batch():
+    s = updater.SWAP.format(pid=1234, src=r'C:\T\NEXAR', dst=r'C:\P\NEXAR', log=r'C:\D\update.log', version='v9.9.9')
+    low = s.lower()
+    assert 'powershell' not in low and 'encodedcommand' not in low and 'bypass' not in low
+    assert r'robocopy "C:\T\NEXAR\_internal" "C:\P\NEXAR\_internal" /MIR' in s and 'PID eq 1234' in s

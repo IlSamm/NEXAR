@@ -24,10 +24,20 @@ Get-Process NEXAR -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "
 py -m PyInstaller --noconfirm --log-level WARN NEXAR.spec
 if ($LASTEXITCODE -ne 0) { throw 'Compilazione fallita' }
 
+# Windows Defender deve dare il via libera: un falso positivo cancellerebbe NEXAR a chi la scarica.
+$mp = "$env:ProgramFiles\Windows Defender\MpCmdRun.exe"
+function Assert-Clean($path) {
+    if (-not (Test-Path $mp)) { Write-Host 'Defender non disponibile: scansione saltata' -ForegroundColor Yellow; return }
+    $out = & $mp -Scan -ScanType 3 -File (Resolve-Path $path) -DisableRemediation 2>&1 | Out-String
+    if ($out -notmatch 'found no threats') { throw "Defender segnala $path come minaccia: release annullata`n$out" }
+}
+Assert-Clean dist\NEXAR
+
 New-Item -ItemType Directory -Force release | Out-Null
 $name = "NEXAR-$Version-win64.zip"
 $zip = Join-Path release $name
 Compress-Archive -Path dist\NEXAR -DestinationPath $zip -Force -ErrorAction Stop
+Assert-Clean $zip
 $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
 [IO.File]::WriteAllText("$PSScriptRoot\$zip.sha256", "$hash  $name`n")
 
