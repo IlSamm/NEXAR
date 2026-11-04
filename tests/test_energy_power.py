@@ -178,3 +178,21 @@ def test_max_profile_drives_every_fan(tmp_path, monkeypatch):
     assert manual('max') == {'CPU Fan': 100, 'Pump Fan': 100, 'System Fan #2': 100, 'Control 1 - NVIDIA GeForce RTX 3060 Ti': 100}
     assert manual('off') == {'System Fan #2': 0}          # radiatore, pompa e GPU non si fermano mai
     assert manual('eco') == {'System Fan #2': 40} and manual('normal') == {} and chosen == ['System Fan #2']
+
+def test_bot_retries_identity_after_network_error(monkeypatch, tmp_path):
+    import core, telegram_bot, threading
+    monkeypatch.setattr(core, 'STATE_FILE', tmp_path / 'state.json')
+    c = core.Control({'telegram': {'token': '123:abc', 'allowed_user_id': 7}})
+    bot = telegram_bot.TelegramBot(c)
+    stop = threading.Event(); attempts = []
+    def call(method, payload):
+        if method == 'getMe':
+            attempts.append(1)
+            if len(attempts) == 1: raise OSError('rete non pronta')
+            return {'username': 'NexarPc_Bot'}
+        if method == 'getUpdates' and payload.get('offset') != -1: stop.set()
+        return []
+    bot.call = call
+    monkeypatch.setattr(stop, 'wait', lambda t=None: stop.is_set())
+    bot.run(stop)
+    assert len(attempts) == 2 and c.telegram_bot['username'] == 'NexarPc_Bot'

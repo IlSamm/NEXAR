@@ -37,7 +37,8 @@ class TelegramBot:
     def __init__(self, controller):
         self.ctrl = controller
         cfg = controller.config.get('telegram',{})
-        self.token = str(cfg.get('token','')).strip()
+        # Vuoto finché run() non ha verificato il token con getMe (nome del bot, comandi vecchi saltati).
+        self.token = ''
         self.user_id = int(cfg.get('allowed_user_id') or 0)
         self.offset = None
         self.notifications = queue.Queue(maxsize=40)
@@ -183,7 +184,8 @@ class TelegramBot:
                 f"<i>~ = stimato · {e.get('price_eur_kwh',0)*100:.0f} c€/kWh{'' if p['monitor_on'] or p['monitor_watts'] else ' · monitor escluso'}</i>")
 
     def notify(self, message):
-        if self.token and self.user_id:
+        # In coda anche prima che il bot sia partito (es. "PC acceso" all'avvio): li invia il primo giro di run().
+        if self.ctrl.config.get('telegram', {}).get('token') and self.user_id:
             try: self.notifications.put_nowait(html.escape(str(message)[:3800]))
             except queue.Full: logging.warning('Coda notifiche Telegram piena')
 
@@ -292,7 +294,11 @@ class TelegramBot:
                     self.token=next_token
                     self.offset=None
                     self.menu_synced=None
-                    if not self.identify(): continue
+                    # Se Telegram non risponde (rete non ancora pronta all'avvio) si riprova al giro dopo:
+                    # così nome del bot e salto dei comandi vecchi non vengono persi.
+                    try: known = self.identify()
+                    except Exception: self.token = ''; raise
+                    if not known: continue
                     if next_user:
                         try:
                             # Se gia abbinato, non eseguire comandi arrivati quando il PC era offline.
