@@ -176,7 +176,9 @@ def test_max_profile_drives_every_fan(tmp_path, monkeypatch):
     profiles, chosen = discovery.build_fan_profiles(str(tmp_path / 'FanControl.exe'), 40)
     manual = lambda level: {c['NickName']: c.get('ManualControlValue') for c in profiles[level]['FanControl']['Controls'] if c['ManualControl']}
     assert manual('max') == {'CPU Fan': 100, 'Pump Fan': 100, 'System Fan #2': 100, 'Control 1 - NVIDIA GeForce RTX 3060 Ti': 100}
-    assert manual('off') == {'System Fan #2': 0}          # radiatore, pompa e GPU non si fermano mai
+    every = {'CPU Fan', 'Pump Fan', 'System Fan #2', 'Control 1 - NVIDIA GeForce RTX 3060 Ti'}
+    assert manual('off') == dict.fromkeys(every, 0)        # Spente: tutte ferme, pompa compresa
+    assert manual('off_pump') == dict(dict.fromkeys(every, 0), **{'Pump Fan': discovery.PUMP_MIN_PERCENT})
     assert manual('eco') == {'System Fan #2': 40} and manual('normal') == {} and chosen == ['System Fan #2']
 
 def test_bot_retries_identity_after_network_error(monkeypatch, tmp_path):
@@ -196,3 +198,22 @@ def test_bot_retries_identity_after_network_error(monkeypatch, tmp_path):
     monkeypatch.setattr(stop, 'wait', lambda t=None: stop.is_set())
     bot.run(stop)
     assert len(attempts) == 2 and c.telegram_bot['username'] == 'NexarPc_Bot'
+
+def test_fan_guard_restores_when_hot(monkeypatch, tmp_path):
+    import core, threading
+    monkeypatch.setattr(core, 'STATE_FILE', tmp_path / 'state.json')
+    c = core.Control({}); c.state['fans_level'] = 'off'
+    calls, notes = [], []
+    monkeypatch.setattr(c, 'fans_level', lambda level, keep_pump=None: calls.append(level) or 'Ventole: normali')
+    c.notify = notes.append
+    temps = iter([60, 76])
+    monkeypatch.setattr(core, 'collect_sensors', lambda url: {'cpu_temp': next(temps)})
+    monkeypatch.setattr(core, 'gpu_read', lambda: {'temp': 50})
+    stop = threading.Event(); waits = []
+    def wait(t=None):
+        waits.append(t)
+        if calls: stop.set()
+        return stop.is_set()
+    monkeypatch.setattr(stop, 'wait', wait)
+    c.fan_guard_loop(stop)
+    assert calls == ['normal'] and 'CPU a 76' in notes[0] and waits[0] == core.FAN_GUARD_SECONDS

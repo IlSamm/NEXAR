@@ -194,15 +194,21 @@ def elevated_task(task: str, exe: str, args: str, allow_uac: bool) -> str:
 
 # ---------- ventole ----------
 FAN_TASKS = {'eco': 'PC ECO Control - Ventole ECO', 'normal': 'PC ECO Control - Ventole Normali',
-             'off': 'PC ECO Control - Ventole Spente', 'max': 'PC ECO Control - Ventole Massimo'}
-FAN_FILES = {'eco': 'PCECO-Eco.json', 'normal': 'PCECO-Normale.json', 'off': 'PCECO-Spente.json', 'max': 'PCECO-Massimo.json'}
-# Velocità fissa delle sole ventole del case per ogni profilo; None = tutto al BIOS (eco: dalla configurazione).
-FAN_LEVELS = {'off': 0, 'eco': None, 'normal': None, 'max': 100}
-# "Massimo" porta al 100% ogni ventola che Fan Control vede: case, radiatore, pompa, chipset e scheda video.
-# Spegnere o rallentare resta solo per le ventole del case (radiatore, pompa e GPU non si fermano mai).
-FAN_ALL_AT_MAX = True
-FAN_PROFILES_VERSION = 2  # 2 = Massimo su tutte le ventole
+             'off': 'PC ECO Control - Ventole Spente', 'off_pump': 'PC ECO Control - Ventole Spente Pompa',
+             'max': 'PC ECO Control - Ventole Massimo'}
+FAN_FILES = {'eco': 'PCECO-Eco.json', 'normal': 'PCECO-Normale.json', 'off': 'PCECO-Spente.json',
+             'off_pump': 'PCECO-Spente-Pompa.json', 'max': 'PCECO-Massimo.json'}
+# Velocità fissa per profilo; None = tutto al BIOS (eco: dalla configurazione, solo ventole del case).
+FAN_LEVELS = {'off': 0, 'off_pump': 0, 'eco': None, 'normal': None, 'max': 100}
+# Massimo e Spente valgono per OGNI ventola che Fan Control vede: case, radiatore, pompa, chipset e scheda video.
+# "off_pump" è Spente con la pompa AIO al minimo. ECO resta solo sulle ventole del case.
+ALL_FANS_LEVELS = ('max', 'off', 'off_pump')
+PUMP_MIN_PERCENT = 40
+FAN_PROFILES_VERSION = 3  # 2 = Massimo su tutte; 3 = Spente su tutte + variante con pompa al minimo
 FAN_EXCLUDE = ('cpu', 'pump', 'aio', 'nvidia', 'gpu', 'chipset')
+
+def is_pump(nick: str, ident: str) -> bool:
+    return any(w in (nick + ' ' + ident).lower() for w in ('pump', 'pompa', 'aio'))
 
 def live_fan_rpm() -> dict[str, float]:
     """RPM attuali da LibreHardwareMonitor, per id hardware e numero del connettore (es. 'nct6687dr/11')."""
@@ -234,10 +240,10 @@ def build_fan_profiles(exe: str, eco_percent: int) -> tuple[dict[str, dict], lis
             m = re.match(r'/lpc/([^/]+)/control/(\d+)$', ident)
             case_fan = bool(m) and not any(w in (nick + ident).lower() for w in FAN_EXCLUDE) \
                 and rpm.get(f'{m.group(1)}/{m.group(2)}', 0) > 200
-            manual = percent is not None and (case_fan or (level == 'max' and FAN_ALL_AT_MAX))
+            manual = percent is not None and (case_fan or level in ALL_FANS_LEVELS)
             ctl['Enable'] = ctl['ManualControl'] = manual
             if manual:
-                ctl['ManualControlValue'] = percent
+                ctl['ManualControlValue'] = PUMP_MIN_PERCENT if level == 'off_pump' and is_pump(nick, ident) else percent
                 ctl['SelectedFanCurve'] = None
                 if level == 'eco': chosen.append(nick)
     return profiles, chosen

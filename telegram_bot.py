@@ -18,7 +18,10 @@ COMMANDS = [('menu', 'Pannello di controllo'), ('status', 'Stato del PC'), ('con
             ('ventole', 'Profili ventole'),
             ('screen', 'Spegni il monitor'), ('auto', 'Automazione Codex/Claude'), ('accensione', 'Spegni, riavvia, sospendi, timer'),
             ('spegni', 'Spegni il PC'), ('sospendi', 'Metti il PC in sospensione'), ('annulla', 'Annulla lo spegnimento'),
-            ('accendi', 'Accendi il PC (relay su Umbrel)'), ('aggiorna', 'Versione e aggiornamenti'), ('app', 'Apri la dashboard')]
+            ('accendi', 'Accendi il PC (relay su Umbrel)'), ('pulizia', 'Spazio libero e pulizia del PC'),
+            ('aggiorna', 'Versione e aggiornamenti'), ('app', 'Apri la dashboard')]
+# Pulizia da Telegram: solo voci sicure e reversibili da sole (niente cestino, niente cartelle di Windows che chiedono l'admin).
+SAFE_CLEAN = ('temp', 'shader', 'thumbs', 'crash', 'browser')
 POWER_ASK = {'shutdown': '⏻ Spegnere il PC?\nCodex e Claude verranno chiusi.', 'restart': '🔄 Riavviare il PC?',
              'sleep': '🌙 Mettere il PC in sospensione?\nConsuma 2–5 W e si risveglia con Wake-on-LAN.',
              'hibernate': '💤 Ibernare il PC?'}
@@ -120,7 +123,7 @@ class TelegramBot:
             [{'text':'📊 Stato','callback_data':'status'},{'text':'🔌 Consumo','callback_data':'power'}],
             [{'text':'💡 Luci','callback_data':'rgb'},{'text':'🌀 Ventole','callback_data':'fans'},{'text':'🖥 Monitor','callback_data':'screen'}],
             [{'text':f'🤖 Automazione AI: {auto}','callback_data':'auto'}],
-            [{'text':'⏻ Accensione e spegnimento','callback_data':'pw'}],
+            [{'text':'🧹 Ottimizza','callback_data':'opt'},{'text':'⏻ Accensione','callback_data':'pw'}],
         ]}
     @staticmethod
     def back(): return [{'text':'⬅️ Menu','callback_data':'home'}]
@@ -236,8 +239,19 @@ class TelegramBot:
                 self.ctrl.set_rgb_palette(palette[-18:])
                 reply(('💾 Colore salvato: ' if a == 'salva' else '🗑 Colore tolto: ') + value.upper(), self.rgb_menu())
         elif a in ('fans','ventole'):
-            reply('🌀 <b>Ventole</b>\n🚀 Massimo: tutte al 100% (case, radiatore, pompa, scheda video).\n⏸ Spente e 🤫 Silenziose: solo quelle del case. Sopra 80 °C tornano normali da sole.', self.fans_menu())
-        elif a in ('fans_off','fans_eco','fans_normal','fans_max'):
+            reply('🌀 <b>Ventole</b>\n🚀 Massimo: tutte al 100% (case, radiatore, pompa, scheda video).\n'
+                  '⏸ Spente: tutte ferme, scegli tu se tenere la pompa al minimo (a 75 °C tornano normali).\n'
+                  '🤫 Silenziose: solo quelle del case, più lente.', self.fans_menu())
+        elif a == 'fans_off':
+            # Spegnere TUTTO (radiatore e pompa compresi) va chiesto ogni volta: la pompa può restare al minimo.
+            reply('⏸ <b>Spegnere tutte le ventole?</b>\nCase, radiatore e scheda video si fermano.\n'
+                  '<b>La pompa AIO la tengo al minimo?</b>\n<i>Se CPU o GPU arrivano a 75 °C tornano normali da sole.</i>',
+                  {'inline_keyboard':[[{'text':'💧 Sì, pompa al minimo','callback_data':'fans_off_pump'}],
+                                      [{'text':'⛔ No, spegni anche la pompa','callback_data':'fans_off_all'}],
+                                      [{'text':'❌ Annulla','callback_data':'fans'}]]})
+        elif a in ('fans_off_pump','fans_off_all'):
+            reply('🌀 '+esc(self.ctrl.fans_level('off', keep_pump=a == 'fans_off_pump')), self.fans_menu())
+        elif a in ('fans_eco','fans_normal','fans_max'):
             reply('🌀 '+esc(self.ctrl.fans_level(a[5:])), self.fans_menu())
         elif a == 'auto':
             old=bool(self.ctrl.config.get('auto_detect',{}).get('enabled'))
@@ -270,6 +284,27 @@ class TelegramBot:
         elif a == 'upd_install':
             if not self.updater: reply('Aggiornamenti non disponibili.'); return
             reply('⬆️ '+esc(self.ctrl.run_job('update', self.updater.install))+'\nNEXAR si riavvia da solo: ti scrivo quando è tornato.')
+        elif a in ('opt', 'pulizia', 'ottimizza'):
+            import optimizer
+            rep = optimizer.analyze(10); self.ctrl.optimize_report = rep
+            h = optimizer.human
+            safe = sum(i['bytes'] for i in rep['items'] if i['key'] in SAFE_CLEAN and not i['note'].startswith('chiudi'))
+            rows = '\n'.join(f"{'🧹' if i['key'] in SAFE_CLEAN else ('🗑' if i['permanent'] else '🛡')} {esc(i['name'])}: <b>{h(i['bytes'])}</b>"
+                             + (f" <i>({esc(i['note'])})</i>" if i['note'] else '') for i in rep['items'] if i['bytes'])
+            disks = '\n'.join(f"💽 {d['drive']} {h(d['free'])} liberi su {h(d['total'])}" for d in optimizer.disks())
+            reply(f"🧹 <b>Ottimizza</b>\n\n{disks}\n\n{rows or 'Niente da pulire.'}\n\n"
+                  "<i>🧹 pulibile da qui · 🛡 serve l'app sul PC · 🗑 cestino solo dal PC</i>",
+                  {'inline_keyboard':([[{'text':f'🧹 Pulisci {h(safe)}','callback_data':'opt_clean'}]] if safe else [])
+                   + [[{'text':'🌐 Svuota cache DNS','callback_data':'opt_dns'}], self.back()]})
+        elif a == 'opt_clean':
+            import optimizer
+            res = optimizer.clean(SAFE_CLEAN)
+            reply('🧹 Liberati <b>'+optimizer.human(res['freed'])+'</b>'+(('\n'+esc(' · '.join(res['notes']))) if res['notes'] else ''),
+                  {'inline_keyboard':[[{'text':'🔄 Analizza di nuovo','callback_data':'opt'}], self.back()]})
+            self.ctrl.log_event('Pulizia da Telegram: liberati '+optimizer.human(res['freed']))
+        elif a == 'opt_dns':
+            import optimizer
+            reply('🌐 '+esc(optimizer.flush_dns()), {'inline_keyboard':[[{'text':'🧹 Ottimizza','callback_data':'opt'}], self.back()]})
         elif a == 'app':
             if self.webapp_url: reply('📱 Tocca il pulsante per aprire la dashboard.', {'inline_keyboard':self.app_row()+[self.back()]})
             else: reply('📱 App non ancora disponibile: sul PC apri Collegamenti → App Telegram.')

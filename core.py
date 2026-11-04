@@ -50,6 +50,8 @@ GUID = re.compile(r'[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}')
 BALANCED = '381b4222-f694-41f0-9685-ff5bb260df2e'
 FAN_SAFETY_TEMP = 80
 FAN_SAFETY_TEMP_GPU = 78
+FAN_OFF_LIMIT = 75      # ventole tutte spente: oltre questa temperatura tornano normali
+FAN_GUARD_SECONDS = 2
 logging.basicConfig(filename=LOG_FILE, level=logging.INFO,
     format='%(asctime)s %(levelname)s %(message)s', encoding='utf-8')
 
@@ -430,36 +432,66 @@ class Control:
         import discovery
         at, ready = getattr(self, 'fans_ready_cache', (0.0, False))
         if time.monotonic() - at > 60:  # schtasks è lento: la dashboard chiede lo stato ogni 4 secondi
-            ready = all(discovery.task_exists(discovery.FAN_TASKS[k]) for k in ('off', 'max'))
+            ready = all(discovery.task_exists(discovery.FAN_TASKS[k]) for k in ('off', 'off_pump', 'max'))
             self.fans_ready_cache = (time.monotonic(), ready)
         return ready
 
-    def fans_level(self, level):
-        """Ventole del case: off (0%), eco, normal (BIOS) o max (100%). Radiatore e pompa restano sempre al BIOS."""
+    def fans_level(self, level, keep_pump=None):
+        """off (tutte ferme, pompa al minimo se keep_pump), eco (case più lente), normal (BIOS) o max (tutte al 100%)."""
         import discovery
         if level not in FAN_LEVEL_NAMES: raise ValueError('Livello ventole non valido')
         cfg = self.config.get('fans',{})
         if not cfg.get('enabled'): return 'Ventole: gestione automatica BIOS (AIO protetto)'
+        if level == 'off':
+            if keep_pump is None: keep_pump = bool(cfg.get('keep_pump', True))
+            elif bool(keep_pump) != cfg.get('keep_pump'):
+                with self.lock: self.config.setdefault('fans',{})['keep_pump'] = bool(keep_pump); json_save(CONFIG_FILE, self.config)
+        profile = 'off_pump' if level == 'off' and keep_pump else level
         exe = Path(cfg.get('fancontrol_exe',''))
-        name = cfg.get(level+'_profile') if level in ('eco','normal') else discovery.FAN_FILES[level]
+        name = cfg.get(level+'_profile') if level in ('eco','normal') else discovery.FAN_FILES[profile]
         if not exe.is_file() or not isinstance(name,str) or not name or Path(name).name != name or not name.lower().endswith('.json'):
             raise RuntimeError('Fan Control: eseguibile o profilo non valido')
-        task = discovery.FAN_TASKS[level]
-        if level in ('off','max') and not discovery.task_exists(task):
-            raise RuntimeError('Profilo "'+FAN_LEVEL_NAMES[level]+'" non ancora creato: sul PC premi "Aggiorna profili" nella pagina Ventole')
+        task = discovery.FAN_TASKS[profile]
+        if profile in ('off','off_pump','max') and (not discovery.task_exists(task) or self.fans_profiles_outdated()):
+            raise RuntimeError('Profilo "'+FAN_LEVEL_NAMES[level]+'" da aggiornare: sul PC premi "Aggiorna profili" nella pagina Ventole')
         if not any((d / name).is_file() for d in (exe.parent / 'Configurations', exe.parent)):
             raise RuntimeError('Fan Control: profilo '+name+' assente')
-        if name == discovery.FAN_FILES[level] and discovery.task_exists(task):
+        if name == discovery.FAN_FILES[profile] and discovery.task_exists(task):
             # Fan Control gira come amministratore: lo raggiungiamo con l'attività già autorizzata.
             cmd(['schtasks', '/run', '/tn', task], 15)
             with self.lock:
-                self.state.update(fans_level=level, fans_eco=level in ('eco','off')); json_save(STATE_FILE, self.state)
-            detail={'normal':' (BIOS)','max':' (tutte: case, radiatore, pompa e scheda video)' if not self.fans_profiles_outdated() else ' (solo case: premi "Aggiorna profili" per includere radiatore, pompa e GPU)'}
-            return 'Ventole: '+FAN_LEVEL_NAMES[level]+detail.get(level,' (solo case, radiatore e pompa al BIOS)')
+                self.state.update(fans_level=level, fans_pump=bool(level == 'off' and keep_pump), fans_eco=level in ('eco','off'))
+                json_save(STATE_FILE, self.state)
+            detail = {'normal': ' (BIOS)', 'max': ' (tutte: case, radiatore, pompa e scheda video al 100%)',
+                      'off': ' (tutte ferme' + (f', pompa al {discovery.PUMP_MIN_PERCENT}%' if keep_pump else ', anche la pompa') +
+                             '; tornano normali da sole se CPU o GPU arrivano a 75 °C)',
+                      'eco': ' (solo case, radiatore e pompa al BIOS)'}
+            return 'Ventole: ' + FAN_LEVEL_NAMES[level] + detail[level]
         opts = dict(cwd=str(exe.parent), stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         if os.name == 'nt': opts['creationflags'] = subprocess.CREATE_NO_WINDOW
         subprocess.Popen([str(exe),'-c',name],**opts)
         return 'Ventole: richiesto profilo '+name+' (AIO escluso nei profili utente)'
+
+    def fan_guard_loop(self, stop_event):
+        """Con le ventole spente (anche radiatore e pompa) la CPU può scaldare in pochi secondi:
+        temperature ogni 2 s e ritorno al profilo normale a 75 °C o se i sensori smettono di rispondere."""
+        blind = 0
+        while not stop_event.wait(FAN_GUARD_SECONDS):
+            if self.state.get('fans_level') != 'off':
+                blind = 0; continue
+            try:
+                cpu = collect_sensors(self.config.get('sensors',{}).get('libre_hardware_monitor',''))['cpu_temp']
+                gpu = gpu_read()['temp']
+                blind = blind + 1 if cpu is None else 0
+                hot = [f'{n} a {v:.0f}°C' for n, v in (('CPU', cpu), ('GPU', gpu)) if v is not None and v >= FAN_OFF_LIMIT]
+                if hot or blind >= 3:
+                    why = ', '.join(hot) if hot else 'sensori di temperatura non raggiungibili'
+                    msg = self.fans_level('normal')
+                    self.log_event(f'🌡 Ventole spente: {why}. {msg}')
+                    self.notify(f'🌡 Ventole riaccese: {why}.')
+                    blind = 0
+            except Exception:
+                logging.exception('Guardia ventole spente')
 
     def run_job(self, name, fn):
         """Lavori lunghi (winget, UAC) in background: la dashboard ne legge lo stato da status()['jobs']."""

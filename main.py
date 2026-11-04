@@ -54,7 +54,8 @@ async def lifespan(app: FastAPI):
     t4 = threading.Thread(target=controller.discover,daemon=True,name='discovery')
     t5 = threading.Thread(target=controller.power_loop,args=(stop,),daemon=True,name='power-plan')
     t6 = threading.Thread(target=updater.loop,args=(stop,),daemon=True,name='updater')
-    t1.start();t2.start();t3.start();t4.start();t5.start();t6.start()
+    t7 = threading.Thread(target=controller.fan_guard_loop,args=(stop,),daemon=True,name='fan-guard')
+    t1.start();t2.start();t3.start();t4.start();t5.start();t6.start();t7.start()
     updater.announce()
     # Avviso "PC acceso" solo dopo un avvio vero di Windows, non a ogni riapertura dell'app.
     import psutil
@@ -203,10 +204,13 @@ def rgb_palette(data: Palette):
     try: return {'ok':True,'palette':controller.set_rgb_palette(data.colors),'message':'Colori salvati'}
     except ValueError as ex: raise HTTPException(400,str(ex))
 
+class FanLevel(BaseModel):
+    profile: str
+    keep_pump: bool | None = None
 @app.post('/api/fans',dependencies=[Depends(authorized)])
-def fans(data: Profile):
+def fans(data: FanLevel):
     if data.profile not in ('off','eco','normal','max'): raise HTTPException(400,'Profilo non valido')
-    try: return {'ok':True,'message':controller.fans_level(data.profile)}
+    try: return {'ok':True,'message':controller.fans_level(data.profile,data.keep_pump)}
     except (RuntimeError,OSError,ValueError) as ex: raise HTTPException(400,str(ex))
 def local_only(request: Request):
     # Installazioni e richieste UAC compaiono sullo schermo del PC: mai da Umbrel o dal telefono.
@@ -294,6 +298,64 @@ def update_auto(data: Toggle):
         controller.config.setdefault('updates',{})['auto']=data.enabled
         json_save(CONFIG_FILE,controller.config)
     return {'ok':True,'message':'Aggiornamenti automatici '+('attivi' if data.enabled else 'disattivati')}
+
+# ---------- ottimizzazione ----------
+import optimizer
+
+@app.get('/api/optimize',dependencies=[Depends(authorized)])
+def optimize_info():
+    return {'report':getattr(controller,'optimize_report',None),'disks':optimizer.disks(),
+            'memory':optimizer.memory_top(),'startup':optimizer.startup_items()}
+
+def optimize_scan_job():
+    controller.optimize_report = optimizer.analyze()
+    return 'Analisi: ' + optimizer.human(controller.optimize_report['total']) + ' recuperabili'
+
+@app.post('/api/optimize/scan',dependencies=[Depends(authorized)])
+def optimize_scan():
+    try: return {'ok':True,'message':controller.run_job('optimize-scan',optimize_scan_job)}
+    except RuntimeError as ex: raise HTTPException(409,str(ex))
+
+class CleanRequest(BaseModel):
+    keys: list[str]
+@app.post('/api/optimize/clean',dependencies=[Depends(authorized)])
+def optimize_clean(data: CleanRequest, request: Request):
+    import discovery
+    remote = is_remote(request)  # la conferma amministratore compare sullo schermo del PC: da remoto solo pulizie utente
+    def job():
+        res = optimizer.clean(data.keys, discovery.run_elevated, allow_admin=not remote)
+        optimize_scan_job()
+        return 'Pulizia: liberati ' + optimizer.human(res['freed']) + ('. ' + ' · '.join(res['notes']) if res['notes'] else '')
+    if not data.keys or set(data.keys) - {t['key'] for t in optimizer.targets()}: raise HTTPException(400,'Scegli cosa pulire')
+    try: return {'ok':True,'message':controller.run_job('optimize-clean',job)}
+    except RuntimeError as ex: raise HTTPException(409,str(ex))
+
+class StartupToggle(BaseModel):
+    id: str
+    enabled: bool
+@app.post('/api/optimize/startup',dependencies=[Depends(authorized)])
+def optimize_startup(data: StartupToggle, request: Request):
+    import discovery
+    try:
+        optimizer.set_startup(data.id, data.enabled, None if is_remote(request) else discovery.run_elevated)
+        name = data.id.split('|',2)[-1]
+        controller.log_event(f'Avvio di Windows: {name} ' + ('attivato' if data.enabled else 'disattivato'))
+        return {'ok':True,'message':f'{name}: ' + ('parte con Windows' if data.enabled else 'non parte più con Windows')}
+    except (ValueError,RuntimeError,OSError) as ex: raise HTTPException(400,str(ex))
+
+@app.post('/api/optimize/dns',dependencies=[Depends(authorized)])
+def optimize_dns():
+    try: return {'ok':True,'message':optimizer.flush_dns()}
+    except (RuntimeError,OSError) as ex: raise HTTPException(400,str(ex))
+
+@app.post('/api/optimize/trim',dependencies=[Depends(authorized),Depends(local_only)])
+def optimize_trim():
+    import discovery
+    def job():
+        if not discovery.run_elevated(optimizer.TRIM_SCRIPT, wait=True): raise RuntimeError('Conferma amministratore annullata')
+        return 'SSD ottimizzati (TRIM eseguito)'
+    try: return {'ok':True,'message':controller.run_job('trim',job)}
+    except RuntimeError as ex: raise HTTPException(409,str(ex))
 
 @app.post('/api/screen',dependencies=[Depends(authorized)])
 def screen():

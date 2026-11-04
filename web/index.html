@@ -40,6 +40,7 @@
  <symbol id="i-disk" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r=".8"/></symbol>
  <symbol id="i-game" viewBox="0 0 24 24"><path d="M7.5 7h9a5 5 0 0 1 4.9 6l-.8 3.7a2.4 2.4 0 0 1-4.2 1L14.6 16H9.4l-1.8 1.7a2.4 2.4 0 0 1-4.2-1L2.6 13a5 5 0 0 1 4.9-6z"/><path d="M7.5 10v3M6 11.5h3"/><circle cx="15.5" cy="11" r=".9"/><circle cx="17.5" cy="13" r=".9"/></symbol>
  <symbol id="i-max" viewBox="0 0 24 24"><path d="M5 18 12 6l7 12M8.5 13h7"/></symbol>
+ <symbol id="i-clean" viewBox="0 0 24 24"><path d="m14.5 3.5 6 6M17.5 6.5 11 13"/><path d="M11 13c-3 0-6.5 1.5-7.5 7.5 6-1 7.5-4.5 7.5-7.5z"/><path d="M5 9.5l1-2 1 2 2 1-2 1-1 2-1-2-2-1zM15 17l.7-1.3L17 15l-1.3-.7L15 13l-.7 1.3L13 15l1.3.7z"/></symbol>
  <symbol id="i-list" viewBox="0 0 24 24"><path d="M8.5 6h12M8.5 12h12M8.5 18h12"/><circle cx="4.5" cy="6" r=".9"/><circle cx="4.5" cy="12" r=".9"/><circle cx="4.5" cy="18" r=".9"/></symbol>
 </svg>
 
@@ -64,6 +65,7 @@
    <button data-view="lights"><svg class="i"><use href="#i-bulb"/></svg>Luci</button>
    <button data-view="cooling"><svg class="i"><use href="#i-fan"/></svg>Ventole</button>
    <button data-view="power"><svg class="i"><use href="#i-power"/></svg>Accensione</button>
+   <button data-view="optimize"><svg class="i"><use href="#i-clean"/></svg>Ottimizza</button>
    <div class="rail-sep"></div>
    <button data-view="links"><svg class="i"><use href="#i-link"/></svg>Collegamenti<i class="badge" id="links-badge" hidden></i></button>
    <button data-view="settings"><svg class="i"><use href="#i-sliders"/></svg>Impostazioni</button>
@@ -202,16 +204,16 @@
      <article class="card temp-card"><span class="eyebrow">Pompa AIO</span><b class="ok-text">Protetta</b><small>sempre al BIOS</small></article>
     </div>
     <section class="card">
-     <div class="card-head"><div><h3>Ventole del case</h3><p>Massimo: tutte al 100% · Spente: solo quelle del case</p></div></div>
+     <div class="card-head"><div><h3>Ventole</h3><p>Massimo e Spente valgono per tutte: case, radiatore, pompa e scheda video</p></div></div>
      <div class="seg2 seg4" id="fan-levels">
       <button data-action="fans-off" id="fans-off"><svg class="i"><use href="#i-x"/></svg>Spente</button>
       <button data-action="fans-eco" id="fans-eco"><svg class="i"><use href="#i-moon"/></svg>Silenziose</button>
       <button data-action="fans-normal" id="fans-normal"><svg class="i"><use href="#i-fan"/></svg>Normali</button>
       <button data-action="fans-max" id="fans-max"><svg class="i"><use href="#i-max"/></svg>Massimo</button>
      </div>
-     <div class="notice" id="fans-upgrade" hidden><div><b id="fans-upgrade-title">Nuovi profili Spente e Massimo</b><small>Radiatore, pompa e scheda video inclusi in Massimo. Si creano una volta in Fan Control: serve una conferma da amministratore.</small></div><button class="btn small primary" type="button" id="fans-upgrade-btn">Aggiorna profili</button></div>
+     <div class="notice" id="fans-upgrade" hidden><div><b id="fans-upgrade-title">Nuovi profili Spente e Massimo</b><small>Spente e Massimo su tutte le ventole, anche radiatore, pompa e scheda video. Si creano una volta in Fan Control: serve una conferma da amministratore.</small></div><button class="btn small primary" type="button" id="fans-upgrade-btn">Aggiorna profili</button></div>
      <div class="fan-list" id="fan-list"></div>
-     <p class="fineprint">Massimo porta al 100% tutte le ventole (case, radiatore, pompa e scheda video); Spente e Silenziose toccano solo quelle del case. Sicurezza: con CPU sopra 80 °C (o GPU sopra 78 °C con le ventole spente) tornano da sole al profilo normale.</p>
+     <p class="fineprint">Massimo: tutte al 100%. Spente: tutte ferme, con la scelta di tenere la pompa al minimo; con le ventole spente NEXAR controlla le temperature ogni 2 secondi e a 75 °C le riaccende. Silenziose: solo quelle del case. Sicurezza: con CPU sopra 80 °C (o GPU sopra 78 °C con le ventole spente) tornano da sole al profilo normale.</p>
     </section>
    </section>
 
@@ -249,6 +251,39 @@
      </ol>
      <div class="relay" id="relay-box" hidden><div class="relay-head"><b>docker-compose per Umbrel</b><button class="btn small" type="button" id="relay-copy"><svg class="i"><use href="#i-copy"/></svg>Copia</button></div><pre id="relay-text"></pre><p class="fineprint warn-text">Contiene il token del bot: incollalo solo nel tuo Umbrel.</p></div>
      <p class="fineprint" id="wol-phone">—</p>
+    </section>
+   </section>
+
+   <!-- OTTIMIZZA -->
+   <section class="page" id="page-optimize">
+    <section class="card">
+     <div class="card-head"><div><h3>Dischi</h3><p>Spazio libero su ogni unità</p></div></div>
+     <div class="disk-list" id="opt-disks"><p class="muted">Caricamento…</p></div>
+    </section>
+    <section class="card">
+     <div class="card-head"><div><h3>Pulizia</h3><p id="opt-clean-sub">File temporanei e cache che Windows e i programmi ricreano</p></div><button class="btn" type="button" id="opt-scan"><svg class="i"><use href="#i-refresh"/></svg>Analizza</button></div>
+     <div class="clean-list" id="opt-clean"><p class="muted">Premi Analizza per vedere quanto spazio puoi recuperare.</p></div>
+     <div class="clean-foot"><span id="opt-selected">—</span><button class="btn primary" type="button" id="opt-run" disabled><svg class="i"><use href="#i-clean"/></svg>Pulisci</button></div>
+     <p class="fineprint">Mai documenti, foto o download. I file in uso vengono saltati, i temporanei solo se hanno più di un giorno. Le voci con lo scudo chiedono la conferma da amministratore sul PC.</p>
+    </section>
+    <div class="two-col">
+     <section class="card">
+      <div class="card-head"><div><h3>Programmi all'avvio</h3><p id="opt-startup-sub">Meno programmi = Windows parte prima</p></div></div>
+      <div class="startup-list" id="opt-startup"><p class="muted">Caricamento…</p></div>
+      <p class="fineprint">Si disattivano come in Gestione attività: niente viene disinstallato e puoi riattivarli quando vuoi.</p>
+     </section>
+     <section class="card">
+      <div class="card-head"><div><h3>Memoria RAM</h3><p id="opt-mem-sub">—</p></div></div>
+      <div class="mem-list" id="opt-mem"></div>
+     </section>
+    </div>
+    <section class="card">
+     <div class="card-head"><div><h3>Strumenti</h3><p>Interventi rapidi e sicuri</p></div></div>
+     <div class="actions tools">
+      <button class="act" type="button" id="opt-dns"><svg class="i"><use href="#i-wave"/></svg>Svuota cache DNS</button>
+      <button class="act local-only" type="button" id="opt-trim"><svg class="i"><use href="#i-disk"/></svg>Ottimizza SSD (TRIM)</button>
+      <button class="act" type="button" data-action="gaming"><svg class="i"><use href="#i-game"/></svg>Modalità Gaming</button>
+     </div>
     </section>
    </section>
 
@@ -316,6 +351,7 @@
    <!-- ALTRO (telefono) -->
    <section class="page" id="page-more">
     <div class="more-list">
+     <button data-view="optimize"><span class="more-ico c-cyan"><svg class="i"><use href="#i-clean"/></svg></span><div><b>Ottimizza</b><small>Pulizia, avvio, dischi e memoria</small></div><svg class="i chev"><use href="#i-chev"/></svg></button>
      <button data-view="power"><span class="more-ico c-red"><svg class="i"><use href="#i-power"/></svg></span><div><b>Accensione</b><small>Spegni, riavvia, sospendi, timer</small></div><svg class="i chev"><use href="#i-chev"/></svg></button>
      <button data-view="links"><span class="more-ico c-cyan"><svg class="i"><use href="#i-link"/></svg></span><div><b>Collegamenti</b><small id="more-links">Programmi collegati</small></div><svg class="i chev"><use href="#i-chev"/></svg></button>
      <button data-view="settings"><span class="more-ico c-violet"><svg class="i"><use href="#i-sliders"/></svg></span><div><b>Impostazioni</b><small>AI ECO, energia, Telegram, registro</small></div><svg class="i chev"><use href="#i-chev"/></svg></button>

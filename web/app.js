@@ -9,6 +9,7 @@ const titles={
  lights:['Luci','Colori e luminosità dei LED.'],
  cooling:['Ventole','Temperature e profili di raffreddamento.'],
  power:['Accensione','Spegni, riavvia, sospendi o programma.'],
+ optimize:['Ottimizza','Pulizia, programmi all’avvio, dischi e memoria.'],
  links:['Collegamenti','Programmi trovati e collegati da soli.'],
  settings:['Impostazioni','AI ECO, energia, Telegram e registro.'],
  more:['Altro','Accensione, collegamenti e impostazioni.'],
@@ -71,6 +72,15 @@ async function post(path,body){
  if(demo){notify('Anteprima: comando non attivo.');return;}
  try{const r=await req(path,'POST',body);notify('✓ '+r.message);await refresh();}catch(ex){notify('⚠ '+ex.message,true);}
 }
+function choose(title,text,options,{ico='fan',danger=false}={}){
+ // Finestra con più scelte (es. ventole spente: pompa al minimo / tutto spento). Restituisce il value scelto o ''.
+ const d=$('confirm'),box=d.querySelector('.sheet-actions'),saved=[...box.children];
+ $('confirm-title').textContent=title;$('confirm-text').textContent=text;
+ $('confirm-ico').className='sheet-ico'+(danger?'':' calm');$('confirm-ico').replaceChildren(icon(ico));
+ box.classList.add('stacked');box.replaceChildren(...options.map(o=>{const b=el('button','btn'+(o.cls?' '+o.cls:''),o.label);b.value=o.value;return b;}));
+ d.returnValue='';d.showModal();
+ return new Promise(res=>d.addEventListener('close',()=>{box.classList.remove('stacked');box.replaceChildren(...saved);res(d.returnValue);},{once:true}));
+}
 function ask(title,text,{danger=true,ico='power',yes='Conferma'}={}){
  const d=$('confirm');$('confirm-title').textContent=title;$('confirm-text').textContent=text;
  $('confirm-ico').className='sheet-ico'+(danger?'':' calm');$('confirm-ico').replaceChildren(icon(ico));
@@ -83,7 +93,8 @@ function navigate(view){
  if(!titles[view])return;
  if(view==='settings'&&!demo){loadSettings();loadEvents();}
  if(view==='lights')loadRgbDevices();
- const tab=['power','links','settings'].includes(view)?'more':view;
+ if(view==='optimize')loadOptimize();
+ const tab=['power','links','settings','optimize'].includes(view)?'more':view;
  document.querySelectorAll('.rail-nav [data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===view));
  document.querySelectorAll('.tabbar [data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===tab));
  document.querySelectorAll('.page').forEach(p=>p.classList.toggle('active',p.id==='page-'+view));
@@ -158,6 +169,7 @@ function render(s){
  chart('chart-power',[{data:hist.power,color:'#34d399'}],0,' W');
  renderLinks(s.integrations||[],s.jobs||{});
  renderUpdate(s.version,s.update||{},s.jobs?.update);
+ watchOptimizeJobs(s.jobs||{});
  hideSplash();
 }
 function renderUpdate(version,u,job){
@@ -365,7 +377,12 @@ async function action(name){
   'rgb-eco':['/api/rgb',{profile:'eco'}],'rgb-normal':['/api/rgb',{profile:'normal'}]};
  ['off','eco','normal','max'].forEach(l=>map['fans-'+l]=['/api/fans',{profile:l}]);
  if(!map[name])return;
- if(name==='fans-off'&&!await ask('Spegnere le ventole del case?','Radiatore e pompa continuano a girare. Se CPU o GPU scaldano troppo tornano normali da sole.',{danger:false,ico:'fan',yes:'Spegni ventole'}))return;
+ if(name==='fans-off'){
+  const pick=await choose('Spegnere tutte le ventole?','Case, radiatore e scheda video si fermano. La pompa AIO la tengo al minimo? Se CPU o GPU arrivano a 75 °C tornano normali da sole.',
+   [{value:'pump',label:'Sì, pompa al minimo',cls:'primary'},{value:'all',label:'No, spegni anche la pompa',cls:'danger'},{value:'no',label:'Annulla'}],{danger:true});
+  if(pick!=='pump'&&pick!=='all')return;
+  map['fans-off']=['/api/fans',{profile:'off',keep_pump:pick==='pump'}];
+ }
  if(name==='screen'&&!await ask('Spegnere il monitor?','Il PC continua a lavorare; il monitor si riaccende muovendo il mouse.',{danger:false,ico:'monitor',yes:'Spegni monitor'}))return;
  busy=true;try{const r=await req(map[name][0],'POST',map[name][1]);notify('✓ '+r.message);await refresh();}catch(ex){notify('⚠ '+ex.message,true);}finally{busy=false;}
 }
@@ -414,6 +431,68 @@ $('login-form').addEventListener('submit',async e=>{
  key=pass;try{const s=await req('/api/status');sessionStorage.setItem('pc_eco_key',key);$('login-error').textContent='';$('key-input').value='';loginScreen(false);render(s);}catch(ex){$('login-error').textContent=ex.message;}
 });
 $('refresh-events').addEventListener('click',loadEvents);
+/* ---------- ottimizza ---------- */
+const bytes=b=>{if(typeof b!=='number')return '—';const u=['B','KB','MB','GB','TB'];let i=0;while(b>=1024&&i<4){b/=1024;i++;}return (i<2?Math.round(b):b.toFixed(1).replace('.',','))+' '+u[i];};
+let optData=null;const optSeen={};
+function watchOptimizeJobs(jobs){
+ // A fine analisi o pulizia ricarica la pagina, se è aperta.
+ ['optimize-scan','optimize-clean','trim'].forEach(n=>{const j=jobs[n];if(!j)return;
+  const busy=j.state==='running';if(n!=='trim'){$('opt-scan').disabled=busy;$('opt-run').disabled=busy||!selectedKeys().length;}
+  if(!busy&&optSeen[n]!==undefined&&optSeen[n]!==j.at&&$('page-optimize').classList.contains('active'))loadOptimize();optSeen[n]=j.at;});
+}
+function selectedKeys(){return [...document.querySelectorAll('#opt-clean input:checked')].map(c=>c.value);}
+function updateSelected(){
+ const items=optData?.report?.items||[];const keys=selectedKeys();
+ const tot=items.filter(i=>keys.includes(i.key)).reduce((a,i)=>a+i.bytes,0);
+ $('opt-selected').textContent=keys.length?`Selezionati: ${bytes(tot)}`:'Niente selezionato';$('opt-run').disabled=!keys.length;
+}
+async function loadOptimize(){
+ if(demo){renderOptimize({report:null,disks:[{drive:'C:',total:5e11,used:4.7e11,free:3e10,percent:94}],memory:{percent:49,used:1.6e10,total:3.2e10,top:[]},startup:[]});return;}
+ try{renderOptimize(await req('/api/optimize'));}catch(ex){notify('Ottimizza: '+ex.message,true);}
+}
+function renderOptimize(d){
+ optData=d;
+ const dk=$('opt-disks');dk.replaceChildren();
+ (d.disks||[]).forEach(x=>{const c=el('div','disk'+(x.free<0.1*x.total?' low':''));const top=el('div','disk-top');top.append(el('b','',x.drive),el('small','',`${bytes(x.free)} liberi su ${bytes(x.total)}`));
+  const bar=el('div','bar');const f=el('span');f.style.width=x.percent+'%';bar.append(f);c.append(top,bar);dk.append(c);});
+ const box=$('opt-clean');const rep=d.report;
+ if(rep){
+  box.replaceChildren();
+  $('opt-clean-sub').textContent=`${bytes(rep.total)} recuperabili · analisi delle ${rep.at.slice(11,16)}`;
+  rep.items.forEach(i=>{
+   const row=el('label','clean-row'+(i.bytes?'':' empty'));const cb=el('input');cb.type='checkbox';cb.value=i.key;
+   const blocked=(i.admin&&current?.remote)||i.note.startsWith('chiudi');
+   cb.checked=i.bytes>0&&!i.permanent&&!i.admin&&!blocked;cb.disabled=!i.bytes||blocked;cb.addEventListener('change',updateSelected);
+   const t=el('div');const name=el('b','',i.name);
+   if(i.permanent)name.append(el('em','pill warn','definitivo'));if(i.admin)name.append(el('em','pill admin','🛡 admin'));
+   t.append(name,el('small','',i.note||i.desc));row.append(cb,t,el('strong','',i.bytes?bytes(i.bytes):'pulito'));box.append(row);
+  });
+  updateSelected();
+ }
+ const st=$('opt-startup');st.replaceChildren();const items=d.startup||[];
+ $('opt-startup-sub').textContent=`${items.filter(i=>i.enabled).length} attivi su ${items.length}`;
+ items.forEach(i=>{
+  const row=el('div','startup-row');const t=el('div');t.append(el('b','',i.name),el('small','',i.scope+(i.admin?' · serve admin':'')));
+  const tg=el('button','toggle');tg.type='button';tg.setAttribute('role','switch');tg.setAttribute('aria-checked',i.enabled?'true':'false');tg.setAttribute('aria-label','Avvio di '+i.name);tg.append(el('span'));
+  tg.disabled=i.admin&&!!current?.remote;
+  tg.addEventListener('click',async()=>{if(demo){notify('Anteprima: comando non attivo.');return;}
+   try{const r=await req('/api/optimize/startup','POST',{id:i.id,enabled:!i.enabled});notify('✓ '+r.message);loadOptimize();}catch(ex){notify('⚠ '+ex.message,true);}});
+  row.append(t,tg);st.append(row);
+ });
+ const m=d.memory||{};$('opt-mem-sub').textContent=m.total?`${bytes(m.used)} usati su ${bytes(m.total)} (${Math.round(m.percent)}%)`:'—';
+ const mm=$('opt-mem');mm.replaceChildren();const max=Math.max(1,...(m.top||[]).map(x=>x.bytes));
+ (m.top||[]).forEach(x=>{const r=el('div','mem-row');const bar=el('div','bar');const f=el('span');f.style.width=(x.bytes/max*100)+'%';bar.append(f);
+  r.append(el('span','',x.name.replace(/\.exe$/i,'')),el('b','',bytes(x.bytes)),bar);mm.append(r);});
+}
+$('opt-scan').addEventListener('click',()=>post('/api/optimize/scan',{}));
+$('opt-run').addEventListener('click',async()=>{
+ const keys=selectedKeys();if(!keys.length)return;
+ const perm=keys.includes('recycle');
+ if(!await ask('Pulire adesso?',`${$('opt-selected').textContent}.`+(perm?' Il cestino verrà svuotato: quei file non si potranno più recuperare.':' Sono solo file temporanei e cache.'),{danger:perm,ico:'clean',yes:'Pulisci'}))return;
+ post('/api/optimize/clean',{keys});
+});
+$('opt-dns').addEventListener('click',()=>post('/api/optimize/dns',{}));
+$('opt-trim').addEventListener('click',()=>post('/api/optimize/trim',{}));
 $('upd-check').addEventListener('click',()=>post('/api/update/check',{}));
 $('upd-install').addEventListener('click',async()=>{
  if(await ask('Installare l\'aggiornamento?','NEXAR si chiude per qualche secondo e riparte da solo con la nuova versione.',{danger:false,ico:'refresh',yes:'Installa'}))post('/api/update/install',{});
