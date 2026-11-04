@@ -1563,3 +1563,80 @@ kbd{display:inline-block;min-width:18px;padding:1px 6px;border-radius:6px;font:6
  .chk em{position:static;grid-column:1/-1;justify-self:start;margin-top:2px}
  .chk-ico{width:32px;height:32px}
 }
+
+/* ================= Gaming: locandine, banner in profondità, indicatori circolari ================= */
+.game-hero{min-height:360px}
+.game-hero-art{translate:calc(var(--px,0) * -18px) calc(var(--py,0) * -12px);transition:translate .6s cubic-bezier(.16,1,.3,1)}
+.game-hero-body{translate:calc(var(--px,0) * 6px) calc(var(--py,0) * 4px);transition:translate .6s cubic-bezier(.16,1,.3,1)}
+.game-hero .game-logo{max-height:140px}
+.game-grid{grid-template-columns:repeat(auto-fill,minmax(158px,1fr));gap:16px}
+.poster{position:relative;aspect-ratio:2/3;border-radius:18px;overflow:hidden;isolation:isolate;cursor:default;background:#0d1018;
+ border:1px solid rgba(255,255,255,.07);box-shadow:0 16px 34px -20px rgba(0,0,0,.9);
+ transform:perspective(900px) rotateX(var(--rx,0deg)) rotateY(var(--ry,0deg)) translateY(var(--ty,0));transition:transform .5s cubic-bezier(.16,1,.3,1),box-shadow .3s,border-color .3s}
+.poster:hover{--ty:-6px;border-color:rgba(236,72,153,.45);box-shadow:0 26px 50px -22px rgba(236,72,153,.55),0 0 0 1px rgba(236,72,153,.25)}
+.poster.tilting{transition:transform .12s ease-out,box-shadow .3s,border-color .3s}
+.poster.enter{animation:panel-in .5s cubic-bezier(.32,.72,0,1) backwards;animation-delay:calc(var(--i,0) * 28ms)}
+.poster.is-hidden{opacity:.45;filter:grayscale(.8)}
+.poster.playing{border-color:rgba(236,72,153,.8);box-shadow:0 0 0 2px rgba(236,72,153,.6),0 24px 48px -20px rgba(236,72,153,.7)}
+.poster-art{position:absolute;inset:0;z-index:-1;display:grid;place-items:center;
+ background:radial-gradient(120% 80% at 80% 0%,hsla(calc(var(--h) + 40),80%,60%,.55),transparent 60%),linear-gradient(160deg,hsl(var(--h) 55% 32%),hsl(calc(var(--h) + 60) 60% 12%))}
+.poster-art img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transform:scale(1.02);transition:opacity .45s,transform .8s cubic-bezier(.16,1,.3,1)}
+.poster-art.wide img{object-position:30% center}
+.poster-art.has-img img{opacity:1}.poster-art.has-img .initials{display:none}
+.poster:hover .poster-art img{transform:scale(1.08)}
+.poster-art .initials{font-size:40px}
+.poster::after{content:"";position:absolute;inset:0;z-index:0;pointer-events:none;background:linear-gradient(180deg,rgba(0,0,0,0) 45%,rgba(6,7,12,.92) 100%),
+ radial-gradient(240px circle at var(--mx,50%) var(--my,0%),rgba(255,255,255,.18),transparent 55%);opacity:.95}
+.poster .store-badge{left:10px;top:10px;z-index:2}
+.poster .now-badge{right:10px;top:10px;z-index:2}
+.poster-info{position:absolute;left:12px;right:12px;bottom:12px;z-index:2;display:flex;flex-direction:column;gap:2px;transition:transform .35s cubic-bezier(.16,1,.3,1)}
+.poster-info b{font:700 14.5px/1.2 var(--font-d);text-shadow:0 2px 10px rgba(0,0,0,.7);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.poster-info small{font-size:11.5px;color:#cbd5e1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.poster-play{position:absolute;left:50%;top:44%;z-index:3;width:58px;height:58px;margin:-29px 0 0 -29px;border-radius:50%;display:grid;place-items:center;color:#fff;
+ background:linear-gradient(135deg,#8b5cf6,#ec4899);box-shadow:0 12px 30px -8px rgba(236,72,153,.9),0 0 0 6px rgba(255,255,255,.08);
+ opacity:0;transform:scale(.7);transition:opacity .25s,transform .4s cubic-bezier(.34,1.56,.64,1)}
+.poster-play .i{width:24px;height:24px;margin-left:3px;fill:#fff;stroke:#fff}
+.poster:hover .poster-play,.poster-play:focus-visible{opacity:1;transform:none}
+.poster-play:hover{transform:scale(1.08)}
+.poster-play:disabled{display:none}
+.poster-hide{position:absolute;right:10px;bottom:62px;z-index:3;width:30px;height:30px;border-radius:10px;display:grid;place-items:center;color:#e2e8f0;
+ background:rgba(8,10,14,.7);border:1px solid rgba(255,255,255,.12);opacity:0;transition:opacity .2s}
+.poster-hide .i{width:15px;height:15px}
+.poster:hover .poster-hide{opacity:1}
+.poster.playing .poster-hide{display:none}
+@media (hover:none){.poster-play{opacity:1;transform:scale(.82);top:auto;bottom:62px;left:auto;right:10px;margin:0;width:44px;height:44px}.poster-hide{opacity:.85;bottom:auto;top:40px}}
+/* indicatori circolari (statistiche Gaming e controllo salute) */
+.gring{position:relative;width:54px;height:54px;display:grid;place-items:center;flex:none;color:var(--c)}
+.gring .gr,.chk-ico .cr{position:absolute;inset:0;width:100%;height:100%;transform:rotate(-90deg)}
+.gr-t,.gr-f{fill:none;stroke-width:4;stroke-linecap:round}
+.gr-t{stroke:rgba(255,255,255,.08)}
+.gr-f{stroke:var(--c,currentColor);stroke-dasharray:0 100;transition:stroke-dasharray .9s cubic-bezier(.16,1,.3,1);filter:drop-shadow(0 0 4px color-mix(in srgb,var(--c,currentColor) 60%,transparent))}
+.gring>.i{width:20px;height:20px}
+.gstat{grid-template-columns:auto minmax(0,1fr);padding:16px 18px}
+.gstat .bar{display:none}
+.gstat.c-cpu .gr-f,.gstat.c-gpu .gr-f{stroke:url(#gs-temp)}
+.gstat.hot .gring{animation:none}
+.gstat.hot .gr-f{stroke:#f87171}
+/* ================= Ottimizza: quadrante del punteggio e anelli ================= */
+.opt-hero2 .health svg{overflow:visible}
+.opt-hero2 .health .ticks line{stroke:rgba(255,255,255,.12);stroke-width:1.4;stroke-linecap:round;transition:stroke .4s}
+.opt-hero2 .health .ticks line.on{stroke:#5eead4}
+.opt-hero2 .health.mid .ticks line.on{stroke:#fbbf24}.opt-hero2 .health.low .ticks line.on{stroke:#f87171}
+.opt-hero2 .health::before{content:"";position:absolute;inset:14%;border-radius:50%;z-index:-1;background:radial-gradient(circle,rgba(45,212,191,.28),transparent 70%);filter:blur(6px)}
+.opt-hero2 .health.mid::before{background:radial-gradient(circle,rgba(251,191,36,.25),transparent 70%)}
+.opt-hero2 .health.low::before{background:radial-gradient(circle,rgba(248,113,113,.25),transparent 70%)}
+.opt-hero2 .health{position:relative;isolation:isolate}
+.opt-hero2 .health-center strong{font-size:52px}
+.chk-ico{position:relative;width:50px!important;height:50px!important;border-radius:50%!important;background:none!important;box-shadow:none!important}
+.chk-ico .cr{--c:var(--s)}
+.chk-ico .gr-f{stroke:var(--s)}
+.chk-ico>.i{position:relative;width:20px;height:20px}
+.chk{grid-template-columns:auto minmax(0,1fr);gap:14px}
+.chk:hover .chk-ico .gr-f{filter:drop-shadow(0 0 6px var(--s))}
+@media (max-width:640px){
+ .game-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+ .game-hero{min-height:0}
+ .gring{width:44px;height:44px}.gring>.i{width:17px;height:17px}
+ .chk-ico{width:40px!important;height:40px!important}
+}
+.svg-defs{position:absolute;width:0;height:0;overflow:hidden}
