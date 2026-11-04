@@ -650,15 +650,59 @@ function renderLarge(L){
   r.append(ic,t,acts);box.append(r);
  });
 }
+let netRunning=false,netTimers=[],netStart=0;
+function netScene(){
+ // Durante la prova: PC → Router → Internet, con i pacchetti che viaggiano e ogni tappa che risponde.
+ const box=$('opt-net');box.replaceChildren();netTimers.forEach(clearTimeout);netTimers=[];
+ const sc=el('div','net-scene');
+ const node=(cls,ic,label)=>{const n=el('div','nn '+cls);const c=el('span','nn-core');c.append(icon(ic));n.append(el('i','nn-ping'),c,el('small','',label),el('b','nn-ms','…'));return n;};
+ const link=()=>{const l=el('div','nlink');for(let i=0;i<4;i++){const p=el('i');p.style.setProperty('--d',(i*.32)+'s');l.append(p);}return l;};
+ const pc=node('pc','monitor','Il tuo PC'),rt=node('router','wave','Router'),web=node('web','link','Internet'),dns=node('dns','search','DNS');
+ pc.classList.add('on');pc.querySelector('.nn-ms').textContent='pronto';
+ sc.append(pc,link(),rt,link(),web,link(),dns);
+ const st=el('p','net-status','Misuro quanto ci mette il PC a raggiungere il router…');
+ box.append(sc,st);
+ [[rt,'Router raggiunto: ora misuro la strada verso internet…'],[web,'Internet raggiunto: misuro quanto ci mette a trovare un sito…'],[dns,'Quasi fatto: preparo il risultato…']].forEach(([n,t],i)=>netTimers.push(setTimeout(()=>{
+  n.classList.add('on');n.querySelector('.nn-ms').textContent='risponde';sc.querySelectorAll('.nlink')[i].classList.add('on');st.textContent=t;},900+i*1100)));
+}
+function netRun(){
+ netRunning=true;netStart=Date.now()/1000-2;netScene();
+ if(demo){netTimers.push(setTimeout(()=>{netRunning=true;renderNet({...DEMO_OPT.net,at:Date.now()/1000});},4300));return;}
+ post('/api/optimize/net',{});
+}
+function latPos(ms){return ms==null?1:Math.min(1,Math.sqrt(ms/150));}
 function renderNet(n){
- const box=$('opt-net');if(!n)return;box.replaceChildren();
+ const box=$('opt-net');if(!n)return;
+ if(netRunning&&!(n.at>netStart))return;   // prova in corso: si aspetta il risultato nuovo
+ const animate=netRunning;netRunning=false;netTimers.forEach(clearTimeout);netTimers=[];box.replaceChildren();
  const Q={ottima:['Ottima','ok'],buona:['Buona','mid'],lenta:['Lenta','low'],offline:['Non connesso','low']}[n.quality]||['—',''];
  $('opt-net-sub').textContent=`Prova ${ago(n.at)} alle ${new Date(n.at*1000).toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'})}`;
- const big=el('div','net-big '+Q[1]);big.append(el('small','','Connessione'),el('b','',Q[0]),el('span','',n.internet?.ms!=null?`${n.internet.ms} ms verso internet`:'internet non raggiungibile'));box.append(big);
- [['Router di casa',n.router,10],['Internet (Cloudflare)',n.internet,60],['Google',n.google,60]].forEach(([label,x,good])=>{if(!x)return;
-  const c=el('div','net-m');const ms=x.ms;c.append(el('small','',label),el('b','',ms!=null?ms+' ms':'—'),el('span','',x.loss?`${x.loss}% pacchetti persi`:x.host));
-  const bar=el('div','bar');const f=el('span');f.style.width=(ms==null?100:Math.min(100,ms/(good*2)*100))+'%';f.className=ms==null||ms>good*1.5?'bad':ms>good*.6?'mid':'';bar.append(f);c.append(bar);box.append(c);});
- const dn=el('div','net-m');dn.append(el('small','','DNS'),el('b','',n.dns_ms!=null?n.dns_ms+' ms':'—'),el('span','','tempo per trovare un sito'));box.append(dn);
+ // tachimetro: la lancetta va dal verde (pochi ms) al rosso (tanti ms)
+ const wrap=el('div','net-result '+Q[1]);const sp=el('div','speedo');
+ const NS='http://www.w3.org/2000/svg',mk=(t,a)=>{const e=document.createElementNS(NS,t);Object.entries(a).forEach(([k,v])=>e.setAttribute(k,v));return e;};
+ const svg=mk('svg',{viewBox:'0 0 200 116','aria-hidden':'true'});
+ const defs=mk('defs',{});const gr=mk('linearGradient',{id:'speedo-g',x1:'0',y1:'0',x2:'1',y2:'0'});
+ [['0','#34d399'],['.55','#fbbf24'],['1','#f87171']].forEach(([o,c])=>gr.append(mk('stop',{offset:o,'stop-color':c})));defs.append(gr);svg.append(defs);
+ svg.append(mk('path',{d:'M20 100 A80 80 0 0 1 180 100',class:'sp-track'}),mk('path',{d:'M20 100 A80 80 0 0 1 180 100',class:'sp-arc',pathLength:'100'}));
+ for(let i=0;i<=20;i++){const a=Math.PI*(1-i/20),r1=i%5?66:62;svg.append(mk('line',{x1:100+Math.cos(a)*r1,y1:100-Math.sin(a)*r1,x2:100+Math.cos(a)*70,y2:100-Math.sin(a)*70,class:'sp-tick'}));}
+ const needle=mk('g',{class:'sp-needle'});needle.append(mk('line',{x1:100,y1:100,x2:100,y2:34}),mk('circle',{cx:100,cy:100,r:6}));svg.append(needle);
+ const ms=n.internet?.ms;const deg=-90+180*latPos(ms);
+ needle.style.transform=`rotate(${animate?-90:deg}deg)`;
+ const mid=el('div','sp-mid');const val=el('b','',ms!=null?'0':'—');mid.append(val,el('small','',ms!=null?'ms verso internet':'internet non raggiungibile'),el('span','sp-q',Q[0]));
+ sp.append(svg,mid);wrap.append(sp);
+ const hops=el('div','net-hops');
+ [['wave','Router di casa',n.router,10],['link','Internet',n.internet,60],['search','Google',n.google,60],['clock','DNS',{ms:n.dns_ms,host:'tempo per trovare un sito'},80]].forEach(([ic,label,x,good],i)=>{
+  if(!x)return;const c=el('div','hop');c.style.setProperty('--i',i);const ii=el('span','hop-ico');ii.append(icon(ic));
+  const t=el('div');const b=el('b','',x.ms!=null?'0 ms':'—');t.append(el('small','',label),b,el('span','',x.loss?`${x.loss}% pacchetti persi`:(x.host||'')));
+  const bar=el('div','bar');const f=el('span');f.className=x.ms==null||x.ms>good*1.5?'bad':x.ms>good*.6?'mid':'';bar.append(f);t.append(bar);c.append(ii,t);hops.append(c);
+  const w=(x.ms==null?100:Math.min(100,x.ms/(good*2)*100));
+  if(animate){setTimeout(()=>{f.style.width=w+'%';if(x.ms!=null){b._v=0;countUp(b,x.ms,v=>Math.round(v)+' ms');}},250+i*120);}
+  else{f.style.width=w+'%';if(x.ms!=null)b.textContent=x.ms+' ms';}
+ });
+ wrap.append(hops);box.append(wrap);
+ if(animate){requestAnimationFrame(()=>requestAnimationFrame(()=>{needle.style.transform=`rotate(${deg}deg)`;}));
+  if(ms!=null){val._v=0;countUp(val,ms,v=>Math.round(v));}wrap.classList.add('fresh');}
+ else if(ms!=null)val.textContent=ms;
 }
 async function loadProcs(){
  if(demo){renderProcs(DEMO_PROC);return;}
@@ -733,7 +777,7 @@ $('opt-run').addEventListener('click',async()=>{
 $('opt-auto').addEventListener('click',()=>post('/api/optimize/auto',{enabled:$('opt-auto').getAttribute('aria-checked')!=='true'}).then(()=>loadOptimize(true)));
 $('opt-large-scan').addEventListener('click',()=>post('/api/optimize/large/scan',{}));
 $('opt-health-btn').addEventListener('click',()=>post('/api/optimize/health',{}));
-$('opt-net-btn').addEventListener('click',()=>post('/api/optimize/net',{}));
+$('opt-net-btn').addEventListener('click',netRun);
 $('opt-dns').addEventListener('click',()=>post('/api/optimize/dns',{}));
 $('opt-trim').addEventListener('click',()=>post('/api/optimize/trim',{}));
 $('zc-opt-btn').addEventListener('click',e=>{e.stopPropagation();navigate('optimize');setTimeout(quickOptimize,350);});
@@ -759,11 +803,7 @@ document.addEventListener('click',e=>{
  try{tgApp.HapticFeedback.impactOccurred(b.classList.contains('primary')||b.classList.contains('mode-opt')?'medium':'light');}catch(e){}
 },{passive:true});
 // Barra laterale ridotta a sole icone (ricordata su questo dispositivo).
-(()=>{let mini=false;try{mini=localStorage.getItem('nexar_rail')==='mini';}catch(e){}
- const app=$('app-shell');const set=v=>{app.classList.toggle('rail-mini',v);const b=$('rail-collapse');b.title=v?'Allarga la barra':'Riduci la barra';b.setAttribute('aria-label',b.title);
-  try{localStorage.setItem('nexar_rail',v?'mini':'full');}catch(e){}};
- document.querySelectorAll('.rail-nav button').forEach(b=>{b.dataset.label=b.textContent.trim();b.title='';});
- set(mini);$('rail-collapse').addEventListener('click',()=>set(!app.classList.contains('rail-mini')));})();
+document.querySelectorAll('.rail-nav button').forEach(b=>{b.dataset.label=b.textContent.trim();b.setAttribute('aria-label',b.dataset.label);});
 function setZone(){
  // Il colore di sfondo, titoli e menu segue la sezione (in Home segue la modalità).
  const z=curView==='gaming'||curView==='optimize'?curView:curView==='home'&&current?.mode&&current.mode!=='normal'?current.mode:'';
@@ -1058,7 +1098,7 @@ function paletteItems(){
   {t:'Ottimizza ora',s:'Pulizia sicura e DNS',ic:'clean',run:()=>{navigate('optimize');setTimeout(quickOptimize,300);}},
   {t:'Spegni monitor',s:'Azione',ic:'monitor',run:()=>action('screen')},{t:'LED spenti',s:'Luci',ic:'bulb',run:()=>action('rgb-eco')},{t:'LED accesi',s:'Luci',ic:'palette',run:()=>action('rgb-normal')},
   {t:'Ventole silenziose',s:'Ventole',ic:'fan',run:()=>action('fans-eco')},{t:'Ventole normali',s:'Ventole',ic:'fan',run:()=>action('fans-normal')},
-  {t:'Prova la rete',s:'Ottimizza',ic:'wave',run:()=>{navigate('optimize');optTabGo('net');post('/api/optimize/net',{});}},
+  {t:'Prova la rete',s:'Ottimizza',ic:'wave',run:()=>{navigate('optimize');optTabGo('net');netRun();}},
   {t:'Cerca file grandi',s:'Ottimizza',ic:'search',run:()=>{navigate('optimize');optTabGo('large');post('/api/optimize/large/scan',{});}},
   {t:'Programmi all’avvio',s:'Ottimizza',ic:'power',run:()=>{navigate('optimize');optTabGo('startup');}},
   {t:'Statistiche dei consumi',s:'Consumi',ic:'plug',run:()=>{navigate('energy');setTimeout(()=>document.querySelector('.stats-card')?.scrollIntoView({behavior:'smooth'}),200);}},
