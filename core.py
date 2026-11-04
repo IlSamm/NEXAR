@@ -839,6 +839,7 @@ class Control:
                 'monitor_watts':int(self.config.get('energy',{}).get('monitor_watts',0)),
                 'extra_watts':int(self.config.get('energy',{}).get('extra_watts',6)),
                 'gaming_fans':str(self.config.get('fans',{}).get('gaming_level','normal')),
+                'anim_style':str(self.config.get('ui',{}).get('anim_style','liquid')),
             }
 
     def update_settings(self, new):
@@ -859,6 +860,8 @@ class Control:
                 raise ValueError(f'{field}: valore ammesso {low}–{high}')
         if 'gaming_fans' in new and new['gaming_fans'] not in ('normal','max'):
             raise ValueError('gaming_fans: normal o max')
+        if 'anim_style' in new and new['anim_style'] not in ('liquid','discreet','off'):
+            raise ValueError('Animazioni: liquid, discreet o off')
         if 'psu_class' in new and new['psu_class'] not in energy_model.PSU_CLASSES:
             raise ValueError('psu_class: ' + ', '.join(energy_model.PSU_CLASSES))
         if 'alerts_enabled' in new and type(new['alerts_enabled']) is not bool:
@@ -872,6 +875,7 @@ class Control:
             if 'gpu_temp_alert' in new: self.config.setdefault('alerts',{})['gpu_temp']=new['gpu_temp_alert']
             if 'energy_price_cents' in new: self.config.setdefault('energy',{})['price_eur_kwh']=new['energy_price_cents']/100
             if 'gaming_fans' in new: self.config.setdefault('fans',{})['gaming_level']=new['gaming_fans']
+            if 'anim_style' in new: self.config.setdefault('ui',{})['anim_style']=new['anim_style']
             for field in ('psu_watts','psu_class','monitor_watts','extra_watts'):
                 if field in new: self.config.setdefault('energy',{})[field]=new[field]
             self.cached_telemetry=None
@@ -937,6 +941,7 @@ class Control:
             'rgb_off':bool(self.state.get('rgb_off')),
             'rgb_palette':self.rgb_palette(),
             'boost':self.booster.info(),
+            'anim_style':self.config.get('ui',{}).get('anim_style','liquid'),
             'rgb_excluded':list(self.rgb_excluded()),
             'fans_eco':bool(self.state.get('fans_eco')),
             'fans_level':self.state.get('fans_level') or ('eco' if self.state.get('fans_eco') else 'normal'),

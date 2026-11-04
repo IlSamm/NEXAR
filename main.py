@@ -148,6 +148,7 @@ class Settings(BaseModel):
     monitor_watts: int | None = None
     extra_watts: int | None = None
     gaming_fans: str | None = None
+    anim_style: str | None = None
 
 @app.post('/api/settings',dependencies=[Depends(authorized)])
 def save_settings(data: Settings):
