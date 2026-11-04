@@ -19,6 +19,7 @@ from collections import deque
 from urllib.request import urlopen
 import psutil
 import energy_model
+import gaming_boost
 import pc_power
 
 FROZEN = getattr(sys, 'frozen', False)
@@ -179,22 +180,80 @@ class Control:
         self.video_timeout = (0.0, None)
         self.screen_off_at = 0.0
         self.power_plan = None
-        import gaming_boost
-        self.booster = gaming_boost.Booster(config, notify=lambda m: self.notify(m), log=lambda m: self.log_event(m))
+        self.booster = gaming_boost.Booster(config, state=self.state, save=self.save_state,
+                                            notify=lambda m: self.notify(m), log=lambda m: self.log_event(m))
+        self.gaming_owned = False      # Gaming acceso da NEXAR perché è partito un gioco
+        self.gaming_prev = 'normal'
+        self.gaming_declined = False   # l'utente è uscito da Gaming a gioco aperto: non riattivarlo
+        self.game_gone = None
+        self.launch_grace = 0.0
+
+    def save_state(self):
+        with self.lock: json_save(STATE_FILE, self.state)
 
     def boost_loop(self, stop_event):
-        """In Gaming: ogni 5 s riconosce il gioco e sistema le priorità; se NEXAR riparte in Gaming riattiva il boost."""
+        """Ogni 5 s: trova il gioco aperto, accende/spegne Gaming da solo (se attivo) e cura le priorità.
+        Se NEXAR riparte in Gaming riattiva il boost."""
         while not stop_event.wait(5):
             try:
                 gaming = self.mode() == 'gaming'
                 if gaming and not self.booster.active: self.booster.start()
                 elif not gaming and self.booster.active: self.booster.stop()
-                if self.booster.active: self.booster.tick()
+                game = self.booster.tick() if os.name == 'nt' else None
+                if self.booster.active: self.booster.sample(self.telemetry())
+                self.auto_gaming(game, gaming)
             except Exception: logging.exception('Gaming Boost')
 
+    def auto_gaming(self, game, gaming):
+        now = time.monotonic()
+        if game:
+            self.game_gone = None
+            if (self.booster.settings()['auto'] and not gaming and not self.gaming_owned and not self.gaming_declined):
+                self.gaming_prev = self.mode() or 'normal'
+                self.gaming_owned = True
+                self.set_mode('gaming', manual=False, reason=game['name'])
+            return
+        self.gaming_declined = False
+        if not self.gaming_owned or now < self.launch_grace: return
+        if self.game_gone is None: self.game_gone = now
+        elif now - self.game_gone >= 20:   # gioco chiuso da 20 s: si torna a com'era prima
+            self.gaming_owned, self.game_gone = False, None
+            if gaming: self.set_mode(self.gaming_prev if self.gaming_prev in MODES and self.gaming_prev != 'gaming' else 'normal', manual=False)
+
+    def launch_game(self, gid):
+        if os.name != 'nt': raise RuntimeError('Disponibile solo su Windows')
+        game = self.booster.find(str(gid))
+        if not game: raise ValueError('Gioco non trovato: aggiorna la libreria')
+        notes = []
+        if self.mode() != 'gaming':
+            self.gaming_prev = self.mode() or 'normal'
+            notes.append(self.set_mode('gaming', manual=False, reason=game['name'], quiet=True))
+            self.gaming_owned = True
+        # Il launcher può aggiornare il gioco prima di aprirlo: 3 minuti di pazienza prima di tornare indietro.
+        self.launch_grace = time.monotonic() + 180
+        gaming_boost.launch(game)
+        msg = f"Avvio {game['name']} da {game['store']}"
+        self.log_event(msg)
+        return msg
+
+    def gaming_view(self, force=False):
+        cfg = self.config
+        return {'boost': self.booster.info(), 'games': [{k: g[k] for k in ('id', 'name', 'store', 'size', 'last', 'playtime', 'cover')}
+                                                        for g in self.booster.games(force)],
+                'history': self.booster.history()[:12], 'apps': gaming_boost.user_apps()[:40],
+                'fans': cfg.get('fans', {}).get('gaming_level', 'normal'), 'fans_enabled': bool(cfg.get('fans', {}).get('enabled')),
+                'rgb_color': cfg.get('rgb', {}).get('gaming_color', ''), 'rgb_enabled': bool(cfg.get('rgb', {}).get('enabled')),
+                'palette': self.rgb_palette()}
+
     def save_boost_settings(self, new):
+        new = dict(new)
+        fans, color = new.pop('fans', None), new.pop('rgb_color', None)
+        if fans is not None and fans not in ('normal', 'max'): raise ValueError('Ventole in Gaming: normal o max')
+        if color is not None and color != '' and not re.fullmatch(r'#[0-9a-fA-F]{6}', str(color)): raise ValueError('Colore non valido')
         with self.lock:
             s = self.booster.update_settings(new)
+            if fans is not None: self.config.setdefault('fans', {})['gaming_level'] = fans
+            if color is not None: self.config.setdefault('rgb', {})['gaming_color'] = color.lower()
             json_save(CONFIG_FILE, self.config)
         return s
 
@@ -411,7 +470,7 @@ class Control:
             if total and self.state.get('rgb_leds') != total:
                 self.state['rgb_leds'] = total; json_save(STATE_FILE, self.state)
 
-    def rgb_color(self, color, brightness=100, device=None):
+    def rgb_color(self, color, brightness=100, device=None, remember=True):
         """Un colore per tutti i dispositivi (device=None) o per uno solo; luminosità 0-100%."""
         import openrgb_sdk
         if not isinstance(color, str) or not re.fullmatch(r'#[0-9a-fA-F]{6}', color): raise ValueError('Colore non valido')
@@ -427,10 +486,12 @@ class Control:
         if not done: raise RuntimeError('Nessun dispositivo accetta un colore fisso')
         with self.lock:
             rgb = self.config.setdefault('rgb', {})
-            rgb['brightness'] = brightness
-            if device: rgb.setdefault('device_colors', {})[device] = color
-            else: rgb.update(normal_color=color, device_colors={})
-            json_save(CONFIG_FILE, self.config)
+            if remember:   # i colori temporanei (Gaming) non diventano il colore normale
+                rgb['brightness'] = brightness
+                if device: rgb.setdefault('device_colors', {})[device] = color
+                else: rgb.update(normal_color=color, device_colors={})
+                json_save(CONFIG_FILE, self.config)
+                self.state.pop('rgb_gaming', None)
             # I LED sono di nuovo accesi con colori scelti: il prossimo ECO salverà questi.
             self.state.update(rgb_off=False); self.state.pop('rgb_saved', None); json_save(STATE_FILE, self.state)
         msg = 'Colore ' + color.upper() + f' ({brightness}%) su ' + ', '.join(dict.fromkeys(done))
@@ -542,26 +603,51 @@ class Control:
         self.log_event(msg)
         return msg
 
-    def set_mode(self, value, manual=True):
+    def set_mode(self, value, manual=True, reason='', quiet=False):
         if value not in MODES: raise ValueError('Modalità sconosciuta')
         with self.lock:
             # Se powercfg fallisce non modificare luci o ventole.
             self.apply_power(value)
-            if manual: self.manual_override = True
+            if manual:
+                self.manual_override = True
+                # Scelta dell'utente: il Gaming automatico non la contraddice finché il gioco resta aperto.
+                self.gaming_declined = value != 'gaming' and bool(self.booster.running)
+                self.gaming_owned = False
             notes = ['Energia: '+MODES[value]]
             fans = {'eco':'eco','normal':'normal','gaming':self.config.get('fans',{}).get('gaming_level','normal')}[value]
             # Gaming Boost: parte con Gaming e rimette tutto com'era quando si passa ad altra modalità.
             boost = (lambda: self.booster.start()) if value == 'gaming' else (lambda: self.booster.stop())
-            for cb in (lambda: self.rgb_profile(value == 'eco'), lambda: self.fans_level(fans), boost):
+            for cb in (lambda: self.rgb_mode(value), lambda: self.fans_level(fans), boost):
                 try:
                     note = cb()
                     if note: notes.append(note)
                 except Exception as ex: notes.append('Integrazione non applicata: '+str(ex))
             self.last_message = ' · '.join(notes)
             self.log_event(self.last_message)
-            if not manual:
-                self.notify(('🌙 AI ECO attivata automaticamente' if value == 'eco' else '⚡ Profilo normale ripristinato')+'\n'+self.last_message[:270])
+            if not manual and not quiet:
+                title = {'eco': '🌙 AI ECO attivata automaticamente', 'gaming': '🎮 Gaming attivato' + (': ' + reason if reason else ''),
+                         'normal': '⚡ Profilo normale ripristinato'}[value]
+                self.notify(title+'\n'+self.last_message[:270])
             return self.last_message
+
+    def rgb_mode(self, value):
+        """Luci per modalità: ECO le spegne, Gaming usa il suo colore (se scelto), uscendo torna il colore normale."""
+        rgb = self.config.get('rgb', {})
+        gaming_color = rgb.get('gaming_color') if rgb.get('enabled') else ''
+        notes = []
+        if self.state.get('rgb_gaming') and value != 'gaming':
+            try:
+                bright = int(rgb.get('brightness', 100))
+                notes.append(self.rgb_color(rgb.get('normal_color', '#ffffff'), bright, remember=False))
+                for dev, c in (rgb.get('device_colors') or {}).items(): self.rgb_color(c, bright, dev, remember=False)
+            finally:
+                self.state.pop('rgb_gaming', None); self.save_state()
+        if value == 'gaming' and gaming_color:
+            msg = self.rgb_color(gaming_color, int(rgb.get('brightness', 100)), remember=False)
+            self.state['rgb_gaming'] = True; self.save_state()
+            return 'Luci Gaming: ' + msg
+        note = self.rgb_profile(value == 'eco') if value == 'eco' or not notes else ''
+        return ' · '.join(n for n in notes + [note] if n)
 
     def set_auto(self, enable):
         with self.lock:

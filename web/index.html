@@ -41,6 +41,12 @@
  <symbol id="i-game" viewBox="0 0 24 24"><path d="M7.5 7h9a5 5 0 0 1 4.9 6l-.8 3.7a2.4 2.4 0 0 1-4.2 1L14.6 16H9.4l-1.8 1.7a2.4 2.4 0 0 1-4.2-1L2.6 13a5 5 0 0 1 4.9-6z"/><path d="M7.5 10v3M6 11.5h3"/><circle cx="15.5" cy="11" r=".9"/><circle cx="17.5" cy="13" r=".9"/></symbol>
  <symbol id="i-max" viewBox="0 0 24 24"><path d="M5 18 12 6l7 12M8.5 13h7"/></symbol>
  <symbol id="i-clean" viewBox="0 0 24 24"><path d="m14.5 3.5 6 6M17.5 6.5 11 13"/><path d="M11 13c-3 0-6.5 1.5-7.5 7.5 6-1 7.5-4.5 7.5-7.5z"/><path d="M5 9.5l1-2 1 2 2 1-2 1-1 2-1-2-2-1zM15 17l.7-1.3L17 15l-1.3-.7L15 13l-.7 1.3L13 15l1.3.7z"/></symbol>
+ <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4.5v15l12.5-7.5z"/></symbol>
+ <symbol id="i-eye-off" viewBox="0 0 24 24"><path d="M3 3l18 18M10.6 5.1A10 10 0 0 1 12 5c5.5 0 9 5 9.5 7a13 13 0 0 1-2.9 4.1M6.6 6.6C4.4 8 3 10.2 2.5 12c.5 2 4 7 9.5 7 1.9 0 3.6-.6 5-1.5M9.9 9.9a3 3 0 0 0 4.2 4.2"/></symbol>
+ <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2.5 12C3 10 6.5 5 12 5s9 5 9.5 7c-.5 2-4 7-9.5 7S3 14 2.5 12z"/><circle cx="12" cy="12" r="3"/></symbol>
+ <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></symbol>
+ <symbol id="i-mouse" viewBox="0 0 24 24"><rect x="6" y="3" width="12" height="18" rx="6"/><path d="M12 7v3.5"/></symbol>
+ <symbol id="i-trophy" viewBox="0 0 24 24"><path d="M8 4h8v5a4 4 0 0 1-8 0zM8 6H4.5v1.5A3.5 3.5 0 0 0 8 11M16 6h3.5v1.5A3.5 3.5 0 0 1 16 11M12 13v4M8.5 20.5h7M9.5 17h5v3.5h-5z"/></symbol>
  <symbol id="i-list" viewBox="0 0 24 24"><path d="M8.5 6h12M8.5 12h12M8.5 18h12"/><circle cx="4.5" cy="6" r=".9"/><circle cx="4.5" cy="12" r=".9"/><circle cx="4.5" cy="18" r=".9"/></symbol>
 </svg>
 
@@ -61,6 +67,7 @@
   <div class="brand"><img src="/assets/logo.png" alt=""><div><strong>NEXAR</strong><span id="app-version">PC control</span></div></div>
   <nav class="rail-nav" aria-label="Menu principale">
    <button data-view="home" class="active"><svg class="i"><use href="#i-home"/></svg>Panoramica</button>
+   <button data-view="gaming"><svg class="i"><use href="#i-game"/></svg>Gaming</button>
    <button data-view="energy"><svg class="i"><use href="#i-plug"/></svg>Consumi</button>
    <button data-view="lights"><svg class="i"><use href="#i-bulb"/></svg>Luci</button>
    <button data-view="cooling"><svg class="i"><use href="#i-fan"/></svg>Ventole</button>
@@ -142,6 +149,78 @@
     <section class="card">
      <div class="card-head"><div><h3>Carico</h3><p>Processore e scheda video, ultimi minuti</p></div><div class="legend-mini"><span class="c-cpu">CPU</span><span class="c-gpu">GPU</span></div></div>
      <div class="chart" id="chart-load"></div>
+    </section>
+   </section>
+
+   <!-- GAMING -->
+   <section class="page" id="page-gaming">
+    <section class="game-hero" id="game-hero">
+     <div class="game-hero-art" id="game-hero-art"></div>
+     <div class="game-hero-body">
+      <div class="game-hero-top"><span class="game-state" id="game-state"><i></i><span>PRONTO</span></span><span class="game-timer" id="game-timer"></span></div>
+      <img class="game-logo" id="game-logo" alt="" hidden>
+      <h2 id="game-title">Pronto a giocare</h2>
+      <p id="game-sub">Apri un gioco: NEXAR attiva Gaming da sola e rimette tutto com'era quando lo chiudi.</p>
+      <div class="boost-live" id="boost-live"></div>
+      <div class="btn-row">
+       <button class="btn primary big-btn" type="button" id="game-main"><svg class="i"><use href="#i-play"/></svg><span id="game-main-label">Attiva Gaming</span></button>
+       <button class="btn big-btn glass" type="button" id="game-second" hidden><svg class="i"><use href="#i-game"/></svg><span id="game-second-label">Attiva Gaming</span></button>
+      </div>
+     </div>
+     <div class="game-auto">
+      <div><b>Gaming automatico</b><small>Si accende quando apri un gioco, si spegne 20 s dopo che lo chiudi</small></div>
+      <button class="toggle" type="button" data-boost="auto" role="switch" aria-label="Gaming automatico"><span></span></button>
+     </div>
+    </section>
+
+    <div class="game-stats">
+     <article class="gstat c-cpu"><span class="tile-ico"><svg class="i"><use href="#i-cpu"/></svg></span><div><small>Processore</small><b id="gs-cpu">—</b><span id="gs-cpu-sub">—</span></div><div class="bar"><span id="gs-cpu-bar"></span></div></article>
+     <article class="gstat c-gpu"><span class="tile-ico"><svg class="i"><use href="#i-gpu"/></svg></span><div><small>Scheda video</small><b id="gs-gpu">—</b><span id="gs-gpu-sub">—</span></div><div class="bar"><span id="gs-gpu-bar"></span></div></article>
+     <article class="gstat c-power"><span class="tile-ico"><svg class="i"><use href="#i-plug"/></svg></span><div><small>Consumo</small><b id="gs-power">—</b><span id="gs-power-sub">—</span></div><div class="bar"><span id="gs-power-bar"></span></div></article>
+     <article class="gstat c-fan"><span class="tile-ico"><svg class="i"><use href="#i-fan"/></svg></span><div><small>Ventole</small><b id="gs-fan">—</b><span id="gs-fan-sub">—</span></div><div class="bar"><span id="gs-fan-bar"></span></div></article>
+    </div>
+
+    <section class="card">
+     <div class="card-head lib-head">
+      <div><h3>La tua libreria</h3><p id="lib-sub">Giochi installati sul PC</p></div>
+      <div class="lib-tools">
+       <label class="search"><svg class="i"><use href="#i-search"/></svg><input id="lib-search" type="search" placeholder="Cerca un gioco" autocomplete="off"></label>
+       <div class="seg3" id="lib-stores"></div>
+       <button class="icon-btn" type="button" id="lib-reload" aria-label="Aggiorna libreria"><svg class="i"><use href="#i-refresh"/></svg></button>
+      </div>
+     </div>
+     <div class="game-grid" id="game-grid"><p class="muted">Cerco i giochi…</p></div>
+     <button class="link-btn" type="button" id="lib-hidden" hidden></button>
+    </section>
+
+    <div class="two-col">
+     <section class="card">
+      <div class="card-head"><div><h3>Ottimizzazioni in Gaming</h3><p>Si attivano entrando e si tolgono uscendo</p></div><span class="tag" id="boost-state">SPENTO</span></div>
+      <div class="boost-opts one">
+       <label class="switch-row"><span class="opt-ico c-violet"><svg class="i"><use href="#i-bolt"/></svg></span><div><b>Priorità alta al gioco</b><small>Il gioco passa davanti agli altri programmi</small></div><button class="toggle" type="button" data-boost="game_priority" role="switch"><span></span></button></label>
+       <label class="switch-row"><span class="opt-ico c-cyan"><svg class="i"><use href="#i-game"/></svg></span><div><b>Modalità gioco di Windows</b><small>Risorse al gioco, aggiornamenti rimandati</small></div><button class="toggle" type="button" data-boost="game_mode" role="switch"><span></span></button></label>
+       <label class="switch-row"><span class="opt-ico c-red"><svg class="i"><use href="#i-monitor"/></svg></span><div><b>Niente registrazione Xbox</b><small>La Game Bar non registra in background: più FPS</small></div><button class="toggle" type="button" data-boost="no_dvr" role="switch"><span></span></button></label>
+       <label class="switch-row"><span class="opt-ico c-teal"><svg class="i"><use href="#i-mouse"/></svg></span><div><b>Mira precisa</b><small>Mouse senza accelerazione (movimento 1:1)</small></div><button class="toggle" type="button" data-boost="mouse" role="switch"><span></span></button></label>
+       <label class="switch-row"><span class="opt-ico c-amber"><svg class="i"><use href="#i-restart"/></svg></span><div><b>Riapri le app chiuse</b><small>Quando esci da Gaming</small></div><button class="toggle" type="button" data-boost="reopen" role="switch"><span></span></button></label>
+      </div>
+      <div class="sub-head"><b>Ventole in Gaming</b></div>
+      <div class="seg3 wide" id="game-fans">
+       <button type="button" data-fans="normal"><svg class="i"><use href="#i-fan"/></svg>Normali</button>
+       <button type="button" data-fans="max"><svg class="i"><use href="#i-max"/></svg>Massimo</button>
+      </div>
+      <div class="sub-head"><b>Luci in Gaming</b><small id="game-rgb-note">Colore dei LED mentre giochi</small></div>
+      <div class="swatches game-swatches" id="game-rgb"></div>
+     </section>
+     <section class="card">
+      <div class="card-head"><div><h3>App in background</h3><p>Cosa fare di ogni app mentre giochi</p></div><button class="icon-btn" type="button" id="boost-reload" aria-label="Aggiorna elenco"><svg class="i"><use href="#i-refresh"/></svg></button></div>
+      <div class="boost-apps" id="boost-apps"><p class="muted">Caricamento…</p></div>
+      <p class="fineprint">"Chiudi" è gentile, come la X della finestra: se un programma ha lavoro da salvare resta aperto. Sistema, NEXAR, launcher e overlay non compaiono.</p>
+     </section>
+    </div>
+
+    <section class="card">
+     <div class="card-head"><div><h3>Ultime partite</h3><p id="hist-sub">Durata, temperature massime e consumo di ogni sessione</p></div></div>
+     <div class="history" id="game-history"><p class="muted">Ancora nessuna partita: la prima comparirà qui.</p></div>
     </section>
    </section>
 
@@ -275,7 +354,6 @@
 
     <div class="tabs" id="opt-tabs" role="tablist">
      <button class="selected" data-panel="clean" role="tab"><svg class="i"><use href="#i-clean"/></svg>Pulizia</button>
-     <button data-panel="boost" role="tab"><svg class="i"><use href="#i-game"/></svg>Gaming Boost</button>
      <button data-panel="startup" role="tab"><svg class="i"><use href="#i-power"/></svg>Avvio</button>
      <button data-panel="system" role="tab"><svg class="i"><use href="#i-ram"/></svg>Dischi e RAM</button>
      <button data-panel="tools" role="tab"><svg class="i"><use href="#i-sliders"/></svg>Strumenti</button>
@@ -286,21 +364,6 @@
      <div class="clean-list" id="opt-clean"><p class="muted">Premi Analizza per vedere quanto spazio puoi recuperare.</p></div>
      <div class="clean-foot"><span id="opt-selected">—</span><button class="btn primary" type="button" id="opt-run" disabled><svg class="i"><use href="#i-clean"/></svg>Pulisci</button></div>
      <p class="fineprint">Mai documenti, foto o download. I file in uso vengono saltati, i temporanei solo se hanno più di un giorno. Le voci con lo scudo chiedono la conferma da amministratore sul PC.</p>
-    </section>
-
-    <section class="card opt-panel" data-panel="boost" hidden>
-     <div class="card-head"><div><h3>Gaming Boost</h3><p id="boost-sub">Parte da solo con la modalità Gaming e rimette tutto com'era quando esci</p></div><span class="tag" id="boost-state">SPENTO</span></div>
-     <div class="boost-live" id="boost-live"></div>
-     <div class="boost-opts">
-      <label class="switch-row"><div><b>Priorità alta al gioco</b><small>Riconosciuto dalla cartella (Steam, Epic, Riot, Xbox…) o perché è a schermo intero</small></div><button class="toggle" type="button" data-boost="game_priority" role="switch"><span></span></button></label>
-      <label class="switch-row"><div><b>Modalità gioco di Windows</b><small>Windows dà le risorse al gioco e rimanda gli aggiornamenti</small></div><button class="toggle" type="button" data-boost="game_mode" role="switch"><span></span></button></label>
-      <label class="switch-row"><div><b>Niente registrazione Xbox in background</b><small>La Game Bar non registra di nascosto: più FPS</small></div><button class="toggle" type="button" data-boost="no_dvr" role="switch"><span></span></button></label>
-      <label class="switch-row"><div><b>Riapri le app chiuse</b><small>Quando esci da Gaming</small></div><button class="toggle" type="button" data-boost="reopen" role="switch"><span></span></button></label>
-     </div>
-     <div class="card-head sub-head"><div><h3>App in background</h3><p>Scegli cosa fare di ogni app mentre giochi</p></div><button class="icon-btn" type="button" id="boost-reload" aria-label="Aggiorna elenco"><svg class="i"><use href="#i-refresh"/></svg></button></div>
-     <div class="boost-apps" id="boost-apps"><p class="muted">Caricamento…</p></div>
-     <p class="fineprint">"Chiudi" è gentile, come la X della finestra: se un programma ha lavoro da salvare resta aperto. Sistema, NEXAR e i programmi che la fanno funzionare non compaiono.</p>
-     <div class="btn-row"><button class="btn primary" type="button" data-action="gaming"><svg class="i"><use href="#i-game"/></svg>Attiva Gaming</button><button class="btn" type="button" data-action="normal">Torna a Normale</button></div>
     </section>
 
     <section class="card opt-panel" data-panel="startup" hidden>
@@ -325,7 +388,7 @@
      <div class="actions tools">
       <button class="act" type="button" id="opt-dns"><svg class="i"><use href="#i-wave"/></svg>Svuota cache DNS</button>
       <button class="act local-only" type="button" id="opt-trim"><svg class="i"><use href="#i-disk"/></svg>Ottimizza SSD (TRIM)</button>
-      <button class="act" type="button" data-action="gaming"><svg class="i"><use href="#i-game"/></svg>Modalità Gaming</button>
+      <button class="act" type="button" data-view="gaming"><svg class="i"><use href="#i-game"/></svg>Zona Gaming</button>
      </div>
     </section>
    </section>
@@ -405,6 +468,7 @@
 
  <nav class="tabbar" aria-label="Navigazione">
   <button data-view="home" class="active"><svg class="i"><use href="#i-home"/></svg>Home</button>
+  <button data-view="gaming"><svg class="i"><use href="#i-game"/></svg>Gaming</button>
   <button data-view="energy"><svg class="i"><use href="#i-plug"/></svg>Consumi</button>
   <button data-view="lights"><svg class="i"><use href="#i-bulb"/></svg>Luci</button>
   <button data-view="cooling"><svg class="i"><use href="#i-fan"/></svg>Ventole</button>

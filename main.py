@@ -4,6 +4,7 @@ import logging
 import os
 from pathlib import Path
 import threading
+import re
 import time
 from contextlib import asynccontextmanager
 from collections import defaultdict, deque
@@ -75,7 +76,7 @@ async def no_cache_and_security(request: Request, call_next):
     response.headers['X-Frame-Options']='DENY'
     response.headers['Referrer-Policy']='no-referrer'
     # La Mini App gira dentro Telegram: serve il suo script e il permesso di essere incorniciata da Telegram.
-    response.headers['Content-Security-Policy']="default-src 'self'; script-src 'self' https://telegram.org; style-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors https://web.telegram.org https://*.telegram.org"
+    response.headers['Content-Security-Policy']="default-src 'self'; script-src 'self' https://telegram.org; style-src 'self'; img-src 'self' data: blob:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors https://web.telegram.org https://*.telegram.org"
     if is_tunnel(request): del response.headers['X-Frame-Options']
     return response
 
@@ -305,19 +306,39 @@ import optimizer
 import gaming_boost
 
 @app.get('/api/gaming',dependencies=[Depends(authorized)])
-def gaming_info():
-    return {'boost':controller.booster.info(),'apps':gaming_boost.user_apps()[:40]}
+def gaming_info(refresh: bool = False):
+    return controller.gaming_view(force=refresh)
 
 class BoostSettings(BaseModel):
     game_priority: bool | None = None
     game_mode: bool | None = None
     no_dvr: bool | None = None
     reopen: bool | None = None
+    auto: bool | None = None
+    mouse: bool | None = None
     apps: dict[str, str] | None = None
+    hidden: list[str] | None = None
+    fans: str | None = None
+    rgb_color: str | None = None
 @app.post('/api/gaming/settings',dependencies=[Depends(authorized)])
 def gaming_settings(data: BoostSettings):
-    try: return {'ok':True,'message':'Gaming Boost salvato','settings':controller.save_boost_settings(data.model_dump(exclude_none=True))}
+    try: return {'ok':True,'message':'Gaming salvato','settings':controller.save_boost_settings(data.model_dump(exclude_none=True))}
     except ValueError as ex: raise HTTPException(400,str(ex))
+
+class GameLaunch(BaseModel):
+    id: str
+@app.post('/api/gaming/launch',dependencies=[Depends(authorized)])
+def gaming_launch(data: GameLaunch):
+    try: return {'ok':True,'message':controller.launch_game(data.id)}
+    except (ValueError,RuntimeError,OSError) as ex: raise HTTPException(400,str(ex))
+
+@app.get('/api/gaming/cover/{gid}/{kind}',dependencies=[Depends(authorized)])
+def gaming_cover(gid: str, kind: str):
+    # Solo immagini già scaricate da Steam sul PC: nessuna richiesta a internet.
+    m = re.fullmatch(r'steam-(\d{1,10})', gid)
+    path = gaming_boost.steam_image(m.group(1), kind) if m and kind in gaming_boost.COVER_KINDS else None
+    if not path: raise HTTPException(404,'Nessuna immagine')
+    return FileResponse(path, media_type='image/png' if kind == 'logo' else 'image/jpeg', headers={'Cache-Control':'private, max-age=86400'})
 
 @app.get('/api/optimize',dependencies=[Depends(authorized)])
 def optimize_info():

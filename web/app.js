@@ -9,6 +9,7 @@ const titles={
  lights:['Luci','Colori e luminosità dei LED.'],
  cooling:['Ventole','Temperature e profili di raffreddamento.'],
  power:['Accensione','Spegni, riavvia, sospendi o programma.'],
+ gaming:['Gaming','I tuoi giochi, il PC pronto a giocare e le statistiche di ogni partita.'],
  optimize:['Ottimizza','Pulizia, programmi all’avvio, dischi e memoria.'],
  links:['Collegamenti','Programmi trovati e collegati da soli.'],
  settings:['Impostazioni','AI ECO, energia, Telegram e registro.'],
@@ -94,6 +95,7 @@ function navigate(view){
  if(view==='settings'&&!demo){loadSettings();loadEvents();}
  if(view==='lights')loadRgbDevices();
  if(view==='optimize')loadOptimize();
+ if(view==='gaming')loadGaming();
  const tab=['power','links','settings','optimize'].includes(view)?'more':view;
  document.querySelectorAll('.rail-nav [data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===view));
  document.querySelectorAll('.tabbar [data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===tab));
@@ -170,7 +172,7 @@ function render(s){
  renderLinks(s.integrations||[],s.jobs||{});
  renderUpdate(s.version,s.update||{},s.jobs?.update);
  watchOptimizeJobs(s.jobs||{});
- renderBoostLive(s.boost);
+ renderGamingLive(s);
  hideSplash();
 }
 function renderUpdate(version,u,job){
@@ -442,13 +444,6 @@ function watchOptimizeJobs(jobs){
   if(n!=='trim'){$('opt-scan').disabled=busy;$('opt-quick').disabled=busy;$('opt-quick-label').textContent=busy?'Ottimizzo…':'Ottimizza ora';$('opt-run').disabled=busy||!selectedKeys().length;}
   if(!busy&&optSeen[n]!==undefined&&optSeen[n]!==j.at&&$('page-optimize').classList.contains('active'))loadOptimize();optSeen[n]=j.at;});
 }
-function renderBoostLive(b){
- if(!b)return;const on=!!b.active;
- $('boost-state').textContent=on?'ATTIVO':'SPENTO';$('boost-state').classList.toggle('on',on);
- const live=[b.game&&('🎮 '+b.game+' a priorità alta'),...(b.closed||[]).map(n=>'⛔ '+n.replace('.exe','')+' chiusa'),...(b.lowered||[]).map(n=>'🐢 '+n.replace('.exe','')+' rallentata'),...(b.tweaks||[])].filter(Boolean);
- $('boost-sub').textContent=on?(live.length?'In azione adesso:':'Attivo: aspetto che parta un gioco'):'Parte da solo con la modalità Gaming e rimette tutto com’era quando esci';
- $('boost-live').replaceChildren(...(on?live.map(t=>el('span','',t)):[]));
-}
 function selectedKeys(){return [...document.querySelectorAll('#opt-clean input:checked')].map(c=>c.value);}
 function updateSelected(){
  const items=optData?.report?.items||[];const keys=selectedKeys();
@@ -462,14 +457,10 @@ const DEMO_OPT={report:{total:6.1e9,at:'2026-11-04T08:30:00',items:[
  disks:[{drive:'C:',total:5e11,used:4.7e11,free:3e10,percent:94},{drive:'D:',total:1e12,used:3e11,free:7e11,percent:30}],
  memory:{percent:51,used:1.6e10,total:3.2e10,top:[{name:'chatgpt.exe',bytes:2.6e9},{name:'claude.exe',bytes:2.4e9}]},
  startup:[{id:'a',name:'Discord',scope:'utente',enabled:true,admin:false},{id:'b',name:'Steam',scope:'utente',enabled:false,admin:false}]};
-const DEMO_BOOST={boost:{active:false,settings:{game_priority:true,game_mode:true,no_dvr:true,reopen:true,apps:{'discord.exe':'lower'}}},
- apps:[{name:'discord.exe',bytes:4e8,count:5,game:false},{name:'chrome.exe',bytes:1.2e9,count:12,game:false}]};
 async function loadOptimize(){
- if(demo){renderOptimize(DEMO_OPT);renderBoost(DEMO_BOOST);return;}
+ if(demo){renderOptimize(DEMO_OPT);return;}
  try{renderOptimize(await req('/api/optimize'));}catch(ex){notify('Ottimizza: '+ex.message,true);}
- loadBoost();
 }
-async function loadBoost(){if(demo)return;try{renderBoost(await req('/api/gaming'));}catch(ex){notify('Gaming Boost: '+ex.message,true);}}
 function healthScore(d){
  // Punteggio semplice e spiegabile: ogni problema toglie punti e diventa un consiglio.
  let score=100;const tips=[];const rep=d.report;const c=(d.disks||[]).find(x=>/^C/i.test(x.drive))||(d.disks||[])[0];
@@ -521,34 +512,10 @@ function renderOptimize(d){
  (m.top||[]).forEach(x=>{const r=el('div','mem-row');const bar=el('div','bar');const f=el('span');f.style.width=(x.bytes/max*100)+'%';bar.append(f);
   r.append(el('span','',x.name.replace(/\.exe$/i,'')),el('b','',bytes(x.bytes)),bar);mm.append(r);});
 }
-function renderBoost(d){
- boostData=d;const s=d.boost?.settings||{};
- document.querySelectorAll('[data-boost]').forEach(t=>t.setAttribute('aria-checked',s[t.dataset.boost]===false?'false':'true'));
- renderBoostLive(d.boost);
- const box=$('boost-apps');box.replaceChildren();const chosen=s.apps||{};
- const apps=(d.apps||[]).filter(a=>!a.game);
- Object.keys(chosen).forEach(n=>{if(!apps.some(a=>a.name===n))apps.push({name:n,bytes:0,count:0,closed:true});});
- if(!apps.length){box.append(el('p','muted','Nessuna app in background da gestire.'));return;}
- apps.forEach(a=>{
-  const row=el('div','boost-app');const t=el('div');
-  t.append(el('b','',a.name.replace(/\.exe$/i,'')),el('small','',a.closed?'non aperta ora':`${bytes(a.bytes)} di RAM`+(a.count>1?` · ${a.count} processi`:'')));
-  const seg=el('div','seg3');
-  [['','Lascia'],['lower','Rallenta'],['close','Chiudi']].forEach(([v,l])=>{const b=el('button',v,l);b.type='button';b.classList.toggle('selected',(chosen[a.name]||'')===v);
-   b.addEventListener('click',()=>{const next=Object.fromEntries(Object.entries(chosen).filter(([k])=>k!==a.name));if(v)next[a.name]=v;saveBoost({apps:next});});seg.append(b);});
-  row.append(t,seg);box.append(row);
- });
-}
-async function saveBoost(change){
- if(demo){notify('Anteprima: comando non attivo.');return;}
- try{const r=await req('/api/gaming/settings','POST',change);notify('✓ '+r.message);boostData.boost.settings=r.settings;renderBoost(boostData);}catch(ex){notify('⚠ '+ex.message,true);}
-}
-document.querySelectorAll('[data-boost]').forEach(t=>t.addEventListener('click',e=>{e.preventDefault();saveBoost({[t.dataset.boost]:t.getAttribute('aria-checked')!=='true'});}));
 document.querySelectorAll('#opt-tabs button').forEach(b=>b.addEventListener('click',()=>{
  document.querySelectorAll('#opt-tabs button').forEach(x=>x.classList.toggle('selected',x===b));
  document.querySelectorAll('.opt-panel').forEach(p=>p.hidden=p.dataset.panel!==b.dataset.panel);
- if(b.dataset.panel==='boost')loadBoost();
 }));
-$('boost-reload').addEventListener('click',loadBoost);
 $('opt-scan').addEventListener('click',()=>post('/api/optimize/scan',{}));
 $('opt-quick').addEventListener('click',async()=>{
  const est=optData?.report?.items?.filter(i=>['temp','shader','thumbs','crash','browser'].includes(i.key)).reduce((a,i)=>a+i.bytes,0);
@@ -563,6 +530,186 @@ $('opt-run').addEventListener('click',async()=>{
 });
 $('opt-dns').addEventListener('click',()=>post('/api/optimize/dns',{}));
 $('opt-trim').addEventListener('click',()=>post('/api/optimize/trim',{}));
+/* ---------- gaming ---------- */
+let gameData=null,libStore='',showHidden=false,heroArt=null;const covers=new Map();
+const STORE_COLORS={Steam:'#66c0f4',Epic:'#e5e7eb',Riot:'#ff6b75',GOG:'#c79cff'};
+const FAN_NAMES={off:'Spente',off_pump:'Spente',eco:'Silenziose',normal:'Normali',max:'Massimo'};
+const FAN_BAR={off:0,off_pump:8,eco:35,normal:60,max:100};
+const DEMO_GAMING={boost:{active:true,game:'Hollow Knight',boosted:['hollow_knight.exe'],lowered:['discord.exe'],closed:['chrome.exe'],
+  tweaks:['Modalità gioco di Windows','Registrazione Xbox in background spenta'],running:{id:'steam-367520',name:'Hollow Knight',store:'Steam'},
+  session:{game:'Hollow Knight',gid:'steam-367520',start:Date.now()/1000-2580,elapsed:2580,cpu_temp_max:71,gpu_temp_max:66,cpu_temp_avg:63,gpu_temp_avg:60,cpu_avg:31,gpu_avg:74,kwh:.21,watts_avg:288},
+  settings:{game_priority:true,game_mode:true,no_dvr:true,reopen:true,auto:true,mouse:false,apps:{'discord.exe':'lower','chrome.exe':'close'},hidden:[]}},
+ games:[{id:'steam-367520',name:'Hollow Knight',store:'Steam',size:5.2e9,last:Date.now()/1000-3000,playtime:9600,cover:false},
+  {id:'steam-526870',name:'Satisfactory',store:'Steam',size:3e10,last:Date.now()/1000-90000,playtime:2400,cover:false},
+  {id:'riot-valorant',name:'VALORANT',store:'Riot',size:0,last:Date.now()/1000-400000,playtime:3700,cover:false},
+  {id:'steam-275850',name:'No Man’s Sky',store:'Steam',size:2.9e10,last:1763492602,playtime:0,cover:false},
+  {id:'epic-Fortnite',name:'Fortnite',store:'Epic',size:1.1e11,last:0,playtime:0,cover:false},
+  {id:'epic-Sugar',name:'Rocket League®',store:'Epic',size:2.4e10,last:0,playtime:0,cover:false},
+  {id:'steam-2358720',name:'Black Myth: Wukong',store:'Steam',size:1.5e11,last:1764102958,playtime:0,cover:false},
+  {id:'steam-739630',name:'Phasmophobia',store:'Steam',size:2e10,last:1778601360,playtime:0,cover:false}],
+ history:[{game:'Hollow Knight',gid:'steam-367520',start:Date.now()/1000-90000,elapsed:4320,cpu_temp_max:74,gpu_temp_max:68,kwh:.34,cost:.1,watts_avg:283},
+  {game:'VALORANT',gid:'riot-valorant',start:Date.now()/1000-400000,elapsed:3700,cpu_temp_max:79,gpu_temp_max:71,kwh:.31,cost:.09,watts_avg:301}],
+ apps:[{name:'chrome.exe',bytes:1.2e9,count:12,game:false},{name:'discord.exe',bytes:4e8,count:5,game:false},{name:'spotify.exe',bytes:2.6e8,count:4,game:false}],
+ fans:'normal',fans_enabled:true,rgb_color:'#ff3cc8',rgb_enabled:true,palette:statusDemo.rgb_palette};
+function hue(t){let h=0;for(const c of String(t))h=(h*31+c.charCodeAt(0))%360;return h;}
+function initials(n){return n.replace(/[^\p{L}\p{N} ]/gu,'').split(/\s+/).filter(Boolean).slice(0,2).map(w=>w[0]).join('').toUpperCase()||'?';}
+function playtime(s){if(!s)return '';const m=Math.max(1,Math.round(s/60)),h=Math.floor(m/60);return h?`${h} h ${m%60?m%60+' min':''}`.trim():`${m} min`;}
+function ago(ts){if(!ts)return '';const d=(Date.now()/1000-ts)/86400;
+ return d<1?'oggi':d<2?'ieri':d<30?`${Math.floor(d)} giorni fa`:new Date(ts*1000).toLocaleDateString('it-IT',{day:'numeric',month:'short',year:'numeric'});}
+function coverUrl(id,kind){
+ // Le immagini arrivano dalla cache di Steam sul PC, con la stessa chiave della API.
+ const k=id+'/'+kind;if(covers.has(k))return covers.get(k);
+ const p=(async()=>{if(demo||!id.startsWith('steam-'))return '';
+  try{const r=await fetch(`/api/gaming/cover/${encodeURIComponent(id)}/${kind}`,{headers:tgInit?{'X-TG-Init-Data':tgInit}:{'X-PC-ECO-Key':key}});
+   return r.ok?URL.createObjectURL(await r.blob()):'';}catch(e){return '';}})();
+ covers.set(k,p);return p;
+}
+async function loadGaming(refresh=false){
+ if(demo){renderGaming(DEMO_GAMING);return;}
+ try{renderGaming(await req('/api/gaming'+(refresh?'?refresh=true':'')));}catch(ex){notify('Gaming: '+ex.message,true);}
+}
+function renderGaming(d){
+ gameData=d;const s=d.boost?.settings||{};
+ document.querySelectorAll('[data-boost]').forEach(t=>t.setAttribute('aria-checked',s[t.dataset.boost]?'true':'false'));
+ document.querySelectorAll('#game-fans [data-fans]').forEach(b=>{b.classList.toggle('selected',b.dataset.fans===d.fans);b.disabled=!d.fans_enabled;});
+ const sw=$('game-rgb');sw.replaceChildren();
+ const none=el('button','swatch none'+(d.rgb_color?'':' selected'));none.type='button';none.title='Non cambiare le luci';none.append(icon('x'));
+ none.addEventListener('click',()=>saveGaming({rgb_color:''}));sw.append(none);
+ (d.palette||[]).forEach(c=>{const b=el('button','swatch'+(c===d.rgb_color?' selected':''));b.type='button';b.style.background=c;b.title=c.toUpperCase();
+  b.addEventListener('click',()=>saveGaming({rgb_color:c}));sw.append(b);});
+ sw.querySelectorAll('button').forEach(b=>b.disabled=!d.rgb_enabled);
+ $('game-rgb-note').textContent=!d.rgb_enabled?'OpenRGB non collegato':d.rgb_color?'Uscendo torna il colore normale':'Le luci restano come sono';
+ renderLibrary();renderBoostApps(d);renderHistory(d.history||[]);
+ renderGamingLive(current||statusDemo);
+}
+function renderLibrary(){
+ const d=gameData;if(!d)return;const games=d.games||[];const q=$('lib-search').value.trim().toLowerCase();
+ const stores=[...new Set(games.filter(g=>!g.hidden).map(g=>g.store))];if(libStore&&!stores.includes(libStore))libStore='';
+ const seg=$('lib-stores');seg.hidden=stores.length<2;
+ seg.replaceChildren(...['',...stores].map(st=>{const b=el('button',st===libStore?'selected':'',st||'Tutti');b.type='button';
+  b.addEventListener('click',()=>{libStore=st;renderLibrary();});return b;}));
+ const hiddenN=games.filter(g=>g.hidden).length;
+ const list=games.filter(g=>(showHidden||!g.hidden)&&(!libStore||g.store===libStore)&&(!q||g.name.toLowerCase().includes(q)));
+ const running=(current?.boost||d.boost)?.running?.id;
+ $('lib-sub').textContent=games.length?`${games.length-hiddenN} giochi · ${stores.join(', ')}`:'Nessun gioco trovato';
+ const lh=$('lib-hidden');lh.hidden=!hiddenN;lh.textContent=showHidden?'Nascondi i programmi esclusi':`Mostra ${hiddenN} ${hiddenN>1?'esclusi':'escluso'}`;
+ const grid=$('game-grid');grid.replaceChildren();
+ if(!list.length){grid.append(el('p','muted',games.length?'Nessun gioco corrisponde alla ricerca.':'Non ho trovato giochi di Steam, Epic, Riot o GOG su questo PC.'));return;}
+ list.forEach(g=>{
+  const playing=g.id===running;
+  const card=el('article','game-card'+(g.hidden?' is-hidden':'')+(playing?' playing':''));
+  const cov=el('div','game-cover');cov.style.setProperty('--h',hue(g.name));cov.append(el('span','initials',initials(g.name)));
+  const badge=el('span','store-badge',g.store);badge.style.setProperty('--sc',STORE_COLORS[g.store]||'#94a3b8');cov.append(badge);
+  if(playing)cov.append(el('span','now-badge','IN GIOCO'));
+  if(g.cover)coverUrl(g.id,'header').then(u=>{if(!u)return;const im=el('img');im.alt='';im.onload=()=>cov.classList.add('has-img');im.src=u;cov.prepend(im);});
+  const meta=el('div','game-meta');meta.append(el('b','',g.name));
+  meta.append(el('small','',[g.playtime?playtime(g.playtime)+' con NEXAR':'',g.last?ago(g.last):'mai giocato',g.size?bytes(g.size):''].filter(Boolean).join(' · ')));
+  const acts=el('div','game-actions');
+  const play=el('button','btn primary small');play.type='button';play.append(icon('play'),document.createTextNode(playing?'In gioco':'Gioca'));play.disabled=playing||g.hidden;
+  play.addEventListener('click',()=>launchGame(g));
+  const hide=el('button','icon-btn small');hide.type='button';hide.title=g.hidden?'Rimetti tra i giochi':'Non è un gioco: escludi';hide.setAttribute('aria-label',hide.title);
+  hide.append(icon(g.hidden?'eye':'eye-off'));
+  hide.addEventListener('click',()=>{const h=new Set(d.boost?.settings?.hidden||[]);g.hidden?h.delete(g.id):h.add(g.id);saveGaming({hidden:[...h]});});
+  acts.append(play,hide);card.append(cov,meta,acts);grid.append(card);
+ });
+}
+function renderBoostApps(d){
+ const box=$('boost-apps');box.replaceChildren();const chosen=d.boost?.settings?.apps||{};
+ const apps=(d.apps||[]).filter(a=>!a.game);
+ Object.keys(chosen).forEach(n=>{if(!apps.some(a=>a.name===n))apps.push({name:n,bytes:0,count:0,closed:true});});
+ if(!apps.length){box.append(el('p','muted','Nessuna app in background da gestire.'));return;}
+ apps.forEach(a=>{
+  const row=el('div','boost-app');const t=el('div');
+  t.append(el('b','',a.name.replace(/\.exe$/i,'')),el('small','',a.closed?'non aperta ora':`${bytes(a.bytes)} di RAM`+(a.count>1?` · ${a.count} processi`:'')));
+  const seg=el('div','seg3');
+  [['','Lascia'],['lower','Rallenta'],['close','Chiudi']].forEach(([v,l])=>{const b=el('button',v,l);b.type='button';b.classList.toggle('selected',(chosen[a.name]||'')===v);
+   b.addEventListener('click',()=>{const next=Object.fromEntries(Object.entries(chosen).filter(([k])=>k!==a.name));if(v)next[a.name]=v;saveGaming({apps:next});});seg.append(b);});
+  row.append(t,seg);box.append(row);
+ });
+}
+function renderHistory(list){
+ const box=$('game-history');box.replaceChildren();
+ if(!list.length){$('hist-sub').textContent='Durata, temperature massime e consumo di ogni sessione';box.append(el('p','muted','Ancora nessuna partita: la prima comparirà qui.'));return;}
+ $('hist-sub').textContent=`${list.length} ${list.length>1?'sessioni':'sessione'} · ${playtime(list.reduce((a,h)=>a+h.elapsed,0))} in tutto`;
+ list.forEach(h=>{
+  const row=el('div','hist-row');const name=h.game||'Gaming';
+  const ico=el('span','hist-ico',initials(name));ico.style.setProperty('--h',hue(name));
+  if(h.gid?.startsWith('steam-'))coverUrl(h.gid,'header').then(u=>{if(u){ico.style.backgroundImage=`url("${u}")`;ico.textContent='';}});
+  const t=el('div');t.append(el('b','',h.game||'Gaming senza gioco riconosciuto'),
+   el('small','',new Date(h.start*1000).toLocaleString('it-IT',{weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})));
+  const chips=el('div','hist-chips');
+  [[playtime(h.elapsed),'clock'],h.cpu_temp_max!=null&&[`CPU ${Math.round(h.cpu_temp_max)}°`,'cpu'],h.gpu_temp_max!=null&&[`GPU ${Math.round(h.gpu_temp_max)}°`,'gpu'],
+   h.kwh&&[`${nf(h.kwh,2)} kWh · ${eur(h.cost)}`,'plug']].filter(Boolean)
+   .forEach(([txt,ic])=>{const c=el('span');c.append(icon(ic),document.createTextNode(txt));chips.append(c);});
+  row.append(ico,t,chips);box.append(row);
+ });
+}
+function setHeroArt(gid){
+ if(heroArt===(gid||''))return;heroArt=gid||'';
+ const art=$('game-hero-art'),logo=$('game-logo'),hero=$('game-hero');
+ art.style.backgroundImage='';art.classList.remove('img');logo.hidden=true;hero.classList.remove('with-logo');
+ art.style.setProperty('--h',hue(gid||'nexar'));
+ if(!gid?.startsWith('steam-'))return;
+ coverUrl(gid,'hero').then(u=>{if(u&&heroArt===gid){art.style.backgroundImage=`url("${u}")`;art.classList.add('img');}});
+ coverUrl(gid,'logo').then(u=>{if(u&&heroArt===gid){logo.onload=()=>{logo.hidden=false;hero.classList.add('with-logo');};logo.src=u;}});
+}
+function setHeroBtn(id,spec){
+ const b=$(id);b.hidden=!spec;if(!spec)return;const [label,ic,act]=spec;
+ b.dataset.act=act;b.querySelector('use').setAttribute('href','#i-'+ic);b.querySelector('span').textContent=label;b.classList.toggle('exit',act==='exit');
+}
+function renderGamingLive(s){
+ const b=s.boost||(demo?DEMO_GAMING.boost:null);if(!b)return;
+ const on=!!b.active,ses=b.session,run=b.running;
+ $('boost-state').textContent=on?'ATTIVE':'SPENTE';$('boost-state').classList.toggle('on',on);
+ const live=[on&&b.game&&'⚡ '+b.game+' a priorità alta',...(b.closed||[]).map(n=>'⛔ '+n.replace('.exe','')+' chiusa'),...(b.lowered||[]).map(n=>'🐢 '+n.replace('.exe','')+' rallentata'),...(b.tweaks||[]).map(t=>'✓ '+t)].filter(Boolean);
+ $('boost-live').replaceChildren(...(on?live.map(t=>el('span','',t)):[]));
+ const last=(gameData?.games||[]).find(g=>!g.hidden&&g.last);
+ let state,title,sub,main,second=null,gid='';
+ if(on&&(ses?.game||run)){state='IN GIOCO';title=ses?.game||run.name;gid=ses?.gid||run?.id;sub='Gaming attivo: il gioco ha la precedenza su tutto il resto.';main=['Esci da Gaming','x','exit'];}
+ else if(on){state='GAMING ATTIVO';title='Aspetto il gioco';sub='Apri un gioco: gli do la priorità appena parte.';main=['Esci da Gaming','x','exit'];}
+ else if(run){state='GIOCO APERTO';title=run.name;gid=run.id;sub='Gaming è spento: attivalo per dare la precedenza al gioco.';main=['Attiva Gaming','game','on'];}
+ else if(last){state='PRONTO';title=last.name;gid=last.id;
+  sub=`Ultima partita ${ago(last.last)}`+(last.playtime?` · ${playtime(last.playtime)} con NEXAR`:'')+'. Premi Gioca: NEXAR prepara il PC e apre il gioco.';
+  main=['Gioca','play','launch:'+last.id];second=['Solo Gaming','game','on'];}
+ else{state='PRONTO';title='Pronto a giocare';sub='Apri un gioco: NEXAR attiva Gaming da sola e rimette tutto com’era quando lo chiudi.';main=['Attiva Gaming','game','on'];}
+ $('game-hero').classList.toggle('live',on);
+ $('game-state').lastElementChild.textContent=state;$('game-title').textContent=title;$('game-sub').textContent=sub;
+ $('game-timer').textContent=on&&ses?'⏱ '+duration(ses.elapsed):'';
+ setHeroBtn('game-main',main);setHeroBtn('game-second',second);setHeroArt(gid);
+ // statistiche dal vivo (con i massimi della partita in corso)
+ const mx=(v,k)=>on&&ses&&ses[k]!=null?` · max ${Math.round(ses[k])}°`:'';
+ $('gs-cpu').textContent=deg(s.cpu_temp);$('gs-cpu-sub').textContent=`${pct(s.cpu)} di carico`+mx(s.cpu_temp,'cpu_temp_max');setBar('gs-cpu-bar',s.cpu_temp);
+ $('gs-gpu').textContent=deg(s.gpu_temp);$('gs-gpu-sub').textContent=`${pct(s.gpu)} di carico`+mx(s.gpu_temp,'gpu_temp_max');setBar('gs-gpu-bar',s.gpu_temp);
+ const pw=s.power||{};$('gs-power').textContent=typeof pw.total==='number'?Math.round(pw.total)+' W':'—';
+ $('gs-power-sub').textContent=on&&ses?`${nf(ses.kwh,2)} kWh in questa partita`:typeof pw.amps==='number'?`${nf(pw.amps,2)} A alla presa`:'—';
+ setBar('gs-power-bar',pw.total,pw.psu_watts||750);
+ const lvl=s.fans_level||'normal',fans=(s.fans||[]).filter(f=>f.rpm>0);
+ $('gs-fan').textContent=FAN_NAMES[lvl]||'—';$('gs-fan-sub').textContent=fans.length?`${Math.round(fans.reduce((a,f)=>a+f.rpm,0)/fans.length)} giri/min medi`:'—';
+ setBar('gs-fan-bar',FAN_BAR[lvl]??50);
+ if(gameData&&(gameData.boost?.running?.id||'')!==(run?.id||'')){gameData.boost={...gameData.boost,running:run};renderLibrary();}
+}
+async function launchGame(g){
+ if(demo){notify('Anteprima: comando non attivo.');return;}
+ try{const r=await req('/api/gaming/launch','POST',{id:g.id});notify('🎮 '+r.message);await refresh();}catch(ex){notify('⚠ '+ex.message,true);}
+}
+async function saveGaming(change){
+ if(demo){notify('Anteprima: comando non attivo.');return;}
+ try{const r=await req('/api/gaming/settings','POST',change);notify('✓ '+r.message);await loadGaming();}catch(ex){notify('⚠ '+ex.message,true);}
+}
+async function heroAction(act){
+ if(!act)return;
+ if(act==='exit')return action('normal');
+ if(act==='on')return action('gaming');
+ if(act.startsWith('launch:')){const g=(gameData?.games||[]).find(x=>x.id===act.slice(7));if(g)launchGame(g);}
+}
+document.querySelectorAll('[data-boost]').forEach(t=>t.addEventListener('click',e=>{e.preventDefault();saveGaming({[t.dataset.boost]:t.getAttribute('aria-checked')!=='true'});}));
+document.querySelectorAll('#game-fans [data-fans]').forEach(b=>b.addEventListener('click',()=>saveGaming({fans:b.dataset.fans})));
+$('game-main').addEventListener('click',()=>heroAction($('game-main').dataset.act));
+$('game-second').addEventListener('click',()=>heroAction($('game-second').dataset.act));
+$('lib-search').addEventListener('input',renderLibrary);
+$('lib-reload').addEventListener('click',()=>loadGaming(true));
+$('lib-hidden').addEventListener('click',()=>{showHidden=!showHidden;renderLibrary();});
+$('boost-reload').addEventListener('click',()=>loadGaming());
 $('upd-check').addEventListener('click',()=>post('/api/update/check',{}));
 $('upd-install').addEventListener('click',async()=>{
  if(await ask('Installare l\'aggiornamento?','NEXAR si chiude per qualche secondo e riparte da solo con la nuova versione.',{danger:false,ico:'refresh',yes:'Installa'}))post('/api/update/install',{});

@@ -15,7 +15,7 @@ COLOR_EMOJI = {'bianco': '⚪', 'rosso': '🔴', 'arancione': '🟠', 'giallo': 
 COMMANDS = [('menu', 'Pannello di controllo'), ('status', 'Stato del PC'), ('consumo', 'Consumo ed energia'),
             ('eco', 'Attiva AI ECO'), ('normal', 'Modalità normale'), ('gaming', 'Modalità Gaming'), ('luci', 'LED e colori'),
             ('colore', 'Colore LED, es. /colore blu o /colore #ff8800'), ('salva', 'Salva un colore, es. /salva #ff8800'),
-            ('ventole', 'Profili ventole'),
+            ('ventole', 'Profili ventole'), ('giochi', 'Giochi, partita in corso e Gaming automatico'),
             ('screen', 'Spegni il monitor'), ('auto', 'Automazione Codex/Claude'), ('accensione', 'Spegni, riavvia, sospendi, timer'),
             ('spegni', 'Spegni il PC'), ('sospendi', 'Metti il PC in sospensione'), ('annulla', 'Annulla lo spegnimento'),
             ('accendi', 'Accendi il PC (relay su Umbrel)'), ('pulizia', 'Spazio libero e pulizia del PC'),
@@ -123,8 +123,28 @@ class TelegramBot:
             [{'text':'📊 Stato','callback_data':'status'},{'text':'🔌 Consumo','callback_data':'power'}],
             [{'text':'💡 Luci','callback_data':'rgb'},{'text':'🌀 Ventole','callback_data':'fans'},{'text':'🖥 Monitor','callback_data':'screen'}],
             [{'text':f'🤖 Automazione AI: {auto}','callback_data':'auto'}],
-            [{'text':'🧹 Ottimizza','callback_data':'opt'},{'text':'⏻ Accensione','callback_data':'pw'}],
+            [{'text':'🎮 Giochi','callback_data':'games'},{'text':'🧹 Ottimizza','callback_data':'opt'},{'text':'⏻ Accensione','callback_data':'pw'}],
         ]}
+    def games_panel(self):
+        """Partita in corso (o ultima) e i giochi giocati più di recente, da avviare con un tocco."""
+        esc = lambda t: html.escape(str(t))
+        info = self.ctrl.booster.info()
+        games = [g for g in self.ctrl.booster.games() if not g.get('hidden')]
+        ses, run = info.get('session'), info.get('running')
+        if info['active'] and ses:
+            temps = ' · '.join(f'{n} max {ses[k]:.0f}°C' for n, k in (('CPU', 'cpu_temp_max'), ('GPU', 'gpu_temp_max')) if ses.get(k) is not None)
+            text = (f"🎮 <b>{esc(ses['game'] or 'Gaming attivo')}</b> · {duration(ses['elapsed'])}" + (f'\n🌡 {temps}' if temps else '')
+                    + (f"\n🔌 {ses['kwh']:.2f} kWh".replace('.', ',') if ses.get('kwh') else ''))
+        elif run: text = f"🎮 Aperto: <b>{esc(run['name'])}</b> (Gaming spento)"
+        else: text = '🎮 <b>Giochi</b>\nTocca un gioco: NEXAR attiva Gaming e lo apre sul PC.'
+        hist = self.ctrl.booster.history()[:3]
+        if hist:
+            text += '\n\n<b>Ultime partite</b>\n' + '\n'.join(f"• {esc(h['game'] or 'Gaming')}: {duration(h['elapsed'])}" for h in hist)
+        auto = self.ctrl.booster.settings()['auto']
+        rows = [[{'text':'▶ '+g['name'][:28],'callback_data':'gl:'+g['id'][:61]} for g in games[i:i+2]] for i in range(0, min(len(games), 8), 2)]
+        rows.append([{'text':('⏹ Esci da Gaming' if info['active'] else '🎮 Attiva Gaming'),'callback_data':'normal' if info['active'] else 'gaming'},
+                     {'text':f"🤖 Automatico: {'ON' if auto else 'OFF'}",'callback_data':'gauto'}])
+        return text, {'inline_keyboard': rows + [self.back()]}
     @staticmethod
     def back(): return [{'text':'⬅️ Menu','callback_data':'home'}]
     def rgb_menu(self):
@@ -253,6 +273,20 @@ class TelegramBot:
             reply('🌀 '+esc(self.ctrl.fans_level('off', keep_pump=a == 'fans_off_pump')), self.fans_menu())
         elif a in ('fans_eco','fans_normal','fans_max'):
             reply('🌀 '+esc(self.ctrl.fans_level(a[5:])), self.fans_menu())
+        elif a in ('games', 'giochi'):
+            reply(*self.games_panel())
+        elif a.startswith('gl:'):
+            gid = a[3:]
+            game = next((g for g in self.ctrl.booster.games() if g['id'].startswith(gid)), None)
+            if not game: reply('Gioco non trovato.', self.games_panel()[1]); return
+            msg = self.ctrl.launch_game(game['id'])
+            text, markup = self.games_panel()
+            reply('▶ '+esc(msg)+'\n\n'+text, markup)
+        elif a == 'gauto':
+            on = not self.ctrl.booster.settings()['auto']
+            self.ctrl.save_boost_settings({'auto': on})
+            text, markup = self.games_panel()
+            reply(('🤖 Gaming automatico attivo: parte quando apri un gioco.' if on else '🤖 Gaming automatico spento.')+'\n\n'+text, markup)
         elif a == 'auto':
             old=bool(self.ctrl.config.get('auto_detect',{}).get('enabled'))
             reply('🤖 '+esc(self.ctrl.set_auto(not old)))
