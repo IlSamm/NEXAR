@@ -101,6 +101,7 @@ function navigate(view){
  document.querySelectorAll('.tabbar [data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===tab));
  document.querySelectorAll('.page').forEach(p=>p.classList.toggle('active',p.id==='page-'+view));
  curView=view;setZone();
+ document.querySelectorAll('.page.active .tabs').forEach(inkTabs);
  $('page-title').textContent=titles[view][0];$('page-desc').textContent=titles[view][1];
  window.scrollTo({top:0});
 }
@@ -128,7 +129,7 @@ function render(s){
  const mp=$('mode-pill');mp.className='mode-pill '+(s.mode||'normal');mp.querySelector('span').textContent={eco:'AI ECO',gaming:'Gaming'}[s.mode]||'Normale';
  // Componenti
  const p=s.power||{};const w=k=>(p.items||[]).find(i=>i.key===k)?.watts;
- $('cpu-val').textContent=pct(s.cpu);$('gpu-val').textContent=pct(s.gpu);$('ram-val').textContent=pct(s.ram);
+ countUp($('cpu-val'),s.cpu,pct);countUp($('gpu-val'),s.gpu,pct);countUp($('ram-val'),s.ram,pct);
  [['cpu-temp',s.cpu_temp,80],['gpu-temp',s.gpu_temp,78]].forEach(([id,v,hot])=>{$(id).textContent=deg(v);$(id).classList.toggle('hot',v>=hot);});
  $('cpu-sub').textContent=typeof w('cpu')==='number'?`${nf(w('cpu'))} W · ${p.items.find(i=>i.key==='cpu').source}`:'consumo —';
  $('gpu-sub').textContent=typeof w('gpu')==='number'?`${nf(w('gpu'))} W · ${p.items.find(i=>i.key==='gpu').source}`:'consumo —';
@@ -140,7 +141,7 @@ function render(s){
  ['cpu','gpu','ram'].forEach(n=>setBar(n+'-bar',s[n]));
  const caseFans=(s.fans||[]).filter(f=>/system fan/i.test(f.name)&&f.rpm>0);
  const avg=caseFans.length?Math.round(caseFans.reduce((a,f)=>a+f.rpm,0)/caseFans.length):null;
- $('fan-val').textContent=avg?avg+' RPM':'—';setBar('fan-bar',avg,1800);
+ countUp($('fan-val'),avg||null,v=>typeof v==='number'?Math.round(v)+' RPM':'—');setBar('fan-bar',avg,1800);
  $('hw-cpu').textContent=deg(s.cpu_temp);$('hw-gpu').textContent=deg(s.gpu_temp);setBar('hw-cpu-bar',s.cpu_temp,95);setBar('hw-gpu-bar',s.gpu_temp,90);
  // Agenti e automazione
  [['codex',s.processes?.codex],['claude',s.processes?.claude]].forEach(([n,on])=>{$(n+'-state').textContent=on?'Al lavoro':'Chiuso';$(n+'-dot').classList.toggle('off',!on);});
@@ -671,6 +672,7 @@ document.querySelectorAll('#opt-tabs button').forEach(b=>b.addEventListener('cli
  document.querySelectorAll('#opt-tabs button').forEach(x=>x.classList.toggle('selected',x===b));
  document.querySelectorAll('.opt-panel').forEach(p=>p.hidden=p.dataset.panel!==b.dataset.panel);
  if(optTab==='apps')loadProcs();
+ inkTabs($('opt-tabs'));
  b.scrollIntoView({block:'nearest',inline:'center',behavior:'smooth'});
 }));
 document.querySelectorAll('.ostat[data-go]').forEach(b=>b.addEventListener('click',()=>{optTabGo(b.dataset.go);$('opt-tabs').scrollIntoView({block:'start',behavior:'smooth'});}));
@@ -700,6 +702,14 @@ $('zc-opt-btn').addEventListener('click',e=>{e.stopPropagation();navigate('optim
 $('zc-gaming-btn').addEventListener('click',e=>{e.stopPropagation();const gid=$('zc-gaming-btn').dataset.gid;const g=(gameData?.games||[]).find(x=>x.id===gid);if(g)launchGame(g);else navigate('gaming');});
 document.querySelectorAll('.zone-card').forEach(c=>c.addEventListener('keydown',e=>{if(e.key==='Enter')navigate(c.dataset.view);}));
 /* ---------- animazioni ---------- */
+function inkTabs(box){
+ if(!box||!box.offsetWidth)return;const sel=box.querySelector('button.selected');if(!sel)return;
+ let ink=box.querySelector('.tab-ink');
+ if(!ink){ink=el('span','tab-ink');box.prepend(ink);box.classList.add('has-ink');ink.style.transition='none';}
+ ink.style.width=sel.offsetWidth+'px';ink.style.transform=`translateX(${sel.offsetLeft}px)`;
+ if(ink.style.transition==='none'){void ink.offsetWidth;setTimeout(()=>ink.style.transition='',50);}
+}
+addEventListener('resize',()=>document.querySelectorAll('.page.active .tabs').forEach(inkTabs));
 function setZone(){
  // Il colore di sfondo, titoli e menu segue la sezione (in Home segue la modalità).
  const z=curView==='gaming'||curView==='optimize'?curView:curView==='home'&&current?.mode&&current.mode!=='normal'?current.mode:'';
@@ -756,7 +766,7 @@ function modeFx(mode){
 function particles(){
  const box=$('game-particles');if(!box||box.childElementCount)return;
  const cols=['#ec4899','#a78bfa','#22d3ee','#f472b6'];
- for(let i=0;i<22;i++){const p=el('span');const s=2+Math.random()*3;
+ for(let i=0;i<12;i++){const p=el('span');const s=2+Math.random()*3;
   p.style.cssText=`left:${Math.random()*100}%;--s:${s}px;--c:${cols[i%4]};--d:${6+Math.random()*8}s;--w:${-Math.random()*12}s;--dx:${(Math.random()-.5)*120}px`;box.append(p);}
 }
 function tilt(card){
@@ -764,7 +774,7 @@ function tilt(card){
   if(e.pointerType!=='mouse'||calm.matches)return;
   const r=card.getBoundingClientRect(),x=(e.clientX-r.left)/r.width,y=(e.clientY-r.top)/r.height;
   card.classList.add('tilting');
-  card.style.setProperty('--ry',((x-.5)*10).toFixed(2)+'deg');card.style.setProperty('--rx',((.5-y)*8).toFixed(2)+'deg');
+  card.style.setProperty('--ry',((x-.5)*6).toFixed(2)+'deg');card.style.setProperty('--rx',((.5-y)*5).toFixed(2)+'deg');
   card.style.setProperty('--mx',(x*100).toFixed(1)+'%');card.style.setProperty('--my',(y*100).toFixed(1)+'%');
  });
  card.addEventListener('pointerleave',()=>{card.classList.remove('tilting');card.style.setProperty('--rx','0deg');card.style.setProperty('--ry','0deg');});

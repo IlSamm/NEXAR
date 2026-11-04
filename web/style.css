@@ -1052,3 +1052,103 @@ html{background:var(--bg)}body{background:transparent!important}
  .rail-nav button.active::before{display:none}
 }
 @media (prefers-reduced-motion:reduce){.aurora i{animation:none!important}}
+
+/* ================= movimento v3: poche animazioni, fluide e coerenti =================
+   Regole: si anima solo quando succede qualcosa (entri in una pagina, tocchi, cambia un valore).
+   Niente effetti che lampeggiano in continuazione. Solo transform e opacity (fluidi anche su PC lenti). */
+:root{--e-out:cubic-bezier(.16,1,.3,1);--e-io:cubic-bezier(.65,0,.35,1);--e-spring:cubic-bezier(.34,1.56,.64,1);--t1:.16s;--t2:.28s;--t3:.5s}
+
+/* 1. Prestazioni: niente sfocatura dietro le carte (la ricalcolava a ogni frame dello sfondo che si muove) */
+.card,.tile,.gstat,.ostat,.pwr,.zone-card,.icon-btn,.btn:not(.primary){backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
+.card,.tile,.gstat,.ostat,.pwr,.zone-card{background:linear-gradient(180deg,rgba(20,25,34,.78),rgba(12,15,21,.84))}
+.aurora i{animation-duration:60s!important;will-change:transform}
+.aurora i:nth-child(2){animation-duration:75s!important}.aurora i:nth-child(3){animation-duration:90s!important}
+
+/* 2. Basta luci che pulsano da sole */
+.game-hero .btn.primary:not(.exit),.opt-hero2 .btn.primary:not(:disabled),.gauge::before,.gstat .bar span::after,.game-hero::after{animation:none!important}
+.gstat .bar span::after,.game-hero::after{display:none}
+.game-card.playing .game-cover::after,.tile .temp.hot{animation:none}
+.opt-hero2 .health::after,.zc-ring::after{display:none}
+.opt-hero2 .health::before{animation-duration:14s}
+.mode-opt.gaming.selected::before,.mode-pill.gaming::before{animation-duration:6s}
+.game-hero::before{animation-duration:8s}
+.game-particles{opacity:.35}.game-hero.live .game-particles{opacity:.7}
+.game-hero-art{animation-duration:45s}
+
+/* 3. Cambio pagina: dissolvenza breve + piccolo rialzo, a cascata ma veloce */
+.page.active{animation:none}
+@keyframes enter{from{opacity:0;transform:translate3d(0,10px,0)}to{opacity:1;transform:none}}
+.page.active>*,.page.active .tiles>*,.page.active .game-stats>*,.page.active .opt-stats2>*,.page.active .zone-row>*,.page.active .power-grid>*{animation:enter .45s var(--e-out) backwards}
+.page.active>*:nth-child(1){animation-delay:0s}.page.active>*:nth-child(2){animation-delay:.04s}.page.active>*:nth-child(3){animation-delay:.08s}
+.page.active>*:nth-child(4){animation-delay:.12s}.page.active>*:nth-child(n+5){animation-delay:.16s}
+.page.active .tiles>*:nth-child(2),.page.active .game-stats>*:nth-child(2),.page.active .opt-stats2>*:nth-child(2),.page.active .zone-row>*:nth-child(2){animation-delay:.1s}
+.page.active .tiles>*:nth-child(3),.page.active .game-stats>*:nth-child(3),.page.active .opt-stats2>*:nth-child(3){animation-delay:.13s}
+.page.active .tiles>*:nth-child(4),.page.active .game-stats>*:nth-child(4),.page.active .opt-stats2>*:nth-child(4){animation-delay:.16s}
+.page.active .tiles>*:nth-child(1),.page.active .game-stats>*:nth-child(1),.page.active .opt-stats2>*:nth-child(1),.page.active .zone-row>*:nth-child(1){animation-delay:.07s}
+
+/* 4. Le liste non si rianimano a ogni aggiornamento dei dati (prima "saltavano" ogni pochi secondi) */
+.clean-row,.lf-row{animation:none}
+.game-card.enter{animation:enter .5s var(--e-out) backwards;animation-delay:calc(var(--i,0) * 30ms)}
+.opt-panel:not([hidden]){animation:enter .35s var(--e-out)}
+
+/* 5. Passaggio del mouse e tocco: stesso ritmo ovunque */
+.card,.tile,.gstat,.ostat,.zone-card,.qa,.act,.mode-opt,.btn,.icon-btn,.boost-app,.hist-row,.clean-row,.proc-row,.lf-row,.startup-row,.oh-row,.hd-row{
+ transition:transform var(--t2) var(--e-out),border-color var(--t2) ease,background-color var(--t2) ease,box-shadow var(--t2) ease,opacity var(--t2) ease}
+.card:hover{transform:none}
+.tile:hover,.gstat:hover,.ostat:hover{transform:translate3d(0,-2px,0)}
+.zone-card:hover{transform:translate3d(0,-3px,0)}
+.hist-row:hover,.boost-app:hover{transform:translate3d(2px,0,0)}
+.btn:active:not(:disabled),.qa:active:not(:disabled),.act:active,.mode-opt:active,.icon-btn:active,.ostat:active,.zone-card:active{transform:scale(.97);transition-duration:var(--t1)}
+.mode-opt:hover:not(.selected){transform:translate3d(0,-2px,0)}
+.zc-art{transition:transform 1.2s var(--e-out)}
+.zone-card:hover .zc-art{transform:scale(1.04)}
+/* copertine: inclinazione più morbida e contenuta */
+.game-card{transition:transform .5s var(--e-out),border-color .25s,box-shadow .25s}
+.game-card.tilting{transition:transform .12s ease-out,border-color .25s,box-shadow .25s}
+.game-cover img{transition:opacity .4s ease,transform .8s var(--e-out)}
+.game-card:hover .game-cover img{transform:scale(1.05)}
+
+/* 6. Barre, anelli e interruttori: movimento con inerzia */
+.bar span{transition:width .9s var(--e-out)}
+.g-fill,.h-fill,.zc-ring .h-fill{transition:stroke-dasharray 1.2s var(--e-out),stroke .4s}
+.toggle{transition:background-color .25s ease}
+.toggle span{transition:transform .35s var(--e-spring)}
+.swatch{transition:transform .2s var(--e-out)}
+.swatch.selected{animation:none;transform:scale(1.08)}
+.mode-opt.selected .i{animation:ico-pop .45s var(--e-spring)}
+
+/* 7. Linguette con indicatore che scivola */
+.tabs{position:relative}
+.tabs .tab-ink{position:absolute;top:5px;height:38px;left:0;width:0;border-radius:10px;pointer-events:none;
+ background:color-mix(in srgb,var(--za1) 14%,transparent);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--za1) 45%,transparent);
+ transition:transform .45s var(--e-out),width .45s var(--e-out)}
+.tabs.has-ink button.selected{background:none!important;box-shadow:none!important}
+.tabs button{position:relative;z-index:1;transition:color .25s ease}
+.seg3{position:relative}
+
+/* 8. Finestre di conferma e notifiche */
+.sheet[open]{animation:sheet-in .38s var(--e-out)}
+.sheet[open]::backdrop{animation:fade-in .3s ease}
+@keyframes sheet-in{from{opacity:0;transform:translate3d(0,14px,0) scale(.96)}to{opacity:1;transform:none}}
+@keyframes fade-in{from{opacity:0}}
+.toast{transition:opacity .3s ease,transform .45s var(--e-spring)!important}
+.toast:not(.show){transform:translate(-50%,24px) scale(.96)!important}
+
+/* 9. Effetto GAMING ON/OFF più pulito: un'onda sola, testo nitido, 1,3 secondi */
+.gfx{animation:gfx-life 1.4s var(--e-io) forwards}
+@keyframes gfx-life{0%{opacity:0}14%{opacity:1}70%{opacity:1}100%{opacity:0}}
+.gfx-bg{backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+.gfx-rings i:nth-child(n+2){display:none}
+.gfx-rings i{animation:ring 1.1s var(--e-out) backwards;border-width:1.5px}
+@keyframes ring{from{transform:scale(.4);opacity:.9}to{transform:scale(3.2);opacity:0}}
+.gfx-core{animation:core-in .6s var(--e-spring) backwards}
+@keyframes core-in{from{transform:scale(.6);opacity:0}}
+.gfx b{animation:gfx-title .7s var(--e-out) .08s backwards}
+@keyframes gfx-title{from{opacity:0;letter-spacing:.6em;transform:translate3d(0,6px,0)}}
+.gfx small{animation:enter .5s var(--e-out) .2s backwards}
+.gfx::after{display:none}
+
+/* 10. Testi e numeri che cambiano: dissolvenza, niente sfocatura che "sporca" */
+@keyframes title-in{from{opacity:0;transform:translate3d(0,8px,0)}to{opacity:1;transform:none}}
+.game-hero h2.swap,.game-logo.swap,.game-hero p.swap,.opt-hero2 h2.swap{animation:title-in .5s var(--e-out)}
+.opt-hero-art::before{animation:none}
