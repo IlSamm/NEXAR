@@ -10,7 +10,8 @@ from contextlib import asynccontextmanager
 from collections import defaultdict, deque
 
 from fastapi import FastAPI, Header, HTTPException, Request, Depends
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
+import psutil
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import uvicorn
@@ -367,6 +368,31 @@ def apps_close(data: AppId):
 def apps_pin(data: AppPin):
     try: return {'ok':True,'message':controller.app_pin(data.id,data.pinned)}
     except ValueError as ex: raise HTTPException(400,str(ex))
+class ScreenAction(BaseModel):
+    action: str
+    id: int | None = None
+    force: bool = False
+class ScreenSettings(BaseModel):
+    view: bool | None = None
+    ai_alert: bool | None = None
+@app.get('/api/screen/shot',dependencies=[Depends(authorized)])
+def screen_shot(request: Request):
+    try: jpg = controller.screen_shot('Telegram' if request.headers.get('x-tg-init-data') else 'dashboard')
+    except PermissionError as ex: raise HTTPException(403,str(ex))
+    except RuntimeError as ex: raise HTTPException(409,str(ex))
+    return Response(jpg, media_type='image/jpeg', headers={'Cache-Control':'no-store'})
+@app.get('/api/screen',dependencies=[Depends(authorized)])
+def screen_info():
+    return controller.screen_view()
+@app.post('/api/screen/action',dependencies=[Depends(authorized)])
+def screen_action(data: ScreenAction):
+    try: return {'ok':True,'message':controller.screen_action(data.action,data.id,data.force)}
+    except (ValueError,OSError,psutil.Error) as ex: raise HTTPException(400,str(ex))
+@app.post('/api/screen/settings',dependencies=[Depends(authorized)])
+def screen_settings(data: ScreenSettings):
+    s = controller.set_screen_settings(data.view,data.ai_alert)
+    return {'ok':True,'settings':s,'message':'Impostazioni schermo salvate'}
+
 @app.get('/api/apps/icon/{key}',dependencies=[Depends(authorized)])
 def apps_icon(key: str):
     dest = controller.app_icon(key)

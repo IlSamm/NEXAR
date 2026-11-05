@@ -68,9 +68,11 @@ def test_bot_only_opens_dashboard():
     for cmd in ('/start', '/spegni', 'eco', 'pwx:shutdown', '/qualcosa'): bot.dispatch(cmd, 1)
     for text, markup in sent:
         buttons = [b for row in markup['inline_keyboard'] for b in row]
-        assert buttons == [{'text': '📱 Apri la dashboard', 'web_app': {'url': 'https://pc.example.org/'}}]
+        # dashboard + foto dello schermo (solo da guardare): nessun comando del PC a pulsanti
+        assert buttons == [{'text': '📱 Apri la dashboard', 'web_app': {'url': 'https://pc.example.org/'}},
+                           {'text': '🖥 Vedi schermo', 'callback_data': 'schermo'}]
     bot.webapp_url = ''; bot.dispatch('/start', 1)
-    assert sent[-1][1] == {'inline_keyboard': []} and 'collegamento esterno' in sent[-1][0]
+    assert sent[-1][1] == {'inline_keyboard': [[{'text': '🖥 Vedi schermo', 'callback_data': 'schermo'}]]} and 'collegamento esterno' in sent[-1][0]
 
 def test_led_count_ignores_resized_headers_and_wireless():
     import core

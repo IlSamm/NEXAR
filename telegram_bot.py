@@ -10,7 +10,8 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 # Il bot non è un telecomando a pulsanti: manda gli avvisi e apre la dashboard (Mini App), dove c'è tutto.
-COMMANDS = [('start', 'Apri NEXAR'), ('stato', 'Il PC in breve')]
+COMMANDS = [('start', 'Apri NEXAR'), ('stato', 'Il PC in breve'), ('schermo', 'Foto dello schermo del PC')]
+SCREEN_BTN = {'text': '🖥 Vedi schermo', 'callback_data': 'schermo'}
 
 def duration(seconds):
     h, m = divmod(int(seconds) // 60, 60)
@@ -69,6 +70,19 @@ class TelegramBot:
         payload={'chat_id':chat_id,'text':msg[:3900],'parse_mode':'HTML','disable_web_page_preview':'true'}
         if markup and markup.get('inline_keyboard'): payload['reply_markup']=json.dumps(markup)
         return self.call('sendMessage',payload)
+    def send_photo(self, chat_id, jpg, caption='', markup=None):
+        """Foto dello schermo: multipart, senza librerie in più."""
+        boundary = 'nexar' + str(int(time.time() * 1000))
+        fields = {'chat_id': str(chat_id), 'caption': caption[:1000], 'parse_mode': 'HTML'}
+        if markup and markup.get('inline_keyboard'): fields['reply_markup'] = json.dumps(markup)
+        body = b''.join(f'--{boundary}\r\nContent-Disposition: form-data; name="{k}"\r\n\r\n{v}\r\n'.encode('utf-8') for k, v in fields.items())
+        body += (f'--{boundary}\r\nContent-Disposition: form-data; name="photo"; filename="schermo.jpg"\r\n'
+                 'Content-Type: image/jpeg\r\n\r\n').encode('utf-8') + jpg + f'\r\n--{boundary}--\r\n'.encode('utf-8')
+        req = Request('https://api.telegram.org/bot'+self.token+'/sendPhoto', data=body, method='POST',
+                      headers={'Content-Type': 'multipart/form-data; boundary=' + boundary})
+        with urlopen(req, timeout=60) as res: obj = json.load(res)
+        if not obj.get('ok'): raise RuntimeError('Telegram API: sendPhoto')
+        return obj.get('result')
     def edit(self, chat_id, message_id, msg, markup=None):
         """Aggiorna il pannello nello stesso messaggio: la chat non si riempie di risposte."""
         payload={'chat_id':chat_id,'message_id':message_id,'text':msg[:3900],'parse_mode':'HTML','disable_web_page_preview':'true'}
@@ -93,8 +107,16 @@ class TelegramBot:
     def app_row(self):
         return [[{'text':'📱 Apri la dashboard','web_app':{'url':self.webapp_url}}]] if self.webapp_url else []
     def menu(self):
-        """Un solo pulsante: la dashboard. Se il collegamento esterno non è ancora pronto, nessun pulsante."""
-        return {'inline_keyboard': self.app_row()}
+        """La dashboard (quando il collegamento esterno è pronto) e la foto dello schermo."""
+        return {'inline_keyboard': self.app_row() + [[SCREEN_BTN]]}
+
+    def send_screen(self, chat):
+        try: jpg = self.ctrl.screen_shot('Telegram')
+        except (PermissionError, RuntimeError) as ex:
+            self.send(chat, '🖥 ' + html.escape(str(ex)), self.menu()); return
+        when = time.strftime('%H:%M:%S')
+        self.send_photo(chat, jpg, f'🖥 Schermo del PC alle {when}',
+                        {'inline_keyboard': [[{'text': '🔄 Aggiorna', 'callback_data': 'schermo'}]] + self.app_row()})
 
     def status_text(self):
         s = self.ctrl.status()
@@ -139,6 +161,7 @@ class TelegramBot:
     def dispatch(self, action, chat, message_id=None, arg=''):
         """Qualsiasi messaggio (o pulsante di vecchi messaggi): riepilogo e pulsante della dashboard."""
         a = action.lstrip('/')
+        if a in ('schermo', 'screen'): return self.send_screen(chat)
         if a in ('accendi', 'wake'):
             text = '🟢 Il PC è già acceso.\n<i>Quando è spento, /accendi lo riceve il relay su Umbrel.</i>'
         else: text = self.home_text()

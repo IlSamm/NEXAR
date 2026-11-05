@@ -23,6 +23,8 @@ import gaming_boost
 import pc_power
 import procstop
 import apps_remote
+import screen_remote
+import ai_watch
 
 FROZEN = getattr(sys, 'frozen', False)
 INSTALL_DIR = Path(sys.executable).resolve().parent if FROZEN else Path(__file__).resolve().parent
@@ -210,6 +212,7 @@ class Control:
         self.booster = gaming_boost.Booster(config, state=self.state, save=self.save_state,
                                             notify=lambda m: self.notify(m), log=lambda m: self.log_event(m))
         self.stopper = procstop.Stopper()
+        self.ai_watch = ai_watch.AiWatch()
         self.gaming_owned = False      # Gaming acceso da NEXAR perché è partito un gioco
         self.gaming_prev = 'normal'
         self.gaming_declined = False   # l'utente è uscito da Gaming a gioco aperto: non riattivarlo
@@ -492,6 +495,61 @@ class Control:
         if dest.is_file(): return dest
         a = next((a for a in apps_remote.start_apps() if a['key'] == key), None)
         return dest if a and apps_remote.icon_png(a, dest) else None
+
+    # ---------- schermo del PC visto da lontano ----------
+    def screen_settings(self):
+        s = self.config.get('screen') or {}
+        return {'view': bool(s.get('view', True)), 'ai_alert': bool(s.get('ai_alert', True))}
+
+    def set_screen_settings(self, view=None, ai_alert=None):
+        with self.lock:
+            s = self.config.setdefault('screen', {})
+            if view is not None: s['view'] = bool(view)
+            if ai_alert is not None: s['ai_alert'] = bool(ai_alert)
+            json_save(CONFIG_FILE, self.config)
+        if ai_alert is False: self.ai_watch.reset()
+        return self.screen_settings()
+
+    def screen_shot(self, who='dashboard'):
+        if not self.screen_settings()['view']: raise PermissionError('Vedere lo schermo da remoto è disattivato (Accensione e app → Schermo)')
+        jpg = screen_remote.capture()
+        now = time.monotonic()
+        if now - getattr(self, 'screen_logged', -1e9) > 300:   # una riga nel registro, non una per ogni aggiornamento
+            self.screen_logged = now
+            self.log_event('🖥 Schermo visto da remoto (' + who + ')')
+        return jpg
+
+    def screen_view(self):
+        return {'settings': self.screen_settings(), 'windows': screen_remote.windows(), 'ai_busy': self.ai_watch.busy()}
+
+    def screen_action(self, action, win_id=None, force=False):
+        if action == 'close':
+            if type(win_id) is not int: raise ValueError('Finestra non valida')
+            msg = screen_remote.close_window(win_id, force)
+        elif action in screen_remote.VOLUME_KEYS: msg = screen_remote.volume(action)
+        elif action == 'monitor_off': msg = screen_remote.monitor_off()
+        elif action == 'lock': msg = self.power_action('lock')
+        else: raise ValueError('Azione non prevista')
+        self.log_event('🖥 ' + msg)
+        return msg
+
+    def ai_names(self):
+        return {str(n).lower() for n in self.config.get('auto_detect', {}).get('process_names') or ['codex.exe', 'claude.exe']}
+
+    def ai_done_check(self, now=None, idle=None):
+        """Codex o Claude hanno finito un lavoro lungo e non sei al PC: avviso su Telegram (con il pulsante per vedere lo schermo)."""
+        if not self.screen_settings()['ai_alert']: return []
+        done = self.ai_watch.tick(self.ai_names(), now=now)
+        if not done: return []
+        away = (pc_power.idle_seconds() if idle is None else idle) >= ai_watch.AWAY_SECONDS
+        out = []
+        for app, worked in done:
+            name = {'codex': 'Codex', 'claude': 'Claude'}.get(Path(app).stem.lower(), Path(app).stem)
+            msg = f'✅ {name} ha finito: lavorava da {max(1, round(worked / 60))} min.'
+            self.log_event(msg)
+            if away: self.notify(msg + ' Tocca 🖥 Vedi schermo per controllare.')
+            out.append(msg)
+        return out
 
     def launch_game(self, gid):
         if os.name != 'nt': raise RuntimeError('Disponibile solo su Windows')
@@ -1464,6 +1522,8 @@ class Control:
                 if t.get('power'): self.add_energy(t['power']['total'], min(60.0, now-last), t, self.mode())
                 try: self.eco_sleep_check()
                 except Exception: logging.exception('Sospensione AI ECO')
+                try: self.ai_done_check()
+                except Exception: logging.exception('Fine lavoro AI')
                 last=now
                 # Protezione sempre attiva (anche ad avvisi spenti): CPU calda con ventole case rallentate.
                 # Con le ventole del case spente conta anche la GPU, che scarica il calore dentro il case.

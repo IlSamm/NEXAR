@@ -165,7 +165,7 @@ function navigate(view){
  if(view==='optimize')loadOptimize();
  if(view==='gaming')loadGaming(false,true);
  if(view==='energy')loadStats();
- if(view==='power')loadApps();
+ if(view==='power'){loadApps();loadScreen();}
  const tab=['power','links','settings','energy','lights'].includes(view)&&!document.querySelector(`.tabbar [data-view="${view}"]`)?'more':view;
  document.querySelectorAll('.rail-nav [data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===view));
  document.querySelectorAll('.tabbar [data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===tab));
@@ -1868,6 +1868,93 @@ $('rapps-add').addEventListener('click',openAppSheet);
 $('as-search').addEventListener('input',renderAppSheet);
 $('as-close').addEventListener('click',()=>$('app-sheet').close());
 $('app-sheet').addEventListener('click',e=>{if(e.target===e.currentTarget)$('app-sheet').close();});
+
+/* ---------- schermo del PC ---------- */
+let scrInfo=null,scrUrl='',scrBusy=false,scrLiveOn=false;
+const DEMO_SCREEN={settings:{view:true,ai_alert:true},ai_busy:['codex.exe'],windows:[
+ {id:1,title:'Codex',exe:'Codex.exe',hung:false},{id:2,title:'NEXAR — app.js — Visual Studio Code',exe:'Code.exe',hung:false},
+ {id:3,title:'Claude',exe:'claude.exe',hung:false},{id:4,title:'Spotify Premium',exe:'Spotify.exe',hung:true,min:true}]};
+function demoShot(){
+ const c=document.createElement('canvas');c.width=1600;c.height=900;const g=c.getContext('2d');
+ const bg=g.createLinearGradient(0,0,1600,900);bg.addColorStop(0,'#0f2a4a');bg.addColorStop(1,'#3b1d52');g.fillStyle=bg;g.fillRect(0,0,1600,900);
+ [[80,70,820,560,'#1e1e1e','Codex'],[700,180,820,600,'#f7f7f5','Claude']].forEach(([x,y,w,h,col,t])=>{g.fillStyle='rgba(0,0,0,.35)';g.fillRect(x+8,y+12,w,h);
+  g.fillStyle=col;g.fillRect(x,y,w,h);g.fillStyle=col==='#1e1e1e'?'#2d2d2d':'#e8e6e1';g.fillRect(x,y,w,40);g.fillStyle=col==='#1e1e1e'?'#ddd':'#333';g.font='600 18px Segoe UI';g.fillText(t,x+16,y+26);
+  for(let i=0;i<12;i++){g.fillStyle=col==='#1e1e1e'?`hsl(${190+i*9} 60% ${55+i%3*8}%)`:'#b9b5ab';g.fillRect(x+24,y+70+i*36,180+((i*97)%420),12);}});
+ g.fillStyle='rgba(20,22,28,.92)';g.fillRect(0,852,1600,48);
+ return c.toDataURL('image/jpeg',.8);
+}
+async function loadScreen(take=true){
+ if(demo)scrInfo=DEMO_SCREEN;
+ else{try{scrInfo=await req('/api/screen');}catch(ex){$('scr-wins').replaceChildren(el('p','muted','Non disponibile: '+ex.message));return;}}
+ renderScreen();if(take&&scrInfo.settings.view)shot();
+}
+function renderScreen(){
+ const s=scrInfo?.settings||{},wins=scrInfo?.windows||[];
+ $('scr-ai').setAttribute('aria-checked',s.ai_alert?'true':'false');$('scr-allow').setAttribute('aria-checked',s.view?'true':'false');
+ $('scr-card').classList.toggle('off',!s.view);
+ if(!s.view){$('scr-view').classList.remove('has');$('scr-empty').querySelector('b').textContent='Vista da remoto disattivata';}
+ const busy=(scrInfo?.ai_busy||[]).map(n=>{n=n.replace(/\.exe$/i,'');return n.charAt(0).toUpperCase()+n.slice(1);});
+ $('scr-sub').textContent=busy.length?`${busy.join(' e ')} sta lavorando${s.ai_alert?' · ti avviso quando finisce':''}`:'Guarda cosa succede sul PC, anche da Telegram';
+ $('scr-wcount').textContent=wins.length?`${wins.length}`:'';
+ const box=$('scr-wins');box.replaceChildren();
+ if(!wins.length){box.append(el('p','muted','Nessuna finestra aperta.'));return;}
+ wins.forEach(w=>{
+  const row=el('div','scr-win'+(w.hung?' hung':''));const name=(w.exe||w.title).replace(/\.exe$/i,'');
+  const ic=el('span','as-ico',initials(name));ic.style.setProperty('--h',hue(name));
+  const t=el('div');t.append(el('b','',w.title));const sm=el('small','',name+(w.min?' · ridotta a icona':''));
+  if(w.hung){sm.append(document.createTextNode(' · '));sm.append(el('em','','non risponde'));}t.append(sm);
+  const b=el('button','btn'+(w.hung?' danger':''),w.hung?'Chiudi programma':'Chiudi');b.type='button';b.addEventListener('click',()=>scrCloseWin(w));
+  row.append(ic,t,b);box.append(row);});
+}
+async function shot(){
+ if(scrBusy)return;scrBusy=true;const v=$('scr-view');v.classList.add('loading');
+ try{
+  let u;
+  if(demo){await new Promise(r=>setTimeout(r,500));u=demoShot();}
+  else{const r=await fetch('/api/screen/shot',{headers:tgInit?{'X-TG-Init-Data':tgInit}:{'X-PC-ECO-Key':key},cache:'no-store'});
+   if(!r.ok){const o=await r.json().catch(()=>({}));throw new Error(o.detail||'Schermo non disponibile');}
+   u=URL.createObjectURL(await r.blob());}
+  await new Promise(res=>{const im=$('scr-img');im.onload=im.onerror=res;im.src=u;});
+  if(scrUrl.startsWith('blob:'))URL.revokeObjectURL(scrUrl);scrUrl=u;$('scr-full-img').src=u;
+  v.classList.add('has');$('scr-time').textContent=new Date().toLocaleTimeString('it-IT');
+ }catch(ex){v.classList.remove('has');$('scr-empty').querySelector('b').textContent=ex.message;$('scr-time').textContent='';scrLive(false);}
+ finally{scrBusy=false;v.classList.remove('loading');}
+}
+async function scrLive(on){
+ scrLiveOn=on;$('scr-live').setAttribute('aria-checked',on?'true':'false');
+ while(scrLiveOn){
+  if(curView!=='power'||document.hidden){scrLive(false);break;}
+  await shot();await new Promise(r=>setTimeout(r,2500));
+ }
+}
+async function scrAction(action,extra={}){
+ if(demo){notify('Anteprima: comando non attivo.');return;}
+ try{const r=await req('/api/screen/action','POST',{action,...extra});notify('✓ '+r.message);
+  setTimeout(()=>{loadScreen(false);if(action!=='monitor_off'&&action!=='lock')shot();},action==='close'?1500:400);}
+ catch(ex){notify('⚠ '+ex.message,true);}
+}
+async function scrCloseWin(w){
+ if(w.hung){if(!await ask('Chiudere '+(w.exe||w.title).replace(/\.exe$/i,'')+'?','Non risponde: chiudo tutto il programma. Il lavoro non salvato si perde.',{ico:'x',yes:'Chiudi programma'}))return;
+  return scrAction('close',{id:w.id,force:true});}
+ scrAction('close',{id:w.id});
+}
+async function scrSetting(k){
+ const on=$(k==='view'?'scr-allow':'scr-ai').getAttribute('aria-checked')!=='true';
+ if(demo){DEMO_SCREEN.settings[k==='view'?'view':'ai_alert']=on;renderScreen();return;}
+ try{const r=await req('/api/screen/settings','POST',{[k==='view'?'view':'ai_alert']:on});scrInfo.settings=r.settings;renderScreen();if(k==='view'&&on)shot();}
+ catch(ex){notify('⚠ '+ex.message,true);}
+}
+$('scr-refresh').addEventListener('click',()=>{shot();loadScreen(false);});
+$('scr-view').addEventListener('click',()=>{if(!$('scr-view').classList.contains('has')){shot();return;}$('scr-full').showModal();});
+$('scr-live').addEventListener('click',()=>scrLive(!scrLiveOn));
+document.querySelectorAll('[data-scr]').forEach(b=>b.addEventListener('click',async()=>{
+ if(b.dataset.scr==='lock'&&!await ask('Bloccare il PC?','Va alla schermata di accesso: per sbloccarlo serve il PIN sul PC.',{danger:false,ico:'lock',yes:'Blocca'}))return;
+ scrAction(b.dataset.scr);}));
+$('scr-ai').addEventListener('click',e=>{e.preventDefault();scrSetting('ai_alert');});
+$('scr-allow').addEventListener('click',e=>{e.preventDefault();scrSetting('view');});
+$('scr-full-x').addEventListener('click',()=>$('scr-full').close());
+$('scr-full-r').addEventListener('click',shot);
+$('scr-full').addEventListener('click',e=>{if(e.target===e.currentTarget||e.target.tagName==='IMG')$('scr-full').close();});
 function renderHistory(list){
  const box=$('game-history');box.replaceChildren();
  if(!list.length){$('hist-sub').textContent='Durata, temperature massime e consumo di ogni sessione';box.append(el('p','muted','Ancora nessuna partita: la prima comparirà qui.'));return;}

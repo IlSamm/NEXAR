@@ -48,4 +48,4 @@ def test_telegram_menu_has_no_remote_controls():
     bot=TelegramBot(type('Fake',(),{'config':{}})())
     bot.webapp_url='https://pc.example.org/'
     rows=bot.menu()['inline_keyboard']
-    assert len(rows)==1 and 'web_app' in rows[0][0] and not any('callback_data' in b for r in rows for b in r)
+    assert 'web_app' in rows[0][0] and [b.get('callback_data') for r in rows for b in r if 'callback_data' in b]==['schermo']  # solo la foto dello schermo
