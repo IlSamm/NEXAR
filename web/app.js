@@ -32,7 +32,7 @@ if(tgInit){
  sc.onload=()=>{const w=window.Telegram?.WebApp;if(!w)return;w.ready();w.expand();
   try{w.setHeaderColor('#0b0e14');w.setBackgroundColor('#090b0f');w.setBottomBarColor?.('#0b0e14');}catch(e){}
   try{w.disableVerticalSwipes?.();}catch(e){}   // scorrendo in cima la dashboard non si chiude più per sbaglio
-  try{w.BackButton.onClick(()=>navigate('home'));}catch(e){}
+  try{w.BackButton.onClick(()=>{if(typeof RC!=='undefined'&&RC.on){rcClose();return;}navigate('home');});}catch(e){}
   tgApp=w;syncTelegram();};
  document.head.append(sc);
 }
@@ -167,7 +167,7 @@ function navigate(view){
  if(view==='gaming')loadGaming(false,true);
  if(view==='energy')loadStats();
  if(view==='power')loadApps();
- if(view==='screen')loadScreen();
+ if(view==='screen'){loadScreen();loadRemote();}
  if(view!=='screen'&&scrLiveOn)scrLive(false);
  const tab=['power','screen','links','settings','energy','lights'].includes(view)&&!document.querySelector(`.tabbar [data-view="${view}"]`)?'more':view;
  document.querySelectorAll('.rail-nav [data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===view));
@@ -1958,6 +1958,307 @@ $('scr-allow').addEventListener('click',e=>{e.preventDefault();scrSetting('view'
 $('scr-full-x').addEventListener('click',()=>$('scr-full').close());
 $('scr-full-r').addEventListener('click',shot);
 $('scr-full').addEventListener('click',e=>{if(e.target===e.currentTarget||e.target.tagName==='IMG')$('scr-full').close();});
+
+/* ---------- controllo remoto: mouse e tastiera ---------- */
+var rcInfo=null;
+const RC={token:'',on:false,v:0,seq:0,w:16,h:9,mons:[],mode:'touch',q:[],sending:false,url:'',cur:null,
+ z:{s:1,x:0,y:0},pts:new Map(),g:null,latch:new Set(),kbPrev:' ',frames:[],bytes:[],idle:10,lastIn:0,idleT:null};
+const DEMO_RC={enabled:true,pin_set:true,idle_minutes:10,active:false,locked_for:0,local:true};
+function rcHead(){const h=tgInit?{'X-TG-Init-Data':tgInit}:{'X-PC-ECO-Key':key};if(RC.token)h['X-Remote-Session']=RC.token;return h;}
+async function rcPost(path,body){
+ const r=await fetch(path,{method:'POST',headers:{...rcHead(),'Content-Type':'application/json'},body:JSON.stringify(body),cache:'no-store'});
+ const o=await r.json().catch(()=>({}));if(!r.ok){const e=new Error(o.detail||'Errore di comunicazione');e.status=r.status;throw e;}return o;
+}
+async function loadRemote(){
+ if(demo)rcInfo={...DEMO_RC,active:RC.on};else{try{rcInfo=await req('/api/remote');}catch(ex){return;}}
+ renderRemote();
+}
+function renderRemote(){
+ const i=rcInfo||{};const local=!!i.local;
+ $('rc-enabled').setAttribute('aria-checked',i.enabled?'true':'false');
+ $('rc-note').textContent=i.locked_for?`Bloccato per troppi PIN sbagliati: ancora ${Math.ceil(i.locked_for/60)} min`
+  :i.enabled?`Acceso · ogni sessione chiede il PIN · si chiude dopo ${i.idle_minutes} min senza comandi`
+  :local?(i.pin_set?'Spento: accendilo per usarlo da lontano':'Scegli un PIN, poi accendilo'):'Spento: si accende dal PC, per sicurezza';
+ $('rc-setup').hidden=!local;$('rc-pin-set').querySelector('span').textContent=i.pin_set?'Cambia il PIN':'Scegli il PIN';
+ $('rc-idle').value=String(i.idle_minutes||10);
+ $('rc-live').hidden=!i.active;
+ if(i.active&&i.session)$('rc-live-sub').textContent=`Da ${i.session.who} · da ${Math.max(1,Math.round(i.session.since_s/60))} min`;
+ $('rc-take').classList.toggle('off',!i.enabled);
+}
+async function rcSetup(body){
+ if(demo){Object.assign(DEMO_RC,body.enabled!==undefined?{enabled:body.enabled}:{},body.pin?{pin_set:true}:{},body.idle_minutes?{idle_minutes:body.idle_minutes}:{});rcInfo={...DEMO_RC};renderRemote();return true;}
+ try{const r=await rcPost('/api/remote/setup',body);rcInfo={...r.info,local:true};renderRemote();notify('✓ '+r.message);return true;}catch(ex){notify('⚠ '+ex.message,true);return false;}
+}
+function pinSheet(mode){
+ // mode: 'enter' = entra con il PIN, 'set' = scegli un PIN nuovo (solo dal PC)
+ const d=$('rc-pin'),a=$('rc-pin-in'),b=$('rc-pin-in2');a.value='';b.value='';$('rc-pin-err').textContent='';
+ b.hidden=mode!=='set';$('rc-pin-title').textContent=mode==='set'?'Scegli il PIN':'PIN del controllo remoto';
+ $('rc-pin-text').textContent=mode==='set'?'6 cifre, non tutte uguali. Servirà ogni volta che controlli il PC da lontano: non usare quello di Windows.':'Inserisci il PIN di 6 cifre scelto sul PC.';
+ $('rc-pin-ok').textContent=mode==='set'?'Salva':'Entra';d.dataset.mode=mode;d.showModal();setTimeout(()=>a.focus(),60);
+}
+async function pinSubmit(){
+ const d=$('rc-pin'),pin=$('rc-pin-in').value.trim(),err=$('rc-pin-err');
+ if(!/^\d{6}$/.test(pin)){err.textContent='Servono 6 cifre';return;}
+ if(d.dataset.mode==='set'){
+  if(pin!==$('rc-pin-in2').value.trim()){err.textContent='I due PIN non sono uguali';return;}
+  if(await rcSetup({pin,enabled:true}))d.close();return;
+ }
+ $('rc-pin-ok').disabled=true;
+ try{
+  const s=demo?{token:'demo',monitors:[{id:0,name:'Schermo 1 (principale) · 2560×1440'},{id:1,name:'Schermo 2 · 1920×1080'}],idle_minutes:10}:await rcPost('/api/remote/start',{pin});
+  d.close();rcOpen(s);
+ }catch(ex){err.textContent=ex.message;$('rc-pin-in').select();}
+ finally{$('rc-pin-ok').disabled=false;}
+}
+$('rc-pin-ok').addEventListener('click',pinSubmit);
+$('rc-pin-cancel').addEventListener('click',()=>$('rc-pin').close());
+['rc-pin-in','rc-pin-in2'].forEach(id=>$(id).addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();pinSubmit();}}));
+$('rc-take').addEventListener('click',()=>{
+ const i=rcInfo||{};
+ if(!i.enabled){if(i.local){i.pin_set?rcSetup({enabled:true}).then(ok=>ok&&pinSheet('enter')):pinSheet('set');}
+  else notify('Il controllo remoto è spento: si accende dal PC, in Schermo → Controllo e privacy.',true);return;}
+ pinSheet('enter');
+});
+$('rc-enabled').addEventListener('click',e=>{e.preventDefault();const on=$('rc-enabled').getAttribute('aria-checked')!=='true';
+ if(!rcInfo?.local){if(on){notify('Per sicurezza il controllo remoto si accende solo dal PC.',true);return;}
+  (demo?Promise.resolve({info:{...DEMO_RC,enabled:false}}):rcPost('/api/remote/off',{})).then(r=>{rcInfo={...r.info,local:false};renderRemote();notify('✓ Controllo remoto spento');}).catch(ex=>notify('⚠ '+ex.message,true));return;}
+ if(on&&!rcInfo.pin_set){pinSheet('set');return;}rcSetup({enabled:on});});
+$('rc-pin-set').addEventListener('click',()=>pinSheet('set'));
+$('rc-idle').addEventListener('change',()=>rcSetup({idle_minutes:+$('rc-idle').value}));
+$('rc-live-end').addEventListener('click',async()=>{if(RC.on){rcClose();return;}
+ try{const r=demo?{message:'Controllo terminato'}:await rcPost('/api/remote/end',{});notify('✓ '+r.message);loadRemote();}catch(ex){notify('⚠ '+ex.message,true);}});
+
+function rcOpen(s){
+ Object.assign(RC,{token:s.token,on:true,v:0,seq:0,mons:s.monitors||[],q:[],sending:false,cur:null,z:{s:1,x:0,y:0},idle:s.idle_minutes||10,lastIn:Date.now(),frames:[],bytes:[]});
+ RC.pts.clear();RC.g=null;RC.latch.clear();
+ const sel=$('rc-mon');sel.replaceChildren(...RC.mons.map(m=>{const o=el('option','',m.name);o.value=m.id;return o;}));
+ if(RC.mons.length>1){const o=el('option','','Tutti gli schermi');o.value='all';sel.append(o);}sel.hidden=RC.mons.length<2;
+ $('rc-q').value='balanced';$('rc-fps').value='10';let saved='';try{saved=localStorage.getItem('nexar.rcMode')||'';}catch(e){}rcMode(saved==='pad'?'pad':'touch');
+ $('rc-keys').hidden=true;$('rc-kb').hidden=true;$('rc').classList.remove('bar-off');$('rc-show').hidden=true;
+ rcMsg('');$('rc').showModal();rcLayout();rcLoop();rcIdleWatch();
+ const coarse=matchMedia('(pointer:coarse)').matches,portrait=innerHeight>innerWidth;
+ rcHint(!coarse?'Il mouse e la tastiera ora comandano il PC':portrait?'Gira il telefono per vederlo più grande · due dita = zoom':'Tocca = clic · tieni premuto = tasto destro · due dita = scorri o zoom');
+ // In Telegram: niente chiusura col gesto verso il basso mentre trascini, e schermo intero dove si può
+ if(tgApp){try{tgApp.disableVerticalSwipes?.();}catch(e){}try{tgApp.requestFullscreen?.();}catch(e){}}
+ if(scrLiveOn)scrLive(false);if(rcInfo){rcInfo.active=true;renderRemote();}
+}
+async function rcClose(reason){
+ if(!RC.on)return;RC.on=false;clearTimeout(RC.idleT);
+ const tok=RC.token;RC.token='';
+ if(tok&&!demo){try{await fetch('/api/remote/end',{method:'POST',headers:{...(tgInit?{'X-TG-Init-Data':tgInit}:{'X-PC-ECO-Key':key}),'Content-Type':'application/json'},body:'{}'});}catch(e){}}
+ if($('rc').open)$('rc').close();
+ if(RC.url.startsWith('blob:'))URL.revokeObjectURL(RC.url);RC.url='';$('rc-img').removeAttribute('src');
+ if(tgApp){try{tgApp.enableVerticalSwipes?.();}catch(e){}try{if(tgApp.isFullscreen)tgApp.exitFullscreen?.();}catch(e){}}
+ if(reason)notify(reason,true);loadRemote();
+}
+$('rc').addEventListener('cancel',e=>{e.preventDefault();});   // Esc va al PC, non chiude
+$('rc').addEventListener('close',()=>{if(RC.on)rcClose();});
+$('rc-end').addEventListener('click',()=>rcClose());
+function rcMsg(html,btn){const m=$('rc-msg');if(!html){m.hidden=true;return;}m.innerHTML=html;m.hidden=false;
+ if(btn){const b=el('button','btn primary',btn.label);b.type='button';b.addEventListener('click',btn.run);m.append(b);}}
+let rcHintT=null;
+function rcHint(t){const h=$('rc-hint');h.textContent=t;h.classList.add('show');clearTimeout(rcHintT);rcHintT=setTimeout(()=>h.classList.remove('show'),3800);}
+
+// dimensioni: immagine "contenuta" nello spazio disponibile, poi zoom/spostamento con transform
+function rcLayout(){
+ const st=$('rc-stage').getBoundingClientRect(),z=$('rc-zoom');
+ const k=Math.min(st.width/RC.w,st.height/RC.h);const w=RC.w*k,h=RC.h*k;
+ RC.base={w,h,x:(st.width-w)/2,y:(st.height-h)/2};z.style.width=w+'px';z.style.height=h+'px';rcApplyZoom();
+}
+function rcApplyZoom(){
+ const b=RC.base;if(!b)return;const st=$('rc-stage').getBoundingClientRect(),z=RC.z;
+ if(z.s<=1.001){z.s=1;z.x=0;z.y=0;}
+ else{const W=b.w*z.s,H=b.h*z.s;   // niente bordi vuoti quando ingrandito
+  z.x=W<=st.width?(st.width-W)/2-b.x:Math.min(-b.x,Math.max(st.width-W-b.x,z.x));
+  z.y=H<=st.height?(st.height-H)/2-b.y:Math.min(-b.y,Math.max(st.height-H-b.y,z.y));}
+ $('rc-zoom').style.transform=`translate(${b.x+z.x}px,${b.y+z.y}px) scale(${z.s})`;rcDrawCursor();
+}
+addEventListener('resize',()=>{if(RC.on)rcLayout();});
+function rcNorm(cx,cy){const r=$('rc-img').getBoundingClientRect();return{x:Math.min(1,Math.max(0,(cx-r.left)/r.width)),y:Math.min(1,Math.max(0,(cy-r.top)/r.height))};}
+function rcDrawCursor(){
+ const c=$('rc-cur');if(!RC.cur){c.hidden=true;return;}c.hidden=false;
+ c.style.transform=`translate(${RC.cur.x*RC.base.w}px,${RC.cur.y*RC.base.h}px) scale(${1/RC.z.s})`;c.style.transformOrigin='2px 2px';
+}
+
+// fotogrammi: il PC risponde appena lo schermo cambia
+async function rcLoop(){
+ let fails=0;
+ while(RC.on){
+  if(demo){await new Promise(r=>setTimeout(r,800));if(!RC.on)break;if(!RC.seq){const u=demoShot();RC.w=1600;RC.h=900;RC.seq=1;$('rc-img').src=u;rcLayout();RC.cur=RC.cur||{x:.42,y:.4};rcDrawCursor();$('rc-stat').textContent='Anteprima';}continue;}
+  try{
+   const t0=performance.now();
+   const r=await fetch(`/api/remote/frame?v=${RC.v}&seq=${RC.seq}`,{headers:rcHead(),cache:'no-store'});
+   if(r.status===403||r.status===401){const o=await r.json().catch(()=>({}));rcClose(o.detail||'Sessione terminata');return;}
+   if(!r.ok)throw new Error('HTTP '+r.status);
+   let meta;
+   if((r.headers.get('content-type')||'').startsWith('image/')){
+    meta=JSON.parse(r.headers.get('x-remote-meta')||'{}');const blob=await r.blob();
+    const u=URL.createObjectURL(blob);const im=$('rc-img');
+    await new Promise(res=>{im.onload=im.onerror=res;im.src=u;});
+    if(RC.url.startsWith('blob:'))URL.revokeObjectURL(RC.url);RC.url=u;RC.seq=meta.seq;
+    if(meta.w!==RC.w||meta.h!==RC.h){RC.w=meta.w;RC.h=meta.h;rcLayout();}
+    const now=performance.now();RC.frames.push(now);RC.bytes.push([now,blob.size]);
+   }else meta=await r.json();
+   RC.v=meta.v;fails=0;
+   if(meta.cursor&&RC.mode==='touch'||meta.cursor&&!RC.cur){RC.cur={x:meta.cursor[0],y:meta.cursor[1]};rcDrawCursor();}
+   if(meta.state==='locked')rcMsg('<b>Il PC è bloccato</b>Da qui non si può sbloccare: serve il PIN di Windows sul PC. Lo schermo torna appena viene sbloccato.');
+   else if(!$('rc-msg').dataset.keep)rcMsg('');
+   rcStats();
+  }catch(ex){
+   fails++;$('rc-stat').textContent='Connessione persa, riprovo…';
+   await new Promise(r=>setTimeout(r,Math.min(4000,400*fails)));
+  }
+ }
+}
+function rcStats(){
+ const now=performance.now();RC.frames=RC.frames.filter(t=>now-t<3000);RC.bytes=RC.bytes.filter(b=>now-b[0]<3000);
+ const fps=RC.frames.length/3,kbs=RC.bytes.reduce((a,b)=>a+b[1],0)/3/1024;
+ $('rc-stat').textContent=`${fps.toFixed(fps<10?1:0)} fps · ${kbs<1000?Math.round(kbs)+' KB/s':(kbs/1024).toFixed(1)+' MB/s'}`;
+}
+// comandi: in fila, uno alla volta (i movimenti si accorpano)
+function rcSend(ev){
+ if(!RC.on)return;RC.lastIn=Date.now();
+ const last=RC.q[RC.q.length-1];if(ev.t==='move'&&last&&last.t==='move')RC.q[RC.q.length-1]=ev;else RC.q.push(ev);
+ rcFlush();
+}
+async function rcFlush(){
+ if(RC.sending||!RC.q.length||!RC.on)return;RC.sending=true;
+ const batch=RC.q.splice(0,RC.q.length);
+ try{if(!demo)await rcPost('/api/remote/input',{events:batch});}
+ catch(ex){if(ex.status===403){rcClose(ex.message);return;}notify('⚠ '+ex.message,true);}
+ finally{RC.sending=false;}
+ if(RC.q.length)rcFlush();
+}
+function rcIdleWatch(){
+ clearTimeout(RC.idleT);if(!RC.on)return;
+ const left=RC.idle*60000-(Date.now()-RC.lastIn);
+ if(left<65000){rcMsg('<b>Ancora lì?</b>Senza comandi la sessione si chiude fra un minuto.',{label:'Continua',run:()=>{rcSend({t:'alive'});delete $('rc-msg').dataset.keep;rcMsg('');}});$('rc-msg').dataset.keep='1';}
+ RC.idleT=setTimeout(rcIdleWatch,Math.max(5000,Math.min(left-60000,30000)));
+}
+// impostazioni della sessione
+async function rcConfig(body){
+ if(demo){rcHint('Anteprima: impostazione non inviata');return;}
+ try{await rcPost('/api/remote/config',body);RC.seq=0;}catch(ex){notify('⚠ '+ex.message,true);}
+}
+$('rc-mon').addEventListener('change',()=>{const v=$('rc-mon').value;rcConfig({mon:v==='all'?'all':+v});RC.z={s:1,x:0,y:0};});
+$('rc-q').addEventListener('change',()=>rcConfig({quality:$('rc-q').value}));
+$('rc-fps').addEventListener('change',()=>rcConfig({fps:+$('rc-fps').value}));
+function rcMode(m){RC.mode=m;$('rc').classList.toggle('pad',m==='pad');document.querySelectorAll('#rc-mode button').forEach(b=>b.classList.toggle('on',b.dataset.mode===m));
+ try{localStorage.setItem('nexar.rcMode',m);}catch(e){}}
+document.querySelectorAll('#rc-mode button').forEach(b=>b.addEventListener('click',()=>{rcMode(b.dataset.mode);
+ rcHint(b.dataset.mode==='pad'?'Muovi il dito per spostare il puntatore · tocca = clic · tieni premuto e muovi = trascina':'Tocca dove vuoi cliccare · tieni premuto = tasto destro');}));
+$('rc-hide').addEventListener('click',()=>{$('rc').classList.add('bar-off');$('rc-show').hidden=false;setTimeout(rcLayout,30);});
+$('rc-show').addEventListener('click',()=>{$('rc').classList.remove('bar-off');$('rc-show').hidden=true;setTimeout(rcLayout,30);});
+$('rc-keys-btn').addEventListener('click',()=>{$('rc-keys').hidden=!$('rc-keys').hidden;$('rc-keys-btn').classList.toggle('on',!$('rc-keys').hidden);setTimeout(rcLayout,30);});
+$('rc-kb-btn').addEventListener('click',()=>{const kb=$('rc-kb');kb.hidden=!kb.hidden;$('rc-kb-btn').classList.toggle('on',!kb.hidden);
+ if(!kb.hidden){const t=$('rc-text');t.value=' ';RC.kbPrev=' ';t.focus();}setTimeout(rcLayout,300);});
+// tasti speciali e "blocca" di Ctrl/Alt/Maiusc/Win per il tasto dopo
+function rcMods(extra){const m=[...RC.latch,...(extra?[extra]:[])];RC.latch.clear();document.querySelectorAll('[data-latch]').forEach(b=>b.classList.remove('on'));return m;}
+document.querySelectorAll('#rc [data-k]').forEach(b=>b.addEventListener('click',()=>{rcSend({t:'key',k:b.dataset.k,mods:rcMods(b.dataset.m)});if(navigator.vibrate)navigator.vibrate(8);}));
+document.querySelectorAll('[data-latch]').forEach(b=>b.addEventListener('click',()=>{const m=b.dataset.latch;RC.latch.has(m)?RC.latch.delete(m):RC.latch.add(m);b.classList.toggle('on',RC.latch.has(m));}));
+// scrittura dal telefono: si manda solo la differenza (funziona anche con correttore e dettatura)
+function rcTextOut(s){
+ if(!s)return;
+ if(RC.latch.size&&s.length===1&&/[a-z0-9]/i.test(s)){rcSend({t:'key',k:s.toLowerCase(),mods:rcMods()});return;}
+ rcSend({t:'text',s});
+}
+$('rc-text').addEventListener('input',()=>{
+ const t=$('rc-text'),cur=t.value,prev=RC.kbPrev;let p=0;while(p<cur.length&&p<prev.length&&cur[p]===prev[p])p++;
+ for(let i=0;i<prev.length-p;i++)rcSend({t:'key',k:'backspace',mods:[]});
+ rcTextOut(cur.slice(p));
+ if(!cur.length||cur.length>80){t.value=' ';}RC.kbPrev=t.value;
+});
+$('rc-text').addEventListener('keydown',e=>{
+ if(e.key==='Enter'){e.preventDefault();rcSend({t:'key',k:'enter',mods:rcMods()});$('rc-text').value=' ';RC.kbPrev=' ';}
+ else if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Tab','Escape'].includes(e.key)){e.preventDefault();rcSend({t:'key',k:{ArrowLeft:'left',ArrowRight:'right',ArrowUp:'up',ArrowDown:'down',Tab:'tab',Escape:'esc'}[e.key],mods:rcMods()});}
+});
+// tastiera vera (dal computer): tutto al PC, anche Esc
+const RC_KEYMAP={Enter:'enter',Escape:'esc',Tab:'tab',Backspace:'backspace',Delete:'delete',ArrowLeft:'left',ArrowRight:'right',ArrowUp:'up',ArrowDown:'down',
+ Home:'home',End:'end',PageUp:'pageup',PageDown:'pagedown',Insert:'insert',ContextMenu:'menu',' ':'space'};
+document.addEventListener('keydown',e=>{
+ if(!RC.on||!$('rc').open||e.target.closest?.('#rc-kb,select,#rc-pin'))return;
+ if(['Control','Alt','Shift','Meta','AltGraph','CapsLock'].includes(e.key))return;
+ const altgr=e.getModifierState&&e.getModifierState('AltGraph');
+ const mods=altgr?[]:[e.ctrlKey&&'ctrl',e.altKey&&'alt',e.shiftKey&&'shift',e.metaKey&&'win'].filter(Boolean);
+ let k=RC_KEYMAP[e.key]||(/^F\d{1,2}$/.test(e.key)?e.key.toLowerCase():'');
+ if(!k&&e.key.length===1){
+  if(!mods.some(m=>m!=='shift')){e.preventDefault();rcSend({t:'text',s:e.key});return;}
+  k=/^[a-z0-9]$/i.test(e.key)?e.key.toLowerCase():(e.code.startsWith('Key')?e.code.slice(3).toLowerCase():e.code.startsWith('Digit')?e.code.slice(5):'');
+ }
+ if(!k)return;e.preventDefault();rcSend({t:'key',k,mods});
+},true);
+// mouse, tocco e touchpad
+const stage=$('rc-stage');
+stage.addEventListener('contextmenu',e=>e.preventDefault());
+stage.addEventListener('wheel',e=>{if(!RC.on)return;e.preventDefault();
+ if(e.ctrlKey){rcZoomAt(e.clientX,e.clientY,RC.z.s*(e.deltaY<0?1.15:1/1.15));return;}
+ const n=rcNorm(e.clientX,e.clientY),f=e.deltaMode===1?40:1;rcSend({t:'wheel',x:n.x,y:n.y,dy:Math.round(-e.deltaY*f*1.2),dx:Math.round(e.deltaX*f*1.2)});},{passive:false});
+function rcZoomAt(cx,cy,s){
+ const st=$('rc-stage').getBoundingClientRect(),b=RC.base,z=RC.z;s=Math.min(5,Math.max(1,s));
+ const px=(cx-st.left-b.x-z.x)/z.s,py=(cy-st.top-b.y-z.y)/z.s;   // punto sotto le dita
+ z.x=cx-st.left-b.x-px*s;z.y=cy-st.top-b.y-py*s;z.s=s;rcApplyZoom();
+}
+function rcPadMove(dx,dy){
+ const r=$('rc-img').getBoundingClientRect(),sp=Math.hypot(dx,dy),acc=1.1+Math.min(2.4,sp/14);   // più veloce = va più lontano
+ const c=RC.cur||{x:.5,y:.5};RC.cur={x:Math.min(1,Math.max(0,c.x+dx*acc/r.width)),y:Math.min(1,Math.max(0,c.y+dy*acc/r.height))};
+ rcDrawCursor();rcSend({t:'move',x:RC.cur.x,y:RC.cur.y});
+ if(RC.z.s>1){const cr=$('rc-cur').getBoundingClientRect(),st=$('rc-stage').getBoundingClientRect(),m=40;   // lo zoom segue il puntatore
+  if(cr.left<st.left+m)RC.z.x+=st.left+m-cr.left;else if(cr.right>st.right-m)RC.z.x-=cr.right-st.right+m;
+  if(cr.top<st.top+m)RC.z.y+=st.top+m-cr.top;else if(cr.bottom>st.bottom-m)RC.z.y-=cr.bottom-st.bottom+m;rcApplyZoom();}
+}
+const BTN=['left','middle','right'];
+stage.addEventListener('pointerdown',e=>{
+ if(!RC.on||e.target.closest('.rc-msg'))return;stage.setPointerCapture(e.pointerId);
+ if(e.pointerType==='mouse'){const n=rcNorm(e.clientX,e.clientY);RC.cur=n;rcDrawCursor();rcSend({t:'down',b:BTN[e.button]||'left',x:n.x,y:n.y});return;}
+ RC.pts.set(e.pointerId,{x:e.clientX,y:e.clientY,x0:e.clientX,y0:e.clientY});
+ if(RC.pts.size===1){
+  const g=RC.g={kind:'one',t0:performance.now(),x0:e.clientX,y0:e.clientY,moved:false,drag:false,held:false};
+  g.timer=setTimeout(()=>{if(RC.g!==g||g.moved)return;g.held=true;if(navigator.vibrate)navigator.vibrate(18);
+   if(RC.mode==='touch'){const n=rcNorm(g.x0,g.y0);rcSend({t:'click',b:'right',x:n.x,y:n.y});rcHint('Tasto destro');}
+   else{g.drag=true;rcSend({t:'down',b:'left',x:RC.cur?.x??.5,y:RC.cur?.y??.5});rcHint('Trascina');}},520);
+ }else if(RC.pts.size===2){
+  const g=RC.g;if(g){clearTimeout(g.timer);if(g.drag)rcSend({t:'up',b:'left'});}
+  const [a,b]=[...RC.pts.values()];RC.g={kind:'two',d0:Math.hypot(a.x-b.x,a.y-b.y),s0:RC.z.s,mx:(a.x+b.x)/2,my:(a.y+b.y)/2,mode:'',t0:performance.now(),acc:0};
+ }
+});
+stage.addEventListener('pointermove',e=>{
+ if(!RC.on)return;
+ if(e.pointerType==='mouse'){const n=rcNorm(e.clientX,e.clientY);RC.cur=n;rcDrawCursor();rcSend({t:'move',x:n.x,y:n.y});return;}
+ const p=RC.pts.get(e.pointerId);if(!p)return;const dx=e.clientX-p.x,dy=e.clientY-p.y;p.x=e.clientX;p.y=e.clientY;const g=RC.g;if(!g)return;
+ if(g.kind==='one'){
+  if(!g.moved&&Math.hypot(e.clientX-g.x0,e.clientY-g.y0)>9){g.moved=true;clearTimeout(g.timer);
+   if(RC.mode==='touch'&&!g.held){const n=rcNorm(g.x0,g.y0);g.drag=true;rcSend({t:'down',b:'left',x:n.x,y:n.y});}}
+  if(!g.moved)return;
+  if(RC.mode==='touch'){if(g.drag){const n=rcNorm(e.clientX,e.clientY);RC.cur=n;rcDrawCursor();rcSend({t:'move',x:n.x,y:n.y});}}
+  else rcPadMove(dx,dy);
+ }else if(g.kind==='two'&&RC.pts.size===2){
+  const [a,b]=[...RC.pts.values()];const d=Math.hypot(a.x-b.x,a.y-b.y),mx=(a.x+b.x)/2,my=(a.y+b.y)/2;
+  if(!g.mode){if(Math.abs(d-g.d0)>28)g.mode='zoom';else if(Math.hypot(mx-g.mx,my-g.my)>10)g.mode=RC.z.s>1?'pan':'scroll';}
+  if(g.mode==='zoom'){rcZoomAt(mx,my,g.s0*d/g.d0);RC.z.x+=mx-g.mx;RC.z.y+=my-g.my;rcApplyZoom();}
+  else if(g.mode==='pan'){RC.z.x+=mx-g.mx;RC.z.y+=my-g.my;rcApplyZoom();}
+  else if(g.mode==='scroll'){g.acc+=my-g.my;const step=Math.trunc(g.acc/6);if(step){g.acc-=step*6;const n=RC.cur||rcNorm(mx,my);rcSend({t:'wheel',x:n.x,y:n.y,dy:step*40});}}
+  g.mx=mx;g.my=my;
+ }
+});
+function rcPointerEnd(e){
+ if(!RC.on)return;
+ if(e.pointerType==='mouse'){const n=rcNorm(e.clientX,e.clientY);rcSend({t:'up',b:BTN[e.button]||'left',x:n.x,y:n.y});return;}
+ if(!RC.pts.has(e.pointerId))return;RC.pts.delete(e.pointerId);const g=RC.g;if(!g)return;
+ if(g.kind==='one'){
+  clearTimeout(g.timer);
+  if(e.type==='pointercancel'){if(g.drag)rcSend({t:'up',b:'left'});RC.g=null;return;}
+  if(g.drag){const n=RC.mode==='touch'?rcNorm(e.clientX,e.clientY):RC.cur;rcSend({t:'up',b:'left',x:n.x,y:n.y});}
+  else if(!g.moved&&!g.held){
+   if(RC.mode==='touch'){const n=rcNorm(e.clientX,e.clientY);RC.cur=n;rcDrawCursor();rcSend({t:'click',b:'left',x:n.x,y:n.y});}
+   else rcSend({t:'click',b:'left',x:RC.cur?.x??.5,y:RC.cur?.y??.5});
+  }
+  RC.g=null;
+ }else if(g.kind==='two'){
+  if(!g.mode&&performance.now()-g.t0<300&&RC.mode==='pad'){rcSend({t:'click',b:'right',x:RC.cur?.x??.5,y:RC.cur?.y??.5});rcHint('Tasto destro');}
+  if(RC.pts.size===0)RC.g=null;else RC.g={kind:'rest'};   // un dito rimasto: non diventa un clic
+ }else if(RC.pts.size===0)RC.g=null;
+}
+stage.addEventListener('pointerup',rcPointerEnd);stage.addEventListener('pointercancel',rcPointerEnd);
 function renderHistory(list){
  const box=$('game-history');box.replaceChildren();
  if(!list.length){$('hist-sub').textContent='Durata, temperature massime e consumo di ogni sessione';box.append(el('p','muted','Ancora nessuna partita: la prima comparirà qui.'));return;}

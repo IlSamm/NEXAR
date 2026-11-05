@@ -27,6 +27,7 @@
  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z"/></symbol>
  <symbol id="i-restart" viewBox="0 0 24 24"><path d="M3.5 12a8.5 8.5 0 1 0 2.6-6.1L3.5 8.5M3.5 3.5v5h5"/></symbol>
  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="10.5" width="14" height="10" rx="2.5"/><path d="M8.5 10.5V7.5a3.5 3.5 0 0 1 7 0v3"/></symbol>
+<symbol id="i-kbd" viewBox="0 0 24 24"><rect x="2.5" y="6" width="19" height="12" rx="2.5"/><path d="M6 10h1M9.5 10h1M13 10h1M16.5 10h1M7 14h10"/></symbol>
 <symbol id="i-vol" viewBox="0 0 24 24"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M15.5 9a4 4 0 0 1 0 6M18.2 6.5a7.6 7.6 0 0 1 0 11"/></symbol>
 <symbol id="i-vol-down" viewBox="0 0 24 24"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M15.5 9a4 4 0 0 1 0 6"/></symbol>
 <symbol id="i-vol-x" viewBox="0 0 24 24"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M16 9.5l5 5M21 9.5l-5 5"/></symbol>
@@ -702,6 +703,7 @@
       <span class="scr-stamp" id="scr-time"></span><i class="scr-scan" aria-hidden="true"></i>
      </button>
      <div class="scr-tools">
+      <button class="rc-take" type="button" id="rc-take"><svg class="i"><use href="#i-mouse"/></svg>Prendi il controllo</button>
       <button class="scr-live" type="button" id="scr-live" role="switch" aria-checked="false"><i></i>Dal vivo</button>
       <span class="scr-sep" aria-hidden="true"></span>
       <button type="button" data-scr="down" title="Volume −10" aria-label="Volume meno"><svg class="i"><use href="#i-vol-down"/></svg></button>
@@ -718,8 +720,12 @@
      <div class="scr-wins" id="scr-wins"><p class="muted">Caricamento…</p></div>
       </section>
       <section class="card scr-ocard">
-       <div class="card-head"><div><h3>Avvisi e privacy</h3><p>Decidi tu cosa arriva su Telegram</p></div></div>
+       <div class="card-head"><div><h3>Controllo e privacy</h3><p>Decidi tu cosa si può fare da lontano</p></div></div>
+       <div class="rc-live" id="rc-live" hidden><i></i><div><b>Controllo remoto attivo</b><small id="rc-live-sub">—</small></div><button class="btn small danger" type="button" id="rc-live-end">Termina</button></div>
      <div class="scr-opts">
+      <label class="switch-row"><span class="opt-ico c-power"><svg class="i"><use href="#i-mouse"/></svg></span><div><b>Controllo remoto</b><small id="rc-note">Mouse e tastiera da lontano, sempre con il PIN</small></div><button class="toggle" type="button" id="rc-enabled" role="switch"><span></span></button></label>
+      <div class="rc-setup" id="rc-setup"><button class="btn small" type="button" id="rc-pin-set"><svg class="i"><use href="#i-lock"/></svg><span>Scegli il PIN</span></button>
+       <label class="rc-idle">Chiudi dopo <select id="rc-idle"><option value="5">5 min</option><option value="10">10 min</option><option value="15">15 min</option><option value="30">30 min</option></select> senza comandi</label></div>
       <label class="switch-row"><span class="opt-ico c-teal"><svg class="i"><use href="#i-bot"/></svg></span><div><b>Avvisami quando l'AI finisce</b><small>Messaggio su Telegram quando Codex o Claude chiudono un lavoro lungo e tu non sei al PC</small></div><button class="toggle" type="button" id="scr-ai" role="switch"><span></span></button></label>
       <label class="switch-row"><span class="opt-ico c-blue"><svg class="i"><use href="#i-eye"/></svg></span><div><b>Vedere lo schermo da remoto</b><small>Solo tu, dalla dashboard o dal tuo Telegram abbinato</small></div><button class="toggle" type="button" id="scr-allow" role="switch"><span></span></button></label>
      </div>
@@ -751,6 +757,32 @@
  </nav>
 </div>
 
+<dialog class="sheet rc-pin" id="rc-pin" aria-labelledby="rc-pin-title">
+ <span class="sheet-ico calm"><svg class="i"><use href="#i-lock"/></svg></span>
+ <h3 id="rc-pin-title">PIN del controllo remoto</h3><p id="rc-pin-text">Inserisci il PIN di 6 cifre scelto sul PC.</p>
+ <input class="rc-pin-in" id="rc-pin-in" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off" aria-label="PIN" placeholder="••••••">
+ <input class="rc-pin-in" id="rc-pin-in2" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off" aria-label="Ripeti il PIN" placeholder="Ripeti il PIN" hidden>
+ <p class="rc-pin-err" id="rc-pin-err" role="alert"></p>
+ <div class="sheet-actions"><button class="btn" type="button" id="rc-pin-cancel">Annulla</button><button class="btn primary" type="button" id="rc-pin-ok">Entra</button></div>
+</dialog>
+<dialog class="rc" id="rc" aria-label="Controllo remoto del PC">
+ <div class="rc-bar" id="rc-bar">
+  <button class="rc-b end" type="button" id="rc-end"><svg class="i"><use href="#i-x"/></svg><span>Termina</span></button>
+  <select id="rc-mon" aria-label="Schermo"></select>
+  <select id="rc-q" aria-label="Qualità"><option value="eco">Risparmio dati</option><option value="balanced" selected>Bilanciata</option><option value="sharp">Nitida</option></select>
+  <select id="rc-fps" aria-label="Fotogrammi al secondo"><option value="5">5 fps</option><option value="10" selected>10 fps</option><option value="15">15 fps</option></select>
+  <div class="rc-seg" id="rc-mode" role="group" aria-label="Modo"><button type="button" data-mode="touch" class="on">Tocco</button><button type="button" data-mode="pad">Touchpad</button></div>
+  <button class="rc-b" type="button" id="rc-kb-btn"><svg class="i"><use href="#i-kbd"/></svg><span>Scrivi</span></button>
+  <button class="rc-b" type="button" id="rc-keys-btn"><svg class="i"><use href="#i-grid"/></svg><span>Tasti</span></button>
+  <span class="rc-stat" id="rc-stat">Collegamento…</span>
+  <button class="rc-b icon" type="button" id="rc-hide" aria-label="Nascondi la barra"><svg class="i"><use href="#i-chev"/></svg></button>
+ </div>
+ <div class="rc-stage" id="rc-stage"><div class="rc-zoom" id="rc-zoom"><img id="rc-img" alt="Schermo del PC" draggable="false"><i class="rc-cur" id="rc-cur" hidden></i></div>
+  <div class="rc-msg" id="rc-msg" hidden></div><div class="rc-hint" id="rc-hint"></div></div>
+ <div class="rc-keys" id="rc-keys" hidden><div class="rc-latch"><button type="button" data-latch="ctrl">Ctrl</button><button type="button" data-latch="alt">Alt</button><button type="button" data-latch="shift">Shift</button><button type="button" data-latch="win">Win</button></div><div class="rc-kgrid"><button type="button" data-k="esc">Esc</button><button type="button" data-k="tab">Tab</button><button type="button" data-k="backspace">⌫</button><button type="button" data-k="delete">Canc</button><button type="button" data-k="enter">Invio</button><button type="button" data-k="left">←</button><button type="button" data-k="up">↑</button><button type="button" data-k="down">↓</button><button type="button" data-k="right">→</button><button type="button" data-k="home">Inizio</button><button type="button" data-k="end">Fine</button><button type="button" data-k="pageup">Pag ↑</button><button type="button" data-k="pagedown">Pag ↓</button><button type="button" data-k="f5">F5</button><button type="button" data-k="win">⊞ Start</button><button type="button" data-k="c" data-m="ctrl">Copia<small>Ctrl+C</small></button><button type="button" data-k="v" data-m="ctrl">Incolla<small>Ctrl+V</small></button><button type="button" data-k="x" data-m="ctrl">Taglia<small>Ctrl+X</small></button><button type="button" data-k="z" data-m="ctrl">Annulla<small>Ctrl+Z</small></button><button type="button" data-k="a" data-m="ctrl">Seleziona tutto<small>Ctrl+A</small></button><button type="button" data-k="s" data-m="ctrl">Salva<small>Ctrl+S</small></button><button type="button" data-k="f" data-m="ctrl">Cerca<small>Ctrl+F</small></button><button type="button" data-k="tab" data-m="alt">Cambia finestra<small>Alt+Tab</small></button><button type="button" data-k="d" data-m="win">Desktop<small>Win+D</small></button><button type="button" data-k="f4" data-m="alt">Chiudi finestra<small>Alt+F4</small></button></div></div>
+ <div class="rc-kb" id="rc-kb" hidden><input id="rc-text" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="send" aria-label="Scrivi sul PC" placeholder="Scrivi: arriva subito sul PC"><button class="rc-b" type="button" data-k="backspace" aria-label="Cancella">⌫</button><button class="rc-b" type="button" data-k="enter">Invio</button></div>
+ <button class="rc-show" type="button" id="rc-show" hidden aria-label="Mostra la barra"><svg class="i"><use href="#i-sliders"/></svg></button>
+</dialog>
 <dialog class="scr-full" id="scr-full" aria-label="Schermo del PC"><img id="scr-full-img" alt="Schermo del PC"><button class="scr-full-x" type="button" id="scr-full-x" aria-label="Chiudi"><svg class="i"><use href="#i-x"/></svg></button><button class="scr-full-r" type="button" id="scr-full-r"><svg class="i"><use href="#i-refresh"/></svg>Aggiorna</button></dialog>
 <dialog class="sheet app-sheet" id="app-sheet" aria-labelledby="as-title">
  <div class="as-head"><div><h3 id="as-title">Le tue app</h3><p>Tocca per aggiungerle o toglierle: compaiono in Accensione e nell'app di Telegram.</p></div><button class="icon-btn" type="button" id="as-close" aria-label="Chiudi"><svg class="i"><use href="#i-x"/></svg></button></div>

@@ -393,6 +393,52 @@ def screen_settings(data: ScreenSettings):
     s = controller.set_screen_settings(data.view,data.ai_alert)
     return {'ok':True,'settings':s,'message':'Impostazioni schermo salvate'}
 
+# ---------- controllo remoto: mouse, tastiera e schermo dal vivo ----------
+class RemoteSetup(BaseModel):
+    enabled: bool | None = None
+    pin: str | None = None
+    idle_minutes: int | None = None
+class RemotePin(BaseModel):
+    pin: str
+class RemoteConfig(BaseModel):
+    mon: int | str | None = None
+    quality: str | None = None
+    fps: int | None = None
+class RemoteInput(BaseModel):
+    events: list[dict]
+def remote_errors(fn):
+    try: return fn()
+    except PermissionError as ex: raise HTTPException(403,str(ex))
+    except ValueError as ex: raise HTTPException(400,str(ex))
+@app.get('/api/remote',dependencies=[Depends(authorized)])
+def remote_info(request: Request):
+    return {**controller.remote.info(),'local':not is_remote(request)}
+@app.post('/api/remote/setup',dependencies=[Depends(authorized),Depends(local_only)])
+def remote_setup(data: RemoteSetup):
+    return remote_errors(lambda: {'ok':True,'info':controller.remote_setup(data.enabled,data.pin,data.idle_minutes),'message':'Controllo remoto aggiornato'})
+@app.post('/api/remote/off',dependencies=[Depends(authorized)])
+def remote_off():
+    return {'ok':True,'info':controller.remote_setup(enabled=False),'message':'Controllo remoto spento'}
+@app.post('/api/remote/start',dependencies=[Depends(authorized)])
+def remote_start(data: RemotePin, request: Request):
+    who = 'Telegram' if request.headers.get('x-tg-init-data') else ('dashboard da Internet' if is_remote(request) else 'dashboard sul PC')
+    return remote_errors(lambda: controller.remote.start(data.pin, who))
+@app.post('/api/remote/end',dependencies=[Depends(authorized)])
+def remote_end():
+    return {'ok':True,'message':'Controllo terminato' if controller.remote.end(reason='terminato da te') else 'Nessun controllo attivo'}
+@app.post('/api/remote/config',dependencies=[Depends(authorized)])
+def remote_config(data: RemoteConfig, x_remote_session: str | None = Header(default=None)):
+    mon = data.mon if data.mon in (None,'all') or isinstance(data.mon,int) else None
+    return remote_errors(lambda: controller.remote.configure(x_remote_session, mon, data.quality, data.fps))
+@app.get('/api/remote/frame',dependencies=[Depends(authorized)])
+def remote_frame(v: int = 0, seq: int = 0, x_remote_session: str | None = Header(default=None)):
+    meta, jpg = remote_errors(lambda: controller.remote.next(x_remote_session, v, seq))
+    if jpg is None: return JSONResponse(meta)
+    return Response(jpg, media_type='image/jpeg', headers={'X-Remote-Meta': json.dumps(meta), 'Cache-Control':'no-store'})
+@app.post('/api/remote/input',dependencies=[Depends(authorized)])
+def remote_input(data: RemoteInput, x_remote_session: str | None = Header(default=None)):
+    return {'ok':True,'done':remote_errors(lambda: controller.remote.input(x_remote_session, data.events))}
+
 @app.get('/api/apps/icon/{key}',dependencies=[Depends(authorized)])
 def apps_icon(key: str):
     dest = controller.app_icon(key)

@@ -25,6 +25,7 @@ import procstop
 import apps_remote
 import screen_remote
 import ai_watch
+import remote_control
 
 FROZEN = getattr(sys, 'frozen', False)
 INSTALL_DIR = Path(sys.executable).resolve().parent if FROZEN else Path(__file__).resolve().parent
@@ -213,6 +214,8 @@ class Control:
                                             notify=lambda m: self.notify(m), log=lambda m: self.log_event(m))
         self.stopper = procstop.Stopper()
         self.ai_watch = ai_watch.AiWatch()
+        self.remote = remote_control.Remote(lambda: self.config.get('remote_control') or {},
+                                            notify=lambda m: self.notify(m), log=lambda m: self.log_event(m))
         self.gaming_owned = False      # Gaming acceso da NEXAR perché è partito un gioco
         self.gaming_prev = 'normal'
         self.gaming_declined = False   # l'utente è uscito da Gaming a gioco aperto: non riattivarlo
@@ -532,6 +535,27 @@ class Control:
         else: raise ValueError('Azione non prevista')
         self.log_event('🖥 ' + msg)
         return msg
+
+    # ---------- controllo remoto (mouse e tastiera) ----------
+    def remote_setup(self, enabled=None, pin=None, idle_minutes=None):
+        """Solo dal PC: accende/spegne il controllo, sceglie il PIN e dopo quanto chiudere la sessione."""
+        with self.lock:
+            rc = dict(self.config.get('remote_control') or {})
+            if pin is not None:
+                if not remote_control.valid_pin(pin): raise ValueError('Il PIN deve avere 6 cifre, non tutte uguali e non 123456')
+                rc['pin_hash'] = remote_control.pin_hash(pin)
+            if idle_minutes is not None:
+                if idle_minutes not in remote_control.IDLE_CHOICES: raise ValueError('Durata non prevista')
+                rc['idle_minutes'] = idle_minutes
+            if enabled is not None:
+                if enabled and not rc.get('pin_hash'): raise ValueError('Scegli prima il PIN')
+                rc['enabled'] = bool(enabled)
+            self.config['remote_control'] = rc
+            json_save(CONFIG_FILE, self.config)
+        if enabled is False: self.remote.end(reason='controllo spento')
+        if pin is not None: self.remote.end(reason='PIN cambiato')
+        self.log_event('🖱 Controllo remoto: ' + ('acceso' if rc.get('enabled') else 'spento') + (' · PIN aggiornato' if pin is not None else ''))
+        return self.remote.info()
 
     def ai_names(self):
         return {str(n).lower() for n in self.config.get('auto_detect', {}).get('process_names') or ['codex.exe', 'claude.exe']}
