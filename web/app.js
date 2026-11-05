@@ -9,11 +9,12 @@ const titles={
  lights:['Luci','Colori e luminosità dei LED.'],
  cooling:['Ventole','Temperature e profili di raffreddamento.'],
  power:['Accensione','Spegni, riavvia, sospendi o programma.'],
+ screen:['Schermo','Guarda il PC da lontano, chiudi finestre bloccate, volume e avvisi dell’AI.'],
  gaming:['Gaming','I tuoi giochi, il PC pronto a giocare e le statistiche di ogni partita.'],
  optimize:['Ottimizza','Pulizia, programmi pesanti, file grandi, dischi e rete.'],
  links:['Collegamenti','Programmi trovati e collegati da soli.'],
  settings:['Impostazioni','AI ECO, energia, Telegram e registro.'],
- more:['Altro','Consumi, accensione, collegamenti e impostazioni.'],
+ more:['Altro','Schermo, consumi, accensione, collegamenti e impostazioni.'],
 };
 let key=sessionStorage.getItem('pc_eco_key')||'';
 const initialHash=location.hash.match(/^#access=([A-Za-z0-9_-]{28,})$/);
@@ -165,8 +166,10 @@ function navigate(view){
  if(view==='optimize')loadOptimize();
  if(view==='gaming')loadGaming(false,true);
  if(view==='energy')loadStats();
- if(view==='power'){loadApps();loadScreen();}
- const tab=['power','links','settings','energy','lights'].includes(view)&&!document.querySelector(`.tabbar [data-view="${view}"]`)?'more':view;
+ if(view==='power')loadApps();
+ if(view==='screen')loadScreen();
+ if(view!=='screen'&&scrLiveOn)scrLive(false);
+ const tab=['power','screen','links','settings','energy','lights'].includes(view)&&!document.querySelector(`.tabbar [data-view="${view}"]`)?'more':view;
  document.querySelectorAll('.rail-nav [data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===view));
  document.querySelectorAll('.tabbar [data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===tab));
  document.querySelectorAll('.page').forEach(p=>p.classList.toggle('active',p.id==='page-'+view));
@@ -1870,7 +1873,7 @@ $('as-close').addEventListener('click',()=>$('app-sheet').close());
 $('app-sheet').addEventListener('click',e=>{if(e.target===e.currentTarget)$('app-sheet').close();});
 
 /* ---------- schermo del PC ---------- */
-let scrInfo=null,scrUrl='',scrBusy=false,scrLiveOn=false;
+var scrInfo=null,scrUrl='',scrBusy=false,scrLiveOn=false;   // var: navigate() li legge anche prima di questa riga
 const DEMO_SCREEN={settings:{view:true,ai_alert:true},ai_busy:['codex.exe'],windows:[
  {id:1,title:'Codex',exe:'Codex.exe',hung:false},{id:2,title:'NEXAR — app.js — Visual Studio Code',exe:'Code.exe',hung:false},
  {id:3,title:'Claude',exe:'claude.exe',hung:false},{id:4,title:'Spotify Premium',exe:'Spotify.exe',hung:true,min:true}]};
@@ -1923,7 +1926,7 @@ async function shot(){
 async function scrLive(on){
  scrLiveOn=on;$('scr-live').setAttribute('aria-checked',on?'true':'false');
  while(scrLiveOn){
-  if(curView!=='power'||document.hidden){scrLive(false);break;}
+  if(curView!=='screen'||document.hidden){scrLive(false);break;}
   await shot();await new Promise(r=>setTimeout(r,2500));
  }
 }

@@ -122,3 +122,45 @@ def test_telegram_schermo_sends_photo(tmp_path, monkeypatch):
     bot.dispatch('schermo', 7)
     assert 'disattivato' in texts[-1]
     assert {'text': '🖥 Vedi schermo', 'callback_data': 'schermo'} in bot.menu()['inline_keyboard'][-1]
+
+# ---------- pulsanti della dashboard dopo un riavvio ----------
+def test_dashboard_buttons_follow_new_link(tmp_path, monkeypatch):
+    import telegram_bot
+    from urllib.error import HTTPError
+    c = _controller(tmp_path, monkeypatch)
+    bot = telegram_bot.TelegramBot(c); bot.user_id = 7; bot.token = 't'
+    calls = []
+    def call(method, payload):
+        calls.append((method, payload))
+        if method == 'editMessageReplyMarkup' and payload['message_id'] == 2: raise HTTPError('u', 400, 'old', {}, None)
+        return {'message_id': 10 + len(calls)} if method == 'sendMessage' else True
+    bot.call = call
+    bot.webapp_url = 'https://old.trycloudflare.com'
+    bot.send(7, 'PC acceso', bot.menu())
+    c.state['tg_buttons'].append({'m': 2, 'x': []})          # messaggio ormai cancellato
+    bot.send(99, 'altra chat', bot.menu())                     # non è del proprietario: non si tocca
+    assert [m['m'] for m in c.state['tg_buttons']] == [11, 2]
+    calls.clear()
+    bot.set_webapp('https://new.trycloudflare.com'); bot.sync_menu_button()
+    edits = [p for m, p in calls if m == 'editMessageReplyMarkup']
+    assert len(edits) == 2 and 'new.trycloudflare.com' in edits[0]['reply_markup'] and 'schermo' in edits[0]['reply_markup']
+    assert [m['m'] for m in c.state['tg_buttons']] == [11]      # quello cancellato si dimentica
+    calls.clear(); bot.refresh_buttons()
+    assert not [m for m, p in calls if m == 'editMessageReplyMarkup']   # già aggiornati: nessuna chiamata in più
+
+
+def test_autostart_falls_back_to_startup_folder(tmp_path, monkeypatch):
+    import sys, discovery
+    if sys.platform != 'win32': pytest.skip('solo Windows')
+    import winreg
+    monkeypatch.setattr(sys, 'frozen', True, raising=False)
+    monkeypatch.setattr(discovery, 'startup_link', lambda: tmp_path / 'NEXAR.lnk')
+    def denied(*a, **k): raise PermissionError('Accesso negato')
+    monkeypatch.setattr(winreg, 'OpenKey', denied)
+    made = []
+    def fake_link(enable):
+        made.append(enable)
+        if enable: (tmp_path / 'NEXAR.lnk').write_text('x')
+    monkeypatch.setattr(discovery, '_startup_link_set', fake_link)
+    discovery.autostart_set(True)
+    assert made == [True] and discovery.autostart_get()

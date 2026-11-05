@@ -88,6 +88,7 @@
    <button data-view="home" class="active"><span class="nav-ico n-home"><svg class="i"><use href="#i-home"/></svg></span>Panoramica</button>
    <button data-view="gaming"><span class="nav-ico n-gaming"><svg class="i"><use href="#i-game"/></svg></span>Gaming</button>
    <button data-view="optimize"><span class="nav-ico n-optimize"><svg class="i"><use href="#i-clean"/></svg></span>Ottimizza</button>
+   <button data-view="screen"><span class="nav-ico n-screen"><svg class="i"><use href="#i-monitor"/></svg></span>Schermo</button>
    <small class="nav-sec">Hardware</small>
    <button data-view="energy"><span class="nav-ico n-energy"><svg class="i"><use href="#i-plug"/></svg></span>Consumi</button>
    <button data-view="lights"><span class="nav-ico n-lights"><svg class="i"><use href="#i-bulb"/></svg></span>Luci</button>
@@ -447,30 +448,6 @@
      <div class="card-head"><div><h3>App sul PC</h3><p id="rapps-sub">Aprile da qui, anche da Telegram fuori casa</p></div><button class="btn small" type="button" id="rapps-add"><svg class="i"><use href="#i-sliders"/></svg>Modifica</button></div>
      <div class="rapps" id="rapps"><p class="muted">Caricamento…</p></div>
     </section>
-    <section class="card scr-card" id="scr-card">
-     <div class="card-head"><div><h3>Schermo del PC</h3><p id="scr-sub">Guarda cosa succede sul PC, anche da Telegram</p></div>
-      <button class="btn small" type="button" id="scr-refresh"><svg class="i"><use href="#i-refresh"/></svg>Aggiorna</button></div>
-     <button class="scr-view" type="button" id="scr-view" aria-label="Schermo del PC a tutto schermo">
-      <img id="scr-img" alt="Schermo del PC"><span class="scr-empty" id="scr-empty"><svg class="i"><use href="#i-monitor"/></svg><b>Tocca per vedere lo schermo</b></span>
-      <span class="scr-stamp" id="scr-time"></span><i class="scr-scan" aria-hidden="true"></i>
-     </button>
-     <div class="scr-tools">
-      <button class="scr-live" type="button" id="scr-live" role="switch" aria-checked="false"><i></i>Dal vivo</button>
-      <span class="scr-sep" aria-hidden="true"></span>
-      <button type="button" data-scr="down" title="Volume −10" aria-label="Volume meno"><svg class="i"><use href="#i-vol-down"/></svg></button>
-      <button type="button" data-scr="mute" title="Muto" aria-label="Muto"><svg class="i"><use href="#i-vol-x"/></svg></button>
-      <button type="button" data-scr="up" title="Volume +10" aria-label="Volume più"><svg class="i"><use href="#i-vol"/></svg></button>
-      <span class="scr-sep" aria-hidden="true"></span>
-      <button type="button" data-scr="monitor_off" class="wide"><svg class="i"><use href="#i-moon"/></svg>Spegni schermi</button>
-      <button type="button" data-scr="lock" class="wide"><svg class="i"><use href="#i-lock"/></svg>Blocca</button>
-     </div>
-     <h4 class="scr-h">Finestre aperte <small id="scr-wcount"></small></h4>
-     <div class="scr-wins" id="scr-wins"><p class="muted">Caricamento…</p></div>
-     <div class="scr-opts">
-      <label class="switch-row"><span class="opt-ico c-teal"><svg class="i"><use href="#i-bot"/></svg></span><div><b>Avvisami quando l'AI finisce</b><small>Messaggio su Telegram quando Codex o Claude chiudono un lavoro lungo e tu non sei al PC</small></div><button class="toggle" type="button" id="scr-ai" role="switch"><span></span></button></label>
-      <label class="switch-row"><span class="opt-ico c-blue"><svg class="i"><use href="#i-eye"/></svg></span><div><b>Vedere lo schermo da remoto</b><small>Solo tu, dalla dashboard o dal tuo Telegram abbinato</small></div><button class="toggle" type="button" id="scr-allow" role="switch"><span></span></button></label>
-     </div>
-    </section>
     <div class="two-col pw-cols">
     <section class="card">
      <div class="card-head"><div><h3>Programma</h3><p>Il PC si spegne da solo, anche se chiudi l'app</p></div></div>
@@ -714,9 +691,47 @@
     </div>
    </section>
 
+   <!-- SCHERMO -->
+   <section class="page" id="page-screen">
+    <div class="scr-layout scr-card" id="scr-card">
+     <section class="card scr-main">
+     <div class="card-head"><div><h3>Schermo del PC</h3><p id="scr-sub">Guarda cosa succede sul PC, anche da Telegram</p></div>
+      <button class="btn small" type="button" id="scr-refresh"><svg class="i"><use href="#i-refresh"/></svg>Aggiorna</button></div>
+     <button class="scr-view" type="button" id="scr-view" aria-label="Schermo del PC a tutto schermo">
+      <img id="scr-img" alt="Schermo del PC"><span class="scr-empty" id="scr-empty"><svg class="i"><use href="#i-monitor"/></svg><b>Tocca per vedere lo schermo</b></span>
+      <span class="scr-stamp" id="scr-time"></span><i class="scr-scan" aria-hidden="true"></i>
+     </button>
+     <div class="scr-tools">
+      <button class="scr-live" type="button" id="scr-live" role="switch" aria-checked="false"><i></i>Dal vivo</button>
+      <span class="scr-sep" aria-hidden="true"></span>
+      <button type="button" data-scr="down" title="Volume −10" aria-label="Volume meno"><svg class="i"><use href="#i-vol-down"/></svg></button>
+      <button type="button" data-scr="mute" title="Muto" aria-label="Muto"><svg class="i"><use href="#i-vol-x"/></svg></button>
+      <button type="button" data-scr="up" title="Volume +10" aria-label="Volume più"><svg class="i"><use href="#i-vol"/></svg></button>
+      <span class="scr-sep" aria-hidden="true"></span>
+      <button type="button" data-scr="monitor_off" class="wide"><svg class="i"><use href="#i-moon"/></svg>Spegni schermi</button>
+      <button type="button" data-scr="lock" class="wide"><svg class="i"><use href="#i-lock"/></svg>Blocca</button>
+     </div>
+     </section>
+     <div class="scr-side">
+      <section class="card scr-wcard">
+     <div class="card-head"><div><h3>Finestre aperte <small class="scr-count" id="scr-wcount"></small></h3><p>Chiudi quella bloccata senza essere al PC</p></div></div>
+     <div class="scr-wins" id="scr-wins"><p class="muted">Caricamento…</p></div>
+      </section>
+      <section class="card scr-ocard">
+       <div class="card-head"><div><h3>Avvisi e privacy</h3><p>Decidi tu cosa arriva su Telegram</p></div></div>
+     <div class="scr-opts">
+      <label class="switch-row"><span class="opt-ico c-teal"><svg class="i"><use href="#i-bot"/></svg></span><div><b>Avvisami quando l'AI finisce</b><small>Messaggio su Telegram quando Codex o Claude chiudono un lavoro lungo e tu non sei al PC</small></div><button class="toggle" type="button" id="scr-ai" role="switch"><span></span></button></label>
+      <label class="switch-row"><span class="opt-ico c-blue"><svg class="i"><use href="#i-eye"/></svg></span><div><b>Vedere lo schermo da remoto</b><small>Solo tu, dalla dashboard o dal tuo Telegram abbinato</small></div><button class="toggle" type="button" id="scr-allow" role="switch"><span></span></button></label>
+     </div>
+      </section>
+     </div>
+    </div>
+   </section>
+
    <!-- ALTRO (telefono) -->
    <section class="page" id="page-more">
     <div class="more-list">
+     <button data-view="screen"><span class="more-ico c-blue"><svg class="i"><use href="#i-monitor"/></svg></span><div><b>Schermo</b><small>Guarda il PC, finestre, volume, avvisi dell'AI</small></div><svg class="i chev"><use href="#i-chev"/></svg></button>
      <button data-view="energy"><span class="more-ico c-cyan"><svg class="i"><use href="#i-plug"/></svg></span><div><b>Consumi</b><small>Watt alla presa, kWh e costi</small></div><svg class="i chev"><use href="#i-chev"/></svg></button>
      <button data-view="power"><span class="more-ico c-red"><svg class="i"><use href="#i-power"/></svg></span><div><b>Accensione e app</b><small>Spegni, riavvia, timer, apri app sul PC</small></div><svg class="i chev"><use href="#i-chev"/></svg></button>
      <button data-view="links"><span class="more-ico c-cyan"><svg class="i"><use href="#i-link"/></svg></span><div><b>Collegamenti</b><small id="more-links">Programmi collegati</small></div><svg class="i chev"><use href="#i-chev"/></svg></button>

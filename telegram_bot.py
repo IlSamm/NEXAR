@@ -12,6 +12,7 @@ from urllib.request import Request, urlopen
 # Il bot non è un telecomando a pulsanti: manda gli avvisi e apre la dashboard (Mini App), dove c'è tutto.
 COMMANDS = [('start', 'Apri NEXAR'), ('stato', 'Il PC in breve'), ('schermo', 'Foto dello schermo del PC')]
 SCREEN_BTN = {'text': '🖥 Vedi schermo', 'callback_data': 'schermo'}
+KEEP_BUTTONS = 25   # ultimi messaggi con il pulsante della dashboard: si aggiornano quando cambia il collegamento
 
 def duration(seconds):
     h, m = divmod(int(seconds) // 60, 60)
@@ -31,6 +32,7 @@ class TelegramBot:
         self.tunnel = None
         self.updater = None
         self.bad_token = ''
+        self._buttons = []
         controller.telegram_bot = {'username': '', 'error': ''}
 
     def reject_token(self):
@@ -69,7 +71,9 @@ class TelegramBot:
     def send(self, chat_id, msg, markup=None):
         payload={'chat_id':chat_id,'text':msg[:3900],'parse_mode':'HTML','disable_web_page_preview':'true'}
         if markup and markup.get('inline_keyboard'): payload['reply_markup']=json.dumps(markup)
-        return self.call('sendMessage',payload)
+        res = self.call('sendMessage',payload)
+        self.remember(chat_id, res, markup)
+        return res
     def send_photo(self, chat_id, jpg, caption='', markup=None):
         """Foto dello schermo: multipart, senza librerie in più."""
         boundary = 'nexar' + str(int(time.time() * 1000))
@@ -82,13 +86,55 @@ class TelegramBot:
                       headers={'Content-Type': 'multipart/form-data; boundary=' + boundary})
         with urlopen(req, timeout=60) as res: obj = json.load(res)
         if not obj.get('ok'): raise RuntimeError('Telegram API: sendPhoto')
+        self.remember(chat_id, obj.get('result'), markup)
         return obj.get('result')
     def edit(self, chat_id, message_id, msg, markup=None):
         """Aggiorna il pannello nello stesso messaggio: la chat non si riempie di risposte."""
         payload={'chat_id':chat_id,'message_id':message_id,'text':msg[:3900],'parse_mode':'HTML','disable_web_page_preview':'true'}
         if markup and markup.get('inline_keyboard'): payload['reply_markup']=json.dumps(markup)
         try: self.call('editMessageText',payload)
-        except Exception: pass  # testo identico o messaggio troppo vecchio: nessun problema
+        except Exception: return  # testo identico o messaggio troppo vecchio: nessun problema
+        self.remember(chat_id, {'message_id': message_id}, markup)
+
+    # ---------- pulsanti della dashboard sempre validi ----------
+    # Il collegamento esterno (trycloudflare) cambia a ogni riavvio di NEXAR: i pulsanti dei messaggi
+    # già inviati punterebbero a un indirizzo morto. Si ricordano gli ultimi e si aggiornano.
+    def _saved(self):
+        st = getattr(self.ctrl, 'state', None)
+        return st.setdefault('tg_buttons', []) if isinstance(st, dict) else self._buttons
+    def _persist(self):
+        st = getattr(self.ctrl, 'state', None)
+        if not isinstance(st, dict): return
+        try:
+            from core import json_save, STATE_FILE
+            with self.ctrl.lock: json_save(STATE_FILE, st)
+        except Exception: logging.warning('Telegram: pulsanti non salvati')
+    def remember(self, chat_id, result, markup):
+        if chat_id != self.user_id or not isinstance(result, dict) or not result.get('message_id'): return
+        rows = (markup or {}).get('inline_keyboard') or []
+        extra = [r for r in rows if not any('web_app' in b for b in r)]
+        if not rows: return
+        saved = self._saved()
+        saved[:] = [m for m in saved if m.get('m') != result['message_id']] + [{'m': result['message_id'], 'x': extra}]
+        del saved[:-KEEP_BUTTONS]
+        self._persist()
+    def refresh_buttons(self):
+        """Collegamento nuovo: i messaggi recenti ricevono il pulsante della dashboard con l'indirizzo giusto."""
+        if not (self.webapp_url and self.user_id): return 0
+        saved, done, keep = self._saved(), 0, []
+        for m in list(saved):
+            if m.get('u') == self.webapp_url: keep.append(m); continue
+            markup = {'inline_keyboard': self.app_row() + (m.get('x') or [])}
+            try:
+                self.call('editMessageReplyMarkup', {'chat_id': self.user_id, 'message_id': m['m'], 'reply_markup': json.dumps(markup)})
+                done += 1; keep.append({**m, 'u': self.webapp_url})
+            except HTTPError as ex:
+                if ex.code == 400: continue          # messaggio cancellato o troppo vecchio: si dimentica
+                keep.append(m); break
+            except Exception: keep.append(m); break  # rete: si riprova al prossimo cambio
+        saved[:] = keep
+        self._persist()
+        return done
 
     def set_webapp(self, url):
         self.webapp_url = url or ''
@@ -101,7 +147,11 @@ class TelegramBot:
             self.call('setChatMenuButton',{'chat_id':self.user_id,'menu_button':json.dumps(button)})
             self.call('setMyCommands',{'commands':json.dumps([{'command':c,'description':d} for c,d in COMMANDS])})
             self.menu_synced = self.webapp_url
-        except Exception: logging.warning('Telegram: pulsante app non aggiornato')
+        except Exception: logging.warning('Telegram: pulsante app non aggiornato'); return
+        try:
+            n = self.refresh_buttons()
+            if n: logging.info('Telegram: aggiornati %s pulsanti della dashboard', n)
+        except Exception: logging.exception('Telegram: pulsanti dei messaggi')
 
     # ---------- messaggi ----------
     def app_row(self):
@@ -116,7 +166,7 @@ class TelegramBot:
             self.send(chat, '🖥 ' + html.escape(str(ex)), self.menu()); return
         when = time.strftime('%H:%M:%S')
         self.send_photo(chat, jpg, f'🖥 Schermo del PC alle {when}',
-                        {'inline_keyboard': [[{'text': '🔄 Aggiorna', 'callback_data': 'schermo'}]] + self.app_row()})
+                        {'inline_keyboard': self.app_row() + [[{'text': '🔄 Aggiorna', 'callback_data': 'schermo'}]]})
 
     def status_text(self):
         s = self.ctrl.status()

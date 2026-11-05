@@ -379,7 +379,7 @@ def known_folder(csidl: int) -> Path | None:
     if ctypes.windll.shell32.SHGetFolderPathW(None, csidl, None, 0, buf) != 0: return None
     return Path(buf.value)
 
-CSIDL_DESKTOPDIRECTORY, CSIDL_PROGRAMS = 0x10, 0x02
+CSIDL_DESKTOPDIRECTORY, CSIDL_PROGRAMS, CSIDL_STARTUP = 0x10, 0x02, 0x07
 
 def shortcut_script(exe: str, links: list[Path]) -> str:
     """Crea o corregge i collegamenti: esistenti ma rivolti a un altro exe (es. vecchia cartella) vengono aggiornati."""
@@ -411,23 +411,49 @@ def autostart_target():
 
 AUTOSTART_NAME, AUTOSTART_LEGACY = 'NEXAR', 'PC ECO Control'
 
+def startup_link() -> Path | None:
+    folder = known_folder(CSIDL_STARTUP)
+    return folder / 'NEXAR.lnk' if folder else None
+
 def autostart_get() -> bool:
-    """Attivo solo se punta a questo programma: dopo il cambio nome o cartella va riscritto."""
+    """Attivo solo se punta a questo programma (registro o cartella Esecuzione automatica)."""
     if os.name != 'nt': return False
     import winreg
     try:
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY) as k:
-            return winreg.QueryValueEx(k, AUTOSTART_NAME)[0] == autostart_target()
-    except OSError: return False
+            if winreg.QueryValueEx(k, AUTOSTART_NAME)[0] == autostart_target(): return True
+    except OSError: pass
+    link = startup_link()
+    return bool(getattr(sys, 'frozen', False) and link and link.is_file())
+
+def _startup_link_set(enable: bool):
+    """Riserva: se il registro non si lascia scrivere, collegamento in Esecuzione automatica."""
+    link = startup_link()
+    if not link: raise OSError('Cartella Esecuzione automatica non trovata')
+    if not enable:
+        try: link.unlink()
+        except FileNotFoundError: pass
+        return
+    exe = sys.executable
+    ps = (f"$w=New-Object -ComObject WScript.Shell; $s=$w.CreateShortcut({_q(link)}); $s.TargetPath={_q(exe)}; $s.Arguments='--minimized';"
+          f" $s.WorkingDirectory={_q(Path(exe).parent)}; $s.IconLocation={_q(str(exe) + ',0')}; $s.Description='NEXAR'; $s.Save()")
+    subprocess.run(['powershell', '-NoProfile', '-Command', ps], capture_output=True, text=True, errors='replace', timeout=30, **_no_window())
+    if not link.is_file(): raise OSError('Collegamento di avvio non creato')
 
 def autostart_set(enable: bool):
     if os.name != 'nt': return
     import winreg
-    with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY, 0, winreg.KEY_SET_VALUE) as k:
-        if enable: winreg.SetValueEx(k, AUTOSTART_NAME, 0, winreg.REG_SZ, autostart_target())
-        for name in ((AUTOSTART_LEGACY,) if enable else (AUTOSTART_NAME, AUTOSTART_LEGACY)):
-            try: winreg.DeleteValue(k, name)
-            except FileNotFoundError: pass
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY, 0, winreg.KEY_SET_VALUE) as k:
+            if enable: winreg.SetValueEx(k, AUTOSTART_NAME, 0, winreg.REG_SZ, autostart_target())
+            for name in ((AUTOSTART_LEGACY,) if enable else (AUTOSTART_NAME, AUTOSTART_LEGACY)):
+                try: winreg.DeleteValue(k, name)
+                except FileNotFoundError: pass
+        if not enable and getattr(sys, 'frozen', False): _startup_link_set(False)
+    except OSError as ex:
+        if not getattr(sys, 'frozen', False): raise
+        logging.warning('Avvio con Windows nel registro non riuscito (%s): uso la cartella Esecuzione automatica', ex)
+        _startup_link_set(enable)
 
 def _keep(path):
     """Un percorso inserito a mano e ancora valido ha la precedenza sulla ricerca."""
@@ -512,12 +538,15 @@ def autoconfigure(config: dict, state: dict, allow_uac=False) -> list[dict]:
 
     if os.name == 'nt':
         # Solo il programma installato si iscrive all'avvio: una copia di prova non deve prenderne il posto.
-        if config.get('autostart', True) and getattr(sys, 'frozen', False) and not autostart_get():
+        wanted, err = config.get('autostart', True), ''
+        if wanted and getattr(sys, 'frozen', False) and not autostart_get():
             try: autostart_set(True)
-            except OSError as ex: logging.warning('Avvio automatico: %s', ex)
+            except OSError as ex: err = str(ex)[:120]; logging.warning('Avvio automatico: %s', ex)
         on = autostart_get()
+        why = ('Disattivato: accendilo qui sotto' if not wanted else 'Non riuscito: ' + err if err
+               else 'Si attiva dall\'app installata' if not getattr(sys, 'frozen', False) else 'Non attivo')
         report.append(item('autostart', 'Avvio con Windows', 'ok' if on else 'warn',
-                           'Parte da solo all\'accesso' if on else 'Disattivato'))
+                           'Parte da solo all\'accesso' if on else why))
         try:
             made = ensure_shortcuts(state)
             if made: logging.info('Icone NEXAR create/aggiornate: %s', ', '.join(made))
