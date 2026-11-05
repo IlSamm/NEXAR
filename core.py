@@ -21,6 +21,8 @@ import psutil
 import energy_model
 import gaming_boost
 import pc_power
+import procstop
+import apps_remote
 
 FROZEN = getattr(sys, 'frozen', False)
 INSTALL_DIR = Path(sys.executable).resolve().parent if FROZEN else Path(__file__).resolve().parent
@@ -207,6 +209,7 @@ class Control:
         self.power_plan = None
         self.booster = gaming_boost.Booster(config, state=self.state, save=self.save_state,
                                             notify=lambda m: self.notify(m), log=lambda m: self.log_event(m))
+        self.stopper = procstop.Stopper()
         self.gaming_owned = False      # Gaming acceso da NEXAR perché è partito un gioco
         self.gaming_prev = 'normal'
         self.gaming_declined = False   # l'utente è uscito da Gaming a gioco aperto: non riattivarlo
@@ -384,6 +387,8 @@ class Control:
                 if self.booster.active: self.booster.sample(self.telemetry())
                 self.auto_gaming(game, gaming)
             except Exception: logging.exception('Gaming Boost')
+            try: self.stopper_tick()
+            except Exception: logging.exception('Programmi inutili')
 
     def auto_gaming(self, game, gaming):
         now = time.monotonic()
@@ -400,6 +405,93 @@ class Control:
         elif now - self.game_gone >= 20:   # gioco chiuso da 20 s: si torna a com'era prima
             self.gaming_owned, self.game_gone = False, None
             if gaming: self.set_mode(self.gaming_prev if self.gaming_prev in MODES and self.gaming_prev != 'gaming' else 'normal', manual=False)
+
+    def stopper_tick(self):
+        """Gaming e AI ECO: chiude i programmi inutili (anche se ripartono) e in AI ECO mette lo sfondo in risparmio."""
+        if os.name != 'nt': return []
+        s, mode = self.booster.settings(), self.mode()
+        rules = s.get('eco_apps') if mode == 'eco' else s.get('apps') if mode == 'gaming' else {}
+        spare = self.config.get('auto_detect', {}).get('process_names') or []
+        closed = self.stopper.tick(mode, rules or {}, bool(s.get('stop_junk', True)), bool(s.get('eco_throttle', True)), spare=spare)
+        if closed:
+            self.log_event(('AI ECO' if mode == 'eco' else 'Gaming') + ': fermati ' + ', '.join(n.replace('.exe', '') for n in closed))
+        return closed
+
+    def startup_junk(self):
+        import optimizer
+        try: return procstop.startup_junk(optimizer.startup_items())
+        except Exception: return []
+
+    def startup_junk_off(self, elevate=None):
+        """Toglie dall'avvio di Windows i programmi inutili (si possono riattivare da Ottimizza → Avvio)."""
+        import optimizer
+        done = []
+        for it in self.startup_junk():
+            if it['admin'] and not elevate: continue
+            try: optimizer.set_startup(it['id'], False, elevate); done.append(it['name'])
+            except (ValueError, RuntimeError, OSError) as ex: logging.info('Avvio %s: %s', it['name'], ex)
+        msg = ('Tolti dall\'avvio: ' + ', '.join(done)) if done else 'Niente da togliere dall\'avvio'
+        self.log_event(msg)
+        return msg
+
+    # ---------- app del PC da aprire a distanza ----------
+    def remote_apps(self):
+        cfg = self.config.setdefault('remote_apps', None)
+        if cfg is None:   # prima volta: Claude e Codex, se installati
+            cfg = apps_remote.defaults(apps_remote.start_apps())
+            with self.lock: self.config['remote_apps'] = cfg; json_save(CONFIG_FILE, self.config)
+        return [a for a in cfg if isinstance(a, dict) and a.get('id')]
+
+    def apps_view(self, all_apps=False):
+        every = apps_remote.start_apps()
+        names = apps_remote.running_names()
+        pinned = []
+        for p in self.remote_apps():
+            a = apps_remote.find(p['id'], every) or {'id': p['id'], 'name': p.get('name', 'App'), 'exe': '', 'key': apps_remote.app_key(p['id'])}
+            pinned.append({'id': a['id'], 'name': a['name'], 'key': a['key'], 'running': apps_remote.is_running(a, names),
+                           'closable': bool(a.get('exe')), 'missing': apps_remote.find(p['id'], every) is None})
+        out = {'pinned': pinned}
+        if all_apps:
+            ids = {p['id'] for p in pinned}
+            out['available'] = [{'id': a['id'], 'name': a['name'], 'key': a['key'], 'pinned': a['id'] in ids} for a in every]
+        return out
+
+    def app_pin(self, app_id, pinned):
+        """Aggiunge o toglie un'app: solo app del menu Start di questo PC, niente percorsi scritti a mano."""
+        cur = self.remote_apps()
+        if pinned:
+            a = apps_remote.find(app_id)
+            if not a: raise ValueError('App non trovata sul PC')
+            if any(p['id'] == app_id for p in cur): return 'Già nell\'elenco'
+            if len(cur) >= apps_remote.MAX_PINNED: raise ValueError(f'Al massimo {apps_remote.MAX_PINNED} app')
+            cur = cur + [{'id': a['id'], 'name': a['name']}]; msg = a['name'] + ' aggiunta'
+        else:
+            cur = [p for p in cur if p['id'] != app_id]; msg = 'App tolta'
+        with self.lock: self.config['remote_apps'] = cur; json_save(CONFIG_FILE, self.config)
+        return msg
+
+    def app_open(self, app_id):
+        p = next((p for p in self.remote_apps() if p['id'] == app_id), None)
+        if not p: raise ValueError('Aggiungi prima l\'app all\'elenco')
+        apps_remote.launch(app_id)
+        name = (apps_remote.find(app_id) or p).get('name', 'App')
+        self.log_event('Aperta da remoto: ' + name)
+        return 'Apro ' + name
+
+    def app_close(self, app_id):
+        if not any(p['id'] == app_id for p in self.remote_apps()): raise ValueError('App non nell\'elenco')
+        a = apps_remote.find(app_id)
+        if not a: raise ValueError('App non trovata')
+        apps_remote.close(a)
+        self.log_event('Chiusa da remoto: ' + a['name'])
+        return 'Chiudo ' + a['name']
+
+    def app_icon(self, key):
+        if not re.fullmatch(r'[0-9a-f]{16}', key): return None
+        dest = DATA_DIR / 'icons' / f'app-{key}.png'
+        if dest.is_file(): return dest
+        a = next((a for a in apps_remote.start_apps() if a['key'] == key), None)
+        return dest if a and apps_remote.icon_png(a, dest) else None
 
     def launch_game(self, gid):
         if os.name != 'nt': raise RuntimeError('Disponibile solo su Windows')
@@ -425,7 +517,8 @@ class Control:
                 'history': self.booster.history()[:12], 'apps': gaming_boost.user_apps()[:40],
                 'fans': cfg.get('fans', {}).get('gaming_level', 'normal'), 'fans_enabled': bool(cfg.get('fans', {}).get('enabled')),
                 'rgb_color': cfg.get('rgb', {}).get('gaming_color', ''), 'rgb_enabled': bool(cfg.get('rgb', {}).get('enabled')),
-                'palette': self.rgb_palette()}
+                'palette': self.rgb_palette(), 'junk': procstop.JUNK, 'stopper': self.stopper.info(),
+                'startup_junk': self.startup_junk()}
 
     def save_boost_settings(self, new):
         new = dict(new)
@@ -541,6 +634,103 @@ class Control:
         power('/setacvalueindex', guid, 'SUB_SLEEP', 'STANDBYIDLE',0)
         power('/setacvalueindex', guid, 'SUB_SLEEP', 'HIBERNATEIDLE',0)
         power('/setactive',guid)
+
+    CONN_RETRY = 120   # secondi fra due tentativi sullo stesso collegamento
+
+    def fans_task_now(self):
+        """L'attività di Fan Control che rimette le ventole come le avevi lasciate."""
+        import discovery
+        level = self.state.get('fans_level') or 'normal'
+        if self.state.get('fans_custom') and self.state.get('fans_slot') in discovery.FAN_MANUAL: key = self.state['fans_slot']
+        elif level == 'off': key = 'off_pump' if self.state.get('fans_pump') else 'off'
+        else: key = level if level in discovery.FAN_TASKS else 'normal'
+        return discovery.FAN_TASKS[key]
+
+    def connections_check(self, tries, age, now=None):
+        """Sensori, Fan Control e OpenRGB devono funzionare senza premere "Collega".
+        All'accensione partono prima che la rete sia pronta: il server dei sensori resta spento e va riavviato.
+        Restituisce lo stato di ognuno (True = collegato)."""
+        import discovery
+        now = time.monotonic() if now is None else now
+        def due(k): return now - tries.get(k, -1e9) >= self.CONN_RETRY
+        state = {}
+        if discovery.find_lhm():
+            ok = discovery.sensors_online()
+            if not ok and age >= 45 and due('sensors') and discovery.task_exists(discovery.LHM_TASK):
+                tries['sensors'] = now
+                discovery.lhm_enable_webserver(discovery.find_lhm())
+                discovery.task_restart(discovery.LHM_TASK)
+                logging.info('Collegamenti: sensori riavviati')
+            state['sensors'] = ok
+        fans = self.config.get('fans', {})
+        if fans.get('enabled') and Path(fans.get('fancontrol_exe', '')).is_file():
+            ok = discovery.process_running('FanControl.exe')
+            task = self.fans_task_now()
+            if not ok and due('fans') and discovery.task_exists(task):
+                tries['fans'] = now
+                cmd(['schtasks', '/run', '/tn', task], 15)
+                logging.info('Collegamenti: Fan Control avviato (%s)', task)
+            state['fans'] = ok
+        rgb = self.config.get('rgb', {})
+        if rgb.get('enabled') and rgb.get('openrgb_exe'):
+            ok = discovery.port_open(discovery.OPENRGB_PORT)
+            if not ok and age >= 20 and due('rgb') and discovery.task_exists(discovery.OPENRGB_TASK):
+                tries['rgb'] = now
+                discovery.task_restart(discovery.OPENRGB_TASK)
+                logging.info('Collegamenti: OpenRGB riavviato')
+            state['rgb'] = ok
+        self.refresh_integrations(state)
+        return state
+
+    CONN_OK = {'sensors': 'Temperature e RPM collegati', 'rgb': 'Server RGB collegato', 'fans': None}
+
+    def refresh_integrations(self, online):
+        """La pagina Collegamenti segue lo stato vero: niente "Avvio in corso…" rimasto lì dall'accensione."""
+        with self.lock:
+            out = []
+            for it in self.integrations or []:
+                it = dict(it); k = it.get('key')
+                if k in online and online[k] and it.get('level') == 'warn' and self.CONN_OK.get(k):
+                    it.update(level='ok', detail=self.CONN_OK[k])
+                elif k == 'sensors' and k in online and not online[k] and it.get('level') == 'ok':
+                    it.update(level='warn', detail='Sensori non raggiungibili: li riavvio da solo')
+                out.append(it)
+            self.integrations = out
+
+    def connections_loop(self, stop_event):
+        """Ogni 15 s nei primi 10 minuti (l'accensione), poi ogni minuto."""
+        t0, tries = time.monotonic(), {}
+        while not stop_event.wait(15 if time.monotonic() - t0 < 600 else 60):
+            try: self.connections_check(tries, time.monotonic() - t0)
+            except Exception: logging.exception('Collegamenti automatici')
+
+    def boot_report(self, notify, webapp=lambda: True, stop_event=None, wait=180, step=10):
+        """Dopo l'accensione: aspetta che tutto sia collegato (massimo 3 minuti) e lo dice su Telegram."""
+        import discovery
+        names = {'sensors': 'sensori', 'fans': 'ventole', 'rgb': 'luci'}
+        t0 = time.monotonic(); state = {}
+        while True:
+            try: state = self.connections_state()
+            except Exception: state = {}
+            if (all(state.values()) and webapp()) or time.monotonic() - t0 >= wait: break
+            if (stop_event.wait(step) if stop_event else time.sleep(step)): return None
+        good = [names[k] for k, v in state.items() if v]
+        bad = [names[k] for k, v in state.items() if not v]
+        msg = '🟢 PC acceso. NEXAR è attivo' + (' · collegati: ' + ', '.join(good) if good else '')
+        if bad: msg += ' · ⚠️ non ancora pronti: ' + ', '.join(bad) + ' (riprovo da solo)'
+        notify(msg)
+        return msg
+
+    def connections_state(self):
+        """Solo lettura: cosa risponde adesso."""
+        import discovery
+        st = {}
+        if discovery.find_lhm(): st['sensors'] = discovery.sensors_online()
+        fans = self.config.get('fans', {})
+        if fans.get('enabled') and Path(fans.get('fancontrol_exe', '')).is_file(): st['fans'] = discovery.process_running('FanControl.exe')
+        rgb = self.config.get('rgb', {})
+        if rgb.get('enabled') and rgb.get('openrgb_exe'): st['rgb'] = discovery.port_open(discovery.OPENRGB_PORT)
+        return st
 
     def discover(self, allow_uac=False):
         """Ricerca automatica di OpenRGB, Fan Control, sensori e GPU; salva i percorsi trovati."""

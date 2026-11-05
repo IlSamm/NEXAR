@@ -266,9 +266,15 @@
       <div class="swatches game-swatches" id="game-rgb"></div>
      </section>
      <section class="card">
-      <div class="card-head"><div><h3>App in background</h3><p>Cosa fare di ogni app mentre giochi</p></div><button class="icon-btn" type="button" id="boost-reload" aria-label="Aggiorna elenco"><svg class="i"><use href="#i-refresh"/></svg></button></div>
+      <div class="card-head"><div><h3>App da fermare</h3><p id="stop-sub">Cosa fare di ogni app in Gaming e in AI ECO</p></div><button class="icon-btn" type="button" id="boost-reload" aria-label="Aggiorna elenco"><svg class="i"><use href="#i-refresh"/></svg></button></div>
+      <div class="seg3 wide stop-mode" id="stop-mode" role="group" aria-label="Modalità"><button type="button" data-sm="gaming" class="selected"><svg class="i"><use href="#i-game"/></svg>In Gaming</button><button type="button" data-sm="eco"><svg class="i"><use href="#i-leaf"/></svg>In AI ECO</button></div>
+      <div class="boost-opts one stop-opts">
+       <label class="switch-row"><span class="opt-ico c-red"><svg class="i"><use href="#i-x"/></svg></span><div><b>Ferma i programmi inutili</b><small>Aggiornamenti, assistenti, overlay, webcam virtuali: chiusi, e richiusi se ripartono</small></div><button class="toggle" type="button" data-boost="stop_junk" role="switch"><span></span></button></label>
+       <label class="switch-row" id="stop-eco-row" hidden><span class="opt-ico c-teal"><svg class="i"><use href="#i-leaf"/></svg></span><div><b>Sfondo in risparmio energia</b><small>Ciò che gira senza finestra va in modalità efficienza di Windows (Codex e Claude no)</small></div><button class="toggle" type="button" data-boost="eco_throttle" role="switch"><span></span></button></label>
+      </div>
+      <div class="stop-startup" id="stop-startup" hidden><span class="opt-ico c-amber"><svg class="i"><use href="#i-power"/></svg></span><div><b id="stop-startup-title">—</b><small id="stop-startup-sub">—</small></div><button class="btn small" type="button" id="stop-startup-btn">Togli dall'avvio</button></div>
       <div class="boost-apps" id="boost-apps"><p class="muted">Caricamento…</p></div>
-      <p class="fineprint">"Chiudi" è gentile, come la X della finestra: se un programma ha lavoro da salvare resta aperto. Sistema, NEXAR, launcher e overlay non compaiono.</p>
+      <p class="fineprint">"Chiudi" prima chiede gentilmente, come la X della finestra; i programmi inutili che non rispondono vengono chiusi del tutto. "Rallenta" li lascia aperti ma con poca CPU. Sistema, NEXAR, driver e collegamenti non compaiono.</p>
      </section>
     </div>
 
@@ -434,6 +440,10 @@
      <button class="pact pa-hibernate" data-power="hibernate" id="pw-hibernate" hidden><span class="pa-ico"><svg class="i"><use href="#i-disk"/></svg></span><b>Iberna</b><small>0 W, riprende da dove eri</small></button>
      <button class="pact pa-lock" data-power="lock"><span class="pa-ico"><svg class="i"><use href="#i-lock"/></svg></span><b>Blocca</b><small>Schermata di accesso</small></button>
     </div>
+    <section class="card rapps-card">
+     <div class="card-head"><div><h3>App sul PC</h3><p id="rapps-sub">Aprile da qui, anche da Telegram fuori casa</p></div><button class="btn small" type="button" id="rapps-add"><svg class="i"><use href="#i-sliders"/></svg>Modifica</button></div>
+     <div class="rapps" id="rapps"><p class="muted">Caricamento…</p></div>
+    </section>
     <div class="two-col pw-cols">
     <section class="card">
      <div class="card-head"><div><h3>Programma</h3><p>Il PC si spegne da solo, anche se chiudi l'app</p></div></div>
@@ -681,7 +691,7 @@
    <section class="page" id="page-more">
     <div class="more-list">
      <button data-view="energy"><span class="more-ico c-cyan"><svg class="i"><use href="#i-plug"/></svg></span><div><b>Consumi</b><small>Watt alla presa, kWh e costi</small></div><svg class="i chev"><use href="#i-chev"/></svg></button>
-     <button data-view="power"><span class="more-ico c-red"><svg class="i"><use href="#i-power"/></svg></span><div><b>Accensione</b><small>Spegni, riavvia, sospendi, timer</small></div><svg class="i chev"><use href="#i-chev"/></svg></button>
+     <button data-view="power"><span class="more-ico c-red"><svg class="i"><use href="#i-power"/></svg></span><div><b>Accensione e app</b><small>Spegni, riavvia, timer, apri app sul PC</small></div><svg class="i chev"><use href="#i-chev"/></svg></button>
      <button data-view="links"><span class="more-ico c-cyan"><svg class="i"><use href="#i-link"/></svg></span><div><b>Collegamenti</b><small id="more-links">Programmi collegati</small></div><svg class="i chev"><use href="#i-chev"/></svg></button>
      <button data-view="settings"><span class="more-ico c-violet"><svg class="i"><use href="#i-sliders"/></svg></span><div><b>Impostazioni</b><small>AI ECO, energia, Telegram, registro</small></div><svg class="i chev"><use href="#i-chev"/></svg></button>
     </div>
@@ -699,6 +709,11 @@
  </nav>
 </div>
 
+<dialog class="sheet app-sheet" id="app-sheet" aria-labelledby="as-title">
+ <div class="as-head"><div><h3 id="as-title">Le tue app</h3><p>Tocca per aggiungerle o toglierle: compaiono in Accensione e nell'app di Telegram.</p></div><button class="icon-btn" type="button" id="as-close" aria-label="Chiudi"><svg class="i"><use href="#i-x"/></svg></button></div>
+ <label class="search as-search"><svg class="i"><use href="#i-search"/></svg><input id="as-search" type="search" placeholder="Cerca tra le app del PC" autocomplete="off"></label>
+ <div class="as-list" id="as-list"><p class="muted">Cerco le app…</p></div>
+</dialog>
 <dialog class="sheet fan-sheet" id="fan-sheet" aria-labelledby="fs-name">
  <div class="fs-head">
   <div class="fs-dial"><svg viewBox="0 0 120 120"><circle class="fs-track" cx="60" cy="60" r="52" pathLength="100"/><circle class="fs-fill" id="fs-arc" cx="60" cy="60" r="52" pathLength="100"/></svg><svg class="i fs-spin" id="fs-spin"><use href="#i-fan"/></svg></div>

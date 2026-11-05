@@ -165,6 +165,7 @@ function navigate(view){
  if(view==='optimize')loadOptimize();
  if(view==='gaming')loadGaming(false,true);
  if(view==='energy')loadStats();
+ if(view==='power')loadApps();
  const tab=['power','links','settings','energy','lights'].includes(view)&&!document.querySelector(`.tabbar [data-view="${view}"]`)?'more':view;
  document.querySelectorAll('.rail-nav [data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===view));
  document.querySelectorAll('.tabbar [data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===tab));
@@ -1669,7 +1670,7 @@ const FAN_BAR={off:0,off_pump:8,eco:35,normal:60,max:100};
 const DEMO_GAMING={boost:{active:true,game:'Hollow Knight',boosted:['hollow_knight.exe'],lowered:['discord.exe'],closed:['chrome.exe'],
   tweaks:['Modalità gioco di Windows','Registrazione Xbox in background spenta'],running:{id:'steam-367520',name:'Hollow Knight',store:'Steam'},
   session:{game:'Hollow Knight',gid:'steam-367520',start:Date.now()/1000-2580,elapsed:2580,cpu_temp_max:71,gpu_temp_max:66,cpu_temp_avg:63,gpu_temp_avg:60,cpu_avg:31,gpu_avg:74,kwh:.21,watts_avg:288},
-  settings:{game_priority:true,game_mode:true,no_dvr:true,reopen:true,auto:true,mouse:false,apps:{'discord.exe':'lower','chrome.exe':'close'},hidden:[]}},
+  settings:{game_priority:true,game_mode:true,no_dvr:true,reopen:true,auto:true,mouse:false,apps:{'discord.exe':'lower','chrome.exe':'close'},eco_apps:{'chrome.exe':'lower'},stop_junk:true,eco_throttle:true,hidden:[]}},
  games:[{id:'steam-367520',name:'Hollow Knight',store:'Steam',size:5.2e9,last:Date.now()/1000-3000,playtime:9600,cover:false},
   {id:'steam-526870',name:'Satisfactory',store:'Steam',size:3e10,last:Date.now()/1000-90000,playtime:2400,cover:false},
   {id:'riot-valorant',name:'VALORANT',store:'Riot',size:0,last:Date.now()/1000-400000,playtime:3700,cover:false},
@@ -1680,7 +1681,11 @@ const DEMO_GAMING={boost:{active:true,game:'Hollow Knight',boosted:['hollow_knig
   {id:'steam-739630',name:'Phasmophobia',store:'Steam',size:2e10,last:1778601360,playtime:0,cover:false}],
  history:[{game:'Hollow Knight',gid:'steam-367520',start:Date.now()/1000-90000,elapsed:4320,cpu_temp_max:74,gpu_temp_max:68,kwh:.34,cost:.1,watts_avg:283},
   {game:'VALORANT',gid:'riot-valorant',start:Date.now()/1000-400000,elapsed:3700,cpu_temp_max:79,gpu_temp_max:71,kwh:.31,cost:.09,watts_avg:301}],
- apps:[{name:'chrome.exe',bytes:1.2e9,count:12,game:false},{name:'discord.exe',bytes:4e8,count:5,game:false},{name:'spotify.exe',bytes:2.6e8,count:4,game:false}],
+ apps:[{name:'chrome.exe',bytes:1.2e9,count:12,game:false},{name:'discord.exe',bytes:4e8,count:5,game:false},{name:'overwolf.exe',bytes:3.1e8,count:6,game:false},
+  {name:'spotify.exe',bytes:2.6e8,count:4,game:false},{name:'browser_assistant.exe',bytes:9e7,count:2,game:false},{name:'manycam.exe',bytes:1.4e8,count:1,game:false}],
+ junk:{'overwolf.exe':'Overwolf','browser_assistant.exe':'assistente del browser Opera','manycam.exe':'webcam virtuale ManyCam'},
+ stopper:{mode:'gaming',stopped:['overwolf.exe','browser_assistant.exe'],throttled:0},
+ startup_junk:[{id:'x1',name:'Overwolf',why:'Overwolf'},{id:'x2',name:'Opera GX Browser Assistant',why:'assistente del browser Opera'}],
  fans:'normal',fans_enabled:true,rgb_color:'#ff3cc8',rgb_enabled:true,palette:statusDemo.rgb_palette};
 function hue(t){let h=0;for(const c of String(t))h=(h*31+c.charCodeAt(0))%360;return h;}
 function initials(n){return n.replace(/[^\p{L}\p{N} ]/gu,'').split(/\s+/).filter(Boolean).slice(0,2).map(w=>w[0]).join('').toUpperCase()||'?';}
@@ -1773,20 +1778,96 @@ function renderLibrary(animate=false){
   grid.append(card);
  });
 }
+let stopMode='gaming';
 function renderBoostApps(d){
- const box=$('boost-apps');box.replaceChildren();const chosen=d.boost?.settings?.apps||{};
+ // Una scelta per app e per modalità. I programmi noti come inutili partono già su "Chiudi" (Lascia = "keep").
+ const s=d.boost?.settings||{},key=stopMode==='eco'?'eco_apps':'apps',chosen=s[key]||{},junk=d.junk||{},junkOn=s.stop_junk!==false;
+ document.querySelectorAll('#stop-mode button').forEach(b=>b.classList.toggle('selected',b.dataset.sm===stopMode));
+ $('stop-eco-row').hidden=stopMode!=='eco';
+ const st=d.stopper||{},live=st.mode===stopMode&&(st.stopped||[]).length;
+ $('stop-sub').textContent=live?`Adesso: fermati ${st.stopped.map(n=>n.replace(/\.exe$/i,'')).join(', ')}`+(st.throttled?` · ${st.throttled} in risparmio`:'')
+  :stopMode==='eco'?'Cosa fare di ogni app quando sei in AI ECO':'Cosa fare di ogni app mentre giochi';
+ const sj=d.startup_junk||[];$('stop-startup').hidden=!sj.length;
+ if(sj.length){$('stop-startup-title').textContent=`${sj.length} ${sj.length>1?'programmi inutili partono':'programma inutile parte'} con Windows`;
+  $('stop-startup-sub').textContent=sj.map(j=>j.name).join(', ')+' · si riattivano quando vuoi da Ottimizza → Avvio';}
+ const box=$('boost-apps');box.replaceChildren();
  const apps=(d.apps||[]).filter(a=>!a.game);
  Object.keys(chosen).forEach(n=>{if(!apps.some(a=>a.name===n))apps.push({name:n,bytes:0,count:0,closed:true});});
+ apps.sort((a,b)=>(!!junk[b.name]-!!junk[a.name])||(b.bytes-a.bytes));
  if(!apps.length){box.append(el('p','muted','Nessuna app in background da gestire.'));return;}
  apps.forEach(a=>{
-  const row=el('div','boost-app');const t=el('div');
-  t.append(el('b','',a.name.replace(/\.exe$/i,'')),el('small','',a.closed?'non aperta ora':`${bytes(a.bytes)} di RAM`+(a.count>1?` · ${a.count} processi`:'')));
+  const isJunk=!!junk[a.name],cur=chosen[a.name]==='keep'?'':chosen[a.name]||(isJunk&&junkOn?'close':'');
+  const row=el('div','boost-app'+(isJunk?' junk':''));const t=el('div');
+  const label=isJunk?junk[a.name].charAt(0).toUpperCase()+junk[a.name].slice(1):a.name.replace(/\.exe$/i,'');
+  const nm=el('b','',label);if(isJunk)nm.append(el('em','pill warn','inutile'));
+  t.append(nm,el('small','',(isJunk?a.name.replace(/\.exe$/i,'')+' · ':'')+(a.closed?'non aperta ora':`${bytes(a.bytes)} di RAM`+(a.count>1?` · ${a.count} processi`:''))));
   const seg=el('div','seg3');
-  [['','Lascia'],['lower','Rallenta'],['close','Chiudi']].forEach(([v,l])=>{const b=el('button',v,l);b.type='button';b.classList.toggle('selected',(chosen[a.name]||'')===v);
-   b.addEventListener('click',()=>{const next=Object.fromEntries(Object.entries(chosen).filter(([k])=>k!==a.name));if(v)next[a.name]=v;saveGaming({apps:next});});seg.append(b);});
+  [['','Lascia'],['lower','Rallenta'],['close','Chiudi']].forEach(([v,l])=>{const b=el('button',v,l);b.type='button';b.classList.toggle('selected',cur===v);
+   b.addEventListener('click',()=>{const next=Object.fromEntries(Object.entries(chosen).filter(([k])=>k!==a.name));
+    if(v)next[a.name]=v;else if(isJunk&&junkOn)next[a.name]='keep';saveGaming({[key]:next});});seg.append(b);});
   row.append(t,seg);box.append(row);
  });
 }
+document.querySelectorAll('#stop-mode button').forEach(b=>b.addEventListener('click',()=>{stopMode=b.dataset.sm;if(gameData)renderBoostApps(gameData);}));
+$('stop-startup-btn').addEventListener('click',async()=>{if(demo){notify('Anteprima: comando non attivo.');return;}
+ try{const r=await req('/api/gaming/startup-junk','POST',{});notify('✓ '+r.message);await loadGaming();}catch(ex){notify('⚠ '+ex.message,true);}});
+
+/* ---------- app sul PC da aprire a distanza ---------- */
+let rapps=null;const appIcons=new Map();
+function appIconUrl(k){if(appIcons.has(k))return appIcons.get(k);
+ const p=(async()=>{if(demo)return '';try{const r=await fetch(`/api/apps/icon/${k}`,{headers:tgInit?{'X-TG-Init-Data':tgInit}:{'X-PC-ECO-Key':key}});
+  return r.ok?URL.createObjectURL(await r.blob()):'';}catch(e){return '';}})();appIcons.set(k,p);return p;}
+function appIco(a,cls){const ic=el('span',cls,initials(a.name));ic.style.setProperty('--h',hue(a.name));
+ appIconUrl(a.key).then(u=>{if(!u)return;const im=el('img');im.alt='';im.onload=()=>{ic.textContent='';ic.append(im);ic.classList.add('img');};im.src=u;});return ic;}
+const DEMO_APPS={pinned:[{id:'Claude_x!Claude',name:'Claude',key:'a1',running:true,closable:false},{id:'OpenAI.Codex_x!App',name:'Codex',key:'a2',running:false,closable:false},
+ {id:'steam',name:'Steam',key:'a3',running:false,closable:true},{id:'spotify',name:'Spotify',key:'a4',running:true,closable:false}],
+ available:['Claude','Codex','Steam','Spotify','Discord','Google Chrome','Visual Studio Code','Terminale','OBS Studio','Blocco note'].map((n,i)=>({id:'d'+i,name:n,key:'b'+i,pinned:i<4}))};
+async function loadApps(all=false){
+ if(demo){rapps=DEMO_APPS;renderApps();return rapps;}
+ try{rapps=await req('/api/apps'+(all?'?all=true':''));renderApps();return rapps;}catch(ex){$('rapps').replaceChildren(el('p','muted','App non disponibili: '+ex.message));}
+}
+function renderApps(){
+ const box=$('rapps'),list=rapps?.pinned||[];box.replaceChildren();
+ $('rapps-sub').textContent=list.length?`${list.filter(a=>a.running).length} aperte su ${list.length} · tocca per aprire, anche da Telegram`:'Aggiungi le app che vuoi aprire da qui';
+ list.forEach((a,i)=>{
+  const t=el('div','rapp'+(a.running?' on':'')+(a.missing?' missing':''));t.style.setProperty('--i',i);
+  const open=el('button','rapp-open');open.type='button';open.setAttribute('aria-label',(a.running?'Porta avanti ':'Apri ')+a.name);
+  open.append(appIco(a,'rapp-ico'),el('b','',a.name),el('small','',a.missing?'non più installata':a.running?'aperta':'chiusa'));
+  open.disabled=!!a.missing;open.addEventListener('click',()=>appOpen(a,t));t.append(open);
+  if(a.running&&a.closable){const x=el('button','rapp-x');x.type='button';x.title='Chiudi '+a.name;x.setAttribute('aria-label',x.title);x.append(icon('x'));
+   x.addEventListener('click',e=>{e.stopPropagation();appClose(a);});t.append(x);}
+  box.append(t);});
+ const add=el('button','rapp rapp-add');add.type='button';add.append(el('span','rapp-ico plus','+'),el('b','','Aggiungi'),el('small','','dal menu Start'));
+ add.addEventListener('click',openAppSheet);box.append(add);
+}
+async function appOpen(a,tile){
+ tile?.classList.add('launch');setTimeout(()=>tile?.classList.remove('launch'),1400);
+ if(demo){notify('✓ Apro '+a.name);return;}
+ try{const r=await req('/api/apps/open','POST',{id:a.id});notify('🚀 '+r.message);setTimeout(()=>loadApps(),2500);}catch(ex){notify('⚠ '+ex.message,true);}
+}
+async function appClose(a){
+ if(demo){notify('✓ Chiudo '+a.name);return;}
+ try{const r=await req('/api/apps/close','POST',{id:a.id});notify('✓ '+r.message);setTimeout(()=>loadApps(),2000);}catch(ex){notify('⚠ '+ex.message,true);}
+}
+async function openAppSheet(){
+ const d=$('app-sheet');$('as-search').value='';$('as-list').replaceChildren(el('p','muted','Cerco le app del PC…'));if(!d.open)d.showModal();
+ await loadApps(true);renderAppSheet();
+}
+function renderAppSheet(){
+ const q=$('as-search').value.trim().toLowerCase(),box=$('as-list'),all=(rapps?.available||[]).filter(a=>!q||a.name.toLowerCase().includes(q));
+ box.replaceChildren();if(!all.length){box.append(el('p','muted',q?'Nessuna app con questo nome.':'Nessuna app trovata nel menu Start.'));return;}
+ [...all.filter(a=>a.pinned),...all.filter(a=>!a.pinned)].slice(0,120).forEach(a=>{
+  const row=el('button','as-row'+(a.pinned?' on':''));row.type='button';row.setAttribute('aria-pressed',a.pinned?'true':'false');
+  const chk=el('span','as-chk');if(a.pinned)chk.append(icon('check'));else chk.textContent='+';row.append(appIco(a,'as-ico'),el('b','',a.name),chk);
+  row.addEventListener('click',async()=>{
+   if(demo){a.pinned=!a.pinned;DEMO_APPS.pinned=a.pinned?[...DEMO_APPS.pinned,{...a,running:false}]:DEMO_APPS.pinned.filter(p=>p.name!==a.name);renderAppSheet();renderApps();return;}
+   try{await req('/api/apps/pin','POST',{id:a.id,pinned:!a.pinned});await loadApps(true);renderAppSheet();}catch(ex){notify('⚠ '+ex.message,true);}});
+  box.append(row);});
+}
+$('rapps-add').addEventListener('click',openAppSheet);
+$('as-search').addEventListener('input',renderAppSheet);
+$('as-close').addEventListener('click',()=>$('app-sheet').close());
+$('app-sheet').addEventListener('click',e=>{if(e.target===e.currentTarget)$('app-sheet').close();});
 function renderHistory(list){
  const box=$('game-history');box.replaceChildren();
  if(!list.length){$('hist-sub').textContent='Durata, temperature massime e consumo di ogni sessione';box.append(el('p','muted','Ancora nessuna partita: la prima comparirà qui.'));return;}

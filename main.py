@@ -59,11 +59,14 @@ async def lifespan(app: FastAPI):
     t8 = threading.Thread(target=controller.boost_loop,args=(stop,),daemon=True,name='gaming-boost')
     t9 = threading.Thread(target=controller.optimize_loop,args=(stop,),daemon=True,name='auto-clean')
     threading.Thread(target=controller.net_loop,args=(stop,),daemon=True,name='auto-net').start()
+    threading.Thread(target=controller.connections_loop,args=(stop,),daemon=True,name='connections').start()
     t1.start();t2.start();t3.start();t4.start();t5.start();t6.start();t7.start();t8.start();t9.start()
     updater.announce()
     # Avviso "PC acceso" solo dopo un avvio vero di Windows, non a ogni riapertura dell'app.
     import psutil
-    if time.time() - psutil.boot_time() < 900: bot.notify('🟢 PC acceso. NEXAR è attivo.')
+    # Il messaggio arriva quando sensori, ventole e luci sono collegati (o dopo 3 minuti, dicendo cosa manca).
+    if time.time() - psutil.boot_time() < 900:
+        threading.Thread(target=controller.boot_report,args=(bot.notify,lambda: bool(bot.webapp_url),stop),daemon=True,name='boot-report').start()
     yield
     stop.set()
 
@@ -326,6 +329,9 @@ class BoostSettings(BaseModel):
     auto: bool | None = None
     mouse: bool | None = None
     apps: dict[str, str] | None = None
+    eco_apps: dict[str, str] | None = None
+    stop_junk: bool | None = None
+    eco_throttle: bool | None = None
     hidden: list[str] | None = None
     fans: str | None = None
     rgb_color: str | None = None
@@ -336,6 +342,37 @@ def gaming_settings(data: BoostSettings):
 
 class GameLaunch(BaseModel):
     id: str
+@app.post('/api/gaming/startup-junk',dependencies=[Depends(authorized)])
+def gaming_startup_junk(request: Request):
+    import discovery
+    return {'ok':True,'message':controller.startup_junk_off(None if is_remote(request) else discovery.run_elevated)}
+
+class AppId(BaseModel):
+    id: str
+class AppPin(BaseModel):
+    id: str
+    pinned: bool
+@app.get('/api/apps',dependencies=[Depends(authorized)])
+def apps_list(all: bool = False):
+    return controller.apps_view(all)
+@app.post('/api/apps/open',dependencies=[Depends(authorized)])
+def apps_open(data: AppId):
+    try: return {'ok':True,'message':controller.app_open(data.id)}
+    except (ValueError,OSError) as ex: raise HTTPException(400,str(ex))
+@app.post('/api/apps/close',dependencies=[Depends(authorized)])
+def apps_close(data: AppId):
+    try: return {'ok':True,'message':controller.app_close(data.id)}
+    except (ValueError,OSError) as ex: raise HTTPException(400,str(ex))
+@app.post('/api/apps/pin',dependencies=[Depends(authorized)])
+def apps_pin(data: AppPin):
+    try: return {'ok':True,'message':controller.app_pin(data.id,data.pinned)}
+    except ValueError as ex: raise HTTPException(400,str(ex))
+@app.get('/api/apps/icon/{key}',dependencies=[Depends(authorized)])
+def apps_icon(key: str):
+    dest = controller.app_icon(key)
+    if not dest: raise HTTPException(404,'Nessuna icona')
+    return FileResponse(dest, media_type='image/png', headers={'Cache-Control':'private, max-age=86400'})
+
 @app.post('/api/gaming/launch',dependencies=[Depends(authorized)])
 def gaming_launch(data: GameLaunch):
     try: return {'ok':True,'message':controller.launch_game(data.id)}

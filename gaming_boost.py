@@ -45,8 +45,9 @@ TWEAKS = {
     'no_dvr': ('Registrazione Xbox in background spenta', 'HKCU', r'System\GameConfigStore', 'GameDVR_Enabled', 0, 'no_dvr'),
     'no_capture': ('Acquisizione Game Bar spenta', 'HKCU', r'Software\Microsoft\Windows\CurrentVersion\GameDVR', 'AppCaptureEnabled', 0, 'no_dvr'),
 }
-OPTIONS = ('game_priority', 'game_mode', 'no_dvr', 'reopen', 'auto', 'mouse')
-DEFAULTS = {'game_priority': True, 'game_mode': True, 'no_dvr': True, 'reopen': True, 'auto': True, 'mouse': False, 'apps': {}, 'hidden': []}
+OPTIONS = ('game_priority', 'game_mode', 'no_dvr', 'reopen', 'auto', 'mouse', 'stop_junk', 'eco_throttle')
+DEFAULTS = {'game_priority': True, 'game_mode': True, 'no_dvr': True, 'reopen': True, 'auto': True, 'mouse': False, 'apps': {}, 'hidden': [],
+            'eco_apps': {}, 'stop_junk': True, 'eco_throttle': True}
 HIGH, BELOW = (psutil.HIGH_PRIORITY_CLASS, psutil.BELOW_NORMAL_PRIORITY_CLASS) if os.name == 'nt' else (-5, 5)
 PROGRAMDATA = Path(os.environ.get('PROGRAMDATA', r'C:\ProgramData'))
 
@@ -360,15 +361,16 @@ class Booster:
             if k in new:
                 if type(new[k]) is not bool: raise ValueError(f'{k}: true/false')
                 cur[k] = new[k]
-        if 'apps' in new:
-            apps = new['apps']
-            if not isinstance(apps, dict) or len(apps) > 80: raise ValueError('apps non valido')
+        for key in ('apps', 'eco_apps'):   # scelte per app in Gaming e in AI ECO ("keep" = lascia anche se inutile)
+            if key not in new: continue
+            apps = new[key]
+            if not isinstance(apps, dict) or len(apps) > 80: raise ValueError(key + ' non valido')
             clean = {}
             for name, act in apps.items():
                 name = str(name).lower()
-                if act not in ('close', 'lower') or name in PROTECTED or not name.endswith('.exe') or len(name) > 80: continue
+                if act not in ('close', 'lower', 'keep') or name in PROTECTED or not name.endswith('.exe') or len(name) > 80: continue
                 clean[name] = act
-            cur['apps'] = clean
+            cur[key] = clean
         if 'hidden' in new:
             hidden = new['hidden']
             if not isinstance(hidden, list) or len(hidden) > 200: raise ValueError('hidden non valido')

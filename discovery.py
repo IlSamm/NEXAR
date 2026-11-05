@@ -126,6 +126,21 @@ def lhm_enable_webserver(exe: str) -> bool:
         logging.warning('Config LibreHardwareMonitor non scrivibile: %s', ex)
         return False
 
+def task_restart(name: str) -> bool:
+    """Riavvia un'attività di NEXAR senza UAC: la chiude (se gira) e la rilancia."""
+    if os.name != 'nt' or not task_exists(name): return False
+    subprocess.run(['schtasks', '/end', '/tn', name], capture_output=True, **_no_window())
+    return subprocess.run(['schtasks', '/run', '/tn', name], capture_output=True, **_no_window()).returncode == 0
+
+def process_running(exe_name: str) -> bool:
+    import psutil
+    low = exe_name.lower()
+    for p in psutil.process_iter(['name']):
+        try:
+            if (p.info['name'] or '').lower() == low: return True
+        except Exception: continue
+    return False
+
 def task_exists(name=LHM_TASK) -> bool:
     if os.name != 'nt': return False
     r = subprocess.run(['schtasks', '/query', '/tn', name], capture_output=True, **_no_window())
@@ -496,7 +511,8 @@ def autoconfigure(config: dict, state: dict, allow_uac=False) -> list[dict]:
         report.append(item('tunnel', 'App Telegram', 'missing', 'Serve Cloudflare Tunnel per aprire la dashboard dentro Telegram', True))
 
     if os.name == 'nt':
-        if config.get('autostart', True) and not autostart_get():
+        # Solo il programma installato si iscrive all'avvio: una copia di prova non deve prenderne il posto.
+        if config.get('autostart', True) and getattr(sys, 'frozen', False) and not autostart_get():
             try: autostart_set(True)
             except OSError as ex: logging.warning('Avvio automatico: %s', ex)
         on = autostart_get()
