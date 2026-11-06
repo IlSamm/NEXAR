@@ -119,16 +119,125 @@ while True:
         time.sleep(10)
 '''
 
-def relay_compose(token, user_id, mac, ip, broadcast):
-    if not (token and user_id): raise ValueError('Collega prima Telegram')
-    magic_packet(mac)
-    service = {
-        'image': 'python:3.12-alpine', 'container_name': 'nexar-accensione', 'restart': 'unless-stopped',
-        # La rete dell'host serve per il broadcast Wake-on-LAN nella rete di casa.
-        'network_mode': 'host',
-        'environment': {'BOT_TOKEN': token, 'USER_ID': str(user_id), 'PC_MAC': mac, 'PC_IP': ip, 'BROADCAST': broadcast},
-        'command': ['python', '-u', '-c', RELAY.strip()],
-    }
+# ---------- ponte su Umbrel per il Mac (via Tailscale) ----------
+# Il Mac apre http://umbrel:8790 (nome Tailscale di Umbrel): il ponte inoltra tutto al PC sulla rete di casa.
+# Se il PC è spento risponde con una pagina "Accendi il PC" (Wake-on-LAN) e si ricarica da sola quando NEXAR torna.
+# Accetta solo indirizzi Tailscale (100.64.0.0/10) e della rete di casa. Solo libreria standard.
+BRIDGE = r'''
+import http.client, http.server, ipaddress, json, os, socket, socketserver, subprocess, time
+IP = os.environ["PC_IP"]; PORT = int(os.environ.get("PC_PORT", "8767")); MAC = os.environ.get("PC_MAC", "")
+BC = os.environ.get("BROADCAST", "255.255.255.255"); LISTEN = int(os.environ.get("GW_PORT", "8790"))
+NETS = [ipaddress.ip_network(n) for n in ("100.64.0.0/10", "127.0.0.0/8", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "fd7a:115c:a1e0::/48", "::1/128")]
+HOP = {"connection", "keep-alive", "proxy-authenticate", "proxy-authorization", "te", "trailers", "transfer-encoding", "upgrade", "host", "content-length"}
+LAST = [0.0]
+def quiet(*a):
+    return subprocess.call(list(a), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) == 0
+def app_up():
+    try: socket.create_connection((IP, PORT), 1.5).close(); return True
+    except OSError: return False
+def pc_up():
+    if quiet("ping", "-c", "1", "-W", "1", IP): return True
+    try: dev = subprocess.check_output(["ip", "route", "get", IP], text=True).split(" dev ")[1].split()[0]
+    except Exception: return False
+    return quiet("arping", "-c", "2", "-w", "3", "-I", dev, IP)
+def wake():
+    pkt = b"\xff" * 6 + bytes.fromhex(MAC.replace(":", "").replace("-", "")) * 16
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM); s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+    for _ in range(3):
+        for dst in (BC, "255.255.255.255"): s.sendto(pkt, (dst, 9))
+        time.sleep(0.3)
+    s.close()
+PAGE = """<!doctype html><html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#090b0f"><title>NEXAR</title><style>
+body{margin:0;min-height:100vh;display:grid;place-items:center;background:#090b0f;color:#e8edf5;font:16px -apple-system,system-ui,sans-serif}
+main{text-align:center;padding:24px;max-width:360px}h1{font-size:28px;letter-spacing:.08em;margin:0 0 6px}h1 span{color:#38bdf8}
+p{color:#94a3b8;line-height:1.5}button{margin-top:18px;border:0;border-radius:14px;padding:14px 26px;font:600 16px inherit;background:#22c55e;color:#04130a;cursor:pointer}
+button:disabled{opacity:.5}.dot{display:inline-block;width:10px;height:10px;border-radius:50%;background:#ef4444;margin-right:8px}
+</style></head><body><main><h1>NEX<span>AR</span></h1><p id="s"><i class="dot"></i>Controllo il PC…</p>
+<button id="b" hidden>⏻ Accendi il PC</button><p id="n"></p></main><script>
+var b=document.getElementById("b"),s=document.getElementById("s"),n=document.getElementById("n");
+function st(){fetch("/__nexar/status").then(function(r){return r.json()}).then(function(j){
+ if(j.app){location.reload();return}
+ s.innerHTML='<i class="dot"></i>'+(j.pc?"Il PC è acceso ma NEXAR non risponde: aprilo sul PC.":"Il PC è spento.");
+ b.hidden=j.pc||!j.wake}).catch(function(){s.textContent="Umbrel non risponde."})}
+b.onclick=function(){b.disabled=true;n.textContent="Segnale inviato, attendo che il PC si accenda…";
+ fetch("/__nexar/wake",{method:"POST"}).finally(function(){setTimeout(function(){b.disabled=false},20000)})};
+st();setInterval(st,4000);
+</script></body></html>""".encode()
+class H(http.server.BaseHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
+    def log_message(self, *a): pass
+    def allowed(self):
+        try: a = ipaddress.ip_address(self.client_address[0])
+        except ValueError: return False
+        if a.version == 6 and a.ipv4_mapped: a = a.ipv4_mapped
+        return any(a in n for n in NETS if n.version == a.version)
+    def out(self, code, body, ctype):
+        self.send_response(code); self.send_header("Content-Type", ctype); self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store"); self.end_headers()
+        if self.command != "HEAD": self.wfile.write(body)
+    def any(self):
+        if not self.allowed(): return self.out(403, "Solo da Tailscale o dalla rete di casa".encode(), "text/plain; charset=utf-8")
+        size = int(self.headers.get("Content-Length") or 0)
+        if size > 8000000: return self.out(413, b"{}", "application/json")
+        body = self.rfile.read(size) if size else None
+        if self.path == "/__nexar/status":
+            up = app_up()
+            return self.out(200, json.dumps({"app": up, "pc": up or pc_up(), "wake": bool(MAC)}).encode(), "application/json")
+        if self.path == "/__nexar/wake" and self.command == "POST":
+            if not MAC: return self.out(400, b"{}", "application/json")
+            if time.time() - LAST[0] > 20: LAST[0] = time.time(); wake()
+            return self.out(200, b'{"ok":true}', "application/json")
+        try:
+            c = http.client.HTTPConnection(IP, PORT, timeout=30)
+            head = {k: v for k, v in self.headers.items() if k.lower() not in HOP}
+            head["Host"] = IP + ":" + str(PORT)
+            c.request(self.command, self.path, body=body, headers=head)
+            r = c.getresponse(); data = r.read(); c.close()
+        except OSError:
+            if self.path.startswith("/api/"):
+                return self.out(503, json.dumps({"detail": "Il PC è spento o NEXAR non è aperto", "off": True}).encode(), "application/json")
+            return self.out(503, PAGE, "text/html; charset=utf-8")
+        self.send_response(r.status)
+        for k, v in r.getheaders():
+            if k.lower() not in HOP: self.send_header(k, v)
+        self.send_header("Content-Length", str(len(data))); self.end_headers()
+        if self.command != "HEAD": self.wfile.write(data)
+    do_GET = do_POST = do_PUT = do_PATCH = do_DELETE = do_HEAD = any
+class S(socketserver.ThreadingMixIn, http.server.HTTPServer):
+    daemon_threads = True; allow_reuse_address = True
+if __name__ == "__main__":
+    S(("0.0.0.0", LISTEN), H).serve_forever()
+'''
+
+def relay_compose(token, user_id, mac, ip, broadcast, bridge=None):
+    """Stack per Umbrel: accensione da Telegram (se c'è il bot) e, se chiesto, il ponte per il Mac.
+    bridge = {'pc_port': 8767, 'port': 8790}."""
+    services = {}
+    if token and user_id:
+        magic_packet(mac)
+        services['nexar-accensione'] = {
+            'image': 'python:3.12-alpine', 'container_name': 'nexar-accensione', 'restart': 'unless-stopped',
+            # La rete dell'host serve per il broadcast Wake-on-LAN nella rete di casa.
+            'network_mode': 'host',
+            'environment': {'BOT_TOKEN': token, 'USER_ID': str(user_id), 'PC_MAC': mac, 'PC_IP': ip, 'BROADCAST': broadcast},
+            'command': ['python', '-u', '-c', RELAY.strip()],
+        }
+    if bridge is not None:
+        if not ip: raise ValueError('Indirizzo del PC nella rete di casa non trovato: premi "Cerca di nuovo" in Collegamenti')
+        if mac: magic_packet(mac)
+        services['nexar-ponte'] = {
+            'image': 'python:3.12-alpine', 'container_name': 'nexar-ponte', 'restart': 'unless-stopped',
+            # Rete dell'host: Tailscale su Umbrel arriva direttamente qui, e il Wake-on-LAN esce in casa.
+            'network_mode': 'host',
+            'environment': {'PC_IP': ip, 'PC_PORT': str(bridge.get('pc_port', 8767)), 'PC_MAC': mac or '',
+                            'BROADCAST': broadcast, 'GW_PORT': str(bridge.get('port', 8790))},
+            'command': ['python', '-u', '-c', BRIDGE.strip()],
+        }
+    if not services: raise ValueError('Collega prima Telegram')
     # JSON è YAML valido; "$$" evita che Docker Compose interpreti eventuali "$".
-    body = json.dumps({'services': {'nexar-accensione': service}}, ensure_ascii=False, indent=2).replace('$', '$$')
-    return '# Stack Portainer/Umbrel: accende il PC da Telegram quando è spento. Contiene il token del bot: non condividerlo.\n' + body
+    body = json.dumps({'services': services}, ensure_ascii=False, indent=2).replace('$', '$$')
+    parts = [x for x, on in (('accensione da Telegram', 'nexar-accensione' in services), ('ponte per il Mac', 'nexar-ponte' in services)) if on]
+    head = '# Stack Portainer/Umbrel per NEXAR: ' + ' + '.join(parts) + '.'
+    if 'nexar-accensione' in services: head += ' Contiene il token del bot: non condividerlo.'
+    return head + '\n' + body

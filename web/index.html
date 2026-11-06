@@ -5,6 +5,8 @@
   <meta name="theme-color" content="#090b0f"><meta name="color-scheme" content="dark">
   <title>NEXAR</title>
   <link rel="icon" href="/assets/icon-512.png" type="image/png">
+  <link rel="apple-touch-icon" href="/assets/icon-512.png"><link rel="manifest" href="/manifest.webmanifest">
+  <meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="NEXAR"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="stylesheet" href="/assets/style.css"><script src="/assets/app.js" defer></script>
 </head>
 <body>
@@ -75,8 +77,11 @@
  <div class="login-card">
   <img class="login-logo" src="/assets/logo.png" alt="">
   <h1>NEX<span>AR</span></h1>
-  <p>Accedi con la chiave generata durante l'installazione.</p>
-  <form id="login-form"><label for="key-input">Chiave di accesso</label><input id="key-input" type="password" autocomplete="off" placeholder="access_token da config.json" required><button type="submit" class="btn primary wide">Accedi</button></form>
+  <p id="login-lead">Accedi con la chiave generata durante l'installazione.</p>
+  <form id="login-form"><label for="key-input">Chiave di accesso</label><input id="key-input" type="password" autocomplete="off" placeholder="access_token da config.json" required><button type="submit" class="btn primary wide">Accedi</button>
+   <button type="button" class="btn ghost wide" id="to-pair">Ho un codice dal PC</button></form>
+  <form id="pair-form" hidden><label for="pair-code">Codice di collegamento</label><input id="pair-code" class="pair-code" inputmode="text" autocomplete="one-time-code" autocapitalize="characters" spellcheck="false" placeholder="ABCD-2345" maxlength="9" required><button type="submit" class="btn primary wide">Collega questo dispositivo</button>
+   <button type="button" class="btn ghost wide" id="to-key">Uso la chiave di accesso</button></form>
   <p class="login-error" id="login-error" role="alert"></p>
  </div>
 </section>
@@ -588,6 +593,22 @@
      <div class="ring-stat"><svg viewBox="0 0 120 120" aria-hidden="true"><circle class="rs-track" cx="60" cy="60" r="50" pathLength="100"/><circle class="rs-fill" id="links-ring" cx="60" cy="60" r="50" pathLength="100"/></svg><div><b id="links-count">—</b><small>collegati</small></div></div>
     </section>
     <div class="link-grid" id="links-list"><p class="muted">Ricerca in corso…</p></div>
+    <section class="card" id="gw-card">
+     <div class="card-head"><div><h3>App sul Mac (via Umbrel)</h3><p>NEXAR sul MacBook ovunque tu sia: il Mac passa da Tailscale a Umbrel, e Umbrel arriva al PC. Se il PC è spento lo accendi da lì.</p></div><span class="tag" id="gw-state">—</span></div>
+     <ol class="gw-steps" id="gw-steps">
+      <li id="gw-s1"><div><b>Tailscale su Umbrel</b><p>Umbrel → App Store → <em>Tailscale</em> → Installa, poi accedi con il tuo account (Google, Apple o Microsoft).</p></div></li>
+      <li id="gw-s2"><div><b>Ponte sul PC</b><p id="gw-s2-text">Indirizzo di Umbrel nella rete di casa: il PC risponderà solo a lui.</p>
+       <div class="gw-row local-only"><input id="gw-ip" inputmode="decimal" placeholder="192.168.0.50" autocomplete="off" spellcheck="false" aria-label="Indirizzo di Umbrel"><button class="btn small" type="button" id="gw-guess">Trova</button><button class="btn small primary" type="button" id="gw-on">Attiva ponte</button><button class="btn small ghost" type="button" id="gw-off" hidden>Spegni</button></div></div></li>
+      <li id="gw-s3"><div><b>Aggiorna lo stack su Umbrel</b><p>Portainer → Stacks → il tuo stack NEXAR → Editor → incolla → Update the stack. Aggiunge <em>nexar-ponte</em> accanto all'accensione da Telegram.</p>
+       <div class="gw-row local-only"><button class="btn small primary" type="button" id="gw-compose"><svg class="i"><use href="#i-copy"/></svg>Copia configurazione</button></div></div></li>
+      <li id="gw-s4"><div><b>Tailscale sul Mac</b><p>Installa Tailscale dall'App Store del Mac con lo stesso account, poi apri in Safari <span class="gw-url" id="gw-url">http://umbrel:8790</span></p></div></li>
+      <li id="gw-s5"><div><b>Aggiungi al Dock</b><p>In Safari: Archivio → Aggiungi al Dock. NEXAR diventa un'app con la sua icona: aprila dal Dock.</p></div></li>
+      <li id="gw-s6"><div><b>Collega il Mac</b><p>Nell'app sul Mac scegli «Ho un codice dal PC» e scrivi il codice (vale 10 minuti, una volta sola).</p>
+       <div class="gw-row local-only"><button class="btn small primary" type="button" id="gw-code-btn">Genera codice</button><span class="gw-code" id="gw-code" hidden></span><small class="muted" id="gw-code-left"></small></div></div></li>
+     </ol>
+     <div class="gw-devs-wrap" id="gw-devs-wrap" hidden><b class="gw-devs-title">Dispositivi collegati</b><div id="gw-devs"></div></div>
+     <p class="fineprint">Il PC accetta solo Umbrel, e da lì serve sempre un dispositivo collegato o la chiave. Installazioni, PIN e impostazioni del ponte restano possibili solo dal PC.</p>
+    </section>
     <p class="fineprint">Installazioni e conferme da amministratore sono possibili solo dall'app sul PC.</p>
    </section>
 

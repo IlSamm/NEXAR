@@ -23,6 +23,7 @@ from urllib.parse import parse_qsl
 from core import ROOT, ASSET_ROOT, CONFIG_FILE, DATA_DIR, FROZEN, INSTALL_DIR, MIGRATED_FROM, Control, json_load
 from telegram_bot import TelegramBot
 from tunnel import TUNNEL_PORT, Tunnel
+import gateway
 from updater import Updater
 from version import VERSION
 
@@ -39,10 +40,11 @@ stop = threading.Event()
 failures = defaultdict(deque)
 
 tunnel = None
+bridge = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global tunnel
+    global tunnel, bridge
     bot = TelegramBot(controller)
     controller.notify = bot.notify
     tunnel = Tunnel(controller, app)
@@ -50,6 +52,8 @@ async def lifespan(app: FastAPI):
     bot.updater = updater
     tunnel.on_url = bot.set_webapp
     threading.Thread(target=tunnel.run,args=(stop,),daemon=True,name='tunnel').start()
+    bridge = gateway.Bridge(lambda: controller.config.get('gateway'), app)
+    threading.Thread(target=bridge.run,args=(stop,),daemon=True,name='umbrel-bridge-loop').start()
     t1 = threading.Thread(target=bot.run,args=(stop,),daemon=True,name='telegram')
     t2 = threading.Thread(target=controller.auto_loop,args=(stop,),daemon=True,name='ai-auto')
     t3 = threading.Thread(target=controller.monitor_loop,args=(stop,),daemon=True,name='temperature-alerts')
@@ -76,6 +80,11 @@ app.mount('/assets',StaticFiles(directory=str(ASSET_ROOT/'web')),name='assets')
 
 @app.middleware('http')
 async def no_cache_and_security(request: Request, call_next):
+    if is_bridge(request):
+        # Porta aperta sulla rete di casa: risponde solo a Umbrel, e solo se il ponte è attivo.
+        g = controller.config.get('gateway') or {}
+        if not (g.get('enabled') and request.client and request.client.host == g.get('umbrel_ip')):
+            return JSONResponse({'detail':'Accesso consentito solo da Umbrel'}, status_code=403)
     response = await call_next(request)
     response.headers['Cache-Control']='no-store'
     response.headers['X-Content-Type-Options']='nosniff'
@@ -88,6 +97,9 @@ async def no_cache_and_security(request: Request, call_next):
 
 def is_tunnel(request: Request) -> bool:
     return (request.scope.get('server') or (None, 0))[1] == TUNNEL_PORT
+
+def is_bridge(request: Request) -> bool:
+    return (request.scope.get('server') or (None, 0))[1] == gateway.GATEWAY_PORT
 
 def is_remote(request: Request) -> bool:
     """Tutto ciò che arriva dal tunnel è Internet, anche se il socket risulta 127.0.0.1."""
@@ -116,6 +128,8 @@ def authorized(request: Request, x_pc_eco_key: str | None = Header(default=None)
     allowed = int(controller.config.get('telegram',{}).get('allowed_user_id') or 0)
     if x_tg_init_data and allowed and telegram_user(x_tg_init_data) == allowed:
         q.clear(); return True
+    if x_pc_eco_key and controller.devices.check(x_pc_eco_key):
+        q.clear(); return True
     if not x_pc_eco_key or not hmac.compare_digest(x_pc_eco_key,key):
         q.append(now)
         raise HTTPException(401,'Chiave di accesso non valida')
@@ -124,6 +138,14 @@ def authorized(request: Request, x_pc_eco_key: str | None = Header(default=None)
 
 @app.get('/')
 def index(): return FileResponse(ASSET_ROOT/'web'/'index.html',media_type='text/html')
+
+@app.get('/manifest.webmanifest')
+def manifest():
+    # Safari → Archivio → Aggiungi al Dock: NEXAR si apre come app nella sua finestra.
+    return JSONResponse({'name':'NEXAR','short_name':'NEXAR','start_url':'/','scope':'/','display':'standalone',
+                         'background_color':'#090b0f','theme_color':'#090b0f',
+                         'icons':[{'src':'/assets/icon-512.png','sizes':'512x512','type':'image/png','purpose':'any'}]},
+                        media_type='application/manifest+json')
 
 @app.get('/api/status',dependencies=[Depends(authorized)])
 def status(request: Request):
@@ -307,8 +329,58 @@ def pc_power_action(data: PowerAction):
 @app.get('/api/power/relay',dependencies=[Depends(authorized),Depends(local_only)])
 def power_relay():
     # Contiene il token del bot: solo dalla app sul PC.
-    try: return {'compose':controller.relay_compose()}
+    try: return {'compose':controller.relay_compose(bridge=bool((controller.config.get('gateway') or {}).get('enabled')))}
     except (ValueError,RuntimeError) as ex: raise HTTPException(400,str(ex))
+
+# ---------- Mac e altri dispositivi tramite Umbrel + Tailscale ----------
+@app.get('/api/gateway',dependencies=[Depends(authorized)])
+def gateway_state(request: Request):
+    info = controller.gateway_info(bridge)
+    if is_remote(request): info.pop('umbrel_ip', None); info.pop('pc_ip', None)
+    return {**info, 'local': not is_remote(request)}
+
+@app.get('/api/gateway/guess',dependencies=[Depends(authorized),Depends(local_only)])
+def gateway_guess(): return {'umbrel_ip': gateway.guess_umbrel()}
+
+class GatewaySetup(BaseModel):
+    enabled: bool
+    umbrel_ip: str | None = None
+@app.post('/api/gateway/setup',dependencies=[Depends(authorized),Depends(local_only)])
+def gateway_setup(data: GatewaySetup):
+    try: return {'ok':True,'message':controller.gateway_setup(data.enabled,data.umbrel_ip),'gateway':controller.gateway_info(bridge)}
+    except (ValueError,RuntimeError,OSError) as ex: raise HTTPException(400,str(ex))
+
+@app.post('/api/devices/code',dependencies=[Depends(authorized),Depends(local_only)])
+def device_code():
+    code, ttl = controller.devices.new_code()
+    return {'code':code,'seconds':ttl}
+
+class Pair(BaseModel):
+    code: str
+    name: str = ''
+@app.post('/api/devices/pair')
+def device_pair(data: Pair, request: Request):
+    # Senza chiave (il dispositivo non ce l'ha ancora): stesso limite di tentativi dell'accesso.
+    ip = request.headers.get('cf-connecting-ip','tunnel') if is_tunnel(request) else (request.client.host if request.client else 'unknown')
+    now = time.monotonic(); q = failures[ip]
+    while q and q[0]<now-60: q.popleft()
+    if len(q)>15: raise HTTPException(429,'Troppi tentativi: riprova fra un minuto')
+    try: token, name = controller.devices.pair(data.code, data.name)
+    except PermissionError as ex:
+        q.append(now); raise HTTPException(403,str(ex))
+    q.clear()
+    controller.log_event(f'🔗 Nuovo dispositivo collegato: {name}')
+    controller.notify(f'🔗 Nuovo dispositivo collegato a NEXAR: {name}. Se non sei stato tu, toglilo da Collegamenti.')
+    return {'ok':True,'token':token,'name':name}
+
+class DeviceId(BaseModel):
+    id: str
+@app.post('/api/devices/remove',dependencies=[Depends(authorized)])
+def device_remove(data: DeviceId):
+    try: controller.devices.remove(data.id)
+    except ValueError as ex: raise HTTPException(404,str(ex))
+    controller.log_event('🔗 Dispositivo scollegato')
+    return {'ok':True,'message':'Dispositivo scollegato','devices':controller.devices.list()}
 
 @app.post('/api/power/wol',dependencies=[Depends(authorized),Depends(local_only)])
 def power_wol():

@@ -16,7 +16,11 @@ const titles={
  settings:['Impostazioni','AI ECO, energia, Telegram e registro.'],
  more:['Altro','Schermo, consumi, accensione, collegamenti e impostazioni.'],
 };
-let key=sessionStorage.getItem('pc_eco_key')||'';
+// Dispositivo collegato con codice (Mac via Umbrel): il token resta su questo dispositivo finché non lo togli dal PC.
+const DEV_KEY='nexar.device';
+function devGet(){try{return localStorage.getItem(DEV_KEY)||'';}catch(e){return '';}}
+function devSet(v){try{v?localStorage.setItem(DEV_KEY,v):localStorage.removeItem(DEV_KEY);}catch(e){}}
+let key=sessionStorage.getItem('pc_eco_key')||devGet();
 const initialHash=location.hash.match(/^#access=([A-Za-z0-9_-]{28,})$/);
 if(initialHash&&(location.hostname==='127.0.0.1'||location.hostname==='localhost')){
  key=initialHash[1];sessionStorage.setItem('pc_eco_key',key);
@@ -134,7 +138,9 @@ async function req(path,method='GET',data){
  try{
   const r=await fetch(path,{method,headers,body:data===undefined?undefined:JSON.stringify(data),signal:ctrl.signal,cache:'no-store'});
   if(r.status===401&&tgInit)throw new Error('Questo account Telegram non è abbinato al PC.');
-  if(r.status===401){sessionStorage.removeItem('pc_eco_key');key='';loginScreen(true);throw new Error('Chiave di accesso non valida.');}
+  if(r.status===401){const was=key&&key===devGet();sessionStorage.removeItem('pc_eco_key');if(was)devSet('');key='';loginScreen(true);
+   throw new Error(was?'Questo dispositivo è stato scollegato dal PC: collegalo di nuovo con un codice.':'Chiave di accesso non valida.');}
+  if(r.status===503&&!path.startsWith('/__')){let o={};try{o=await r.clone().json();}catch(e){}if(o.off){location.reload();throw new Error(o.detail);}}
   const obj=await r.json();if(!r.ok)throw new Error(obj.detail||'Errore di comunicazione');return obj;
  }finally{clearTimeout(t);}
 }
@@ -168,6 +174,7 @@ function navigate(view){
  if(view==='energy')loadStats();
  if(view==='power')loadApps();
  if(view==='screen'){loadScreen();loadRemote();}
+ if(view==='links')loadGateway();
  if(view!=='screen'&&scrLiveOn)scrLive(false);
  const tab=['power','screen','links','settings','energy','lights'].includes(view)&&!document.querySelector(`.tabbar [data-view="${view}"]`)?'more':view;
  document.querySelectorAll('.rail-nav [data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===view));
@@ -2357,7 +2364,96 @@ $('upd-check').addEventListener('click',()=>{updLater='';try{sessionStorage.remo
 $('upd-install').addEventListener('click',()=>startUpdate());
 $('links-refresh').addEventListener('click',()=>post('/api/discover',{}));
 $('fans-upgrade-btn').addEventListener('click',()=>post('/api/fans/setup',{}));
-$('logout').addEventListener('click',()=>{sessionStorage.removeItem('pc_eco_key');key='';loginScreen(true);});
+$('logout').addEventListener('click',()=>{
+ if(key&&key===devGet()&&!confirm('Esci da NEXAR su questo dispositivo? Per rientrare servirà un nuovo codice dal PC.'))return;
+ if(key===devGet())devSet('');sessionStorage.removeItem('pc_eco_key');key='';loginScreen(true);});
+/* ---------- App sul Mac: ponte Umbrel + dispositivi ---------- */
+const gwDemo={enabled:false,umbrel_ip:'',pc_ip:'192.168.0.128',pc_port:8767,port:8790,firewall:false,wol:true,running:false,error:'',local:true,
+ devices:[{id:'a1b2',name:'Mac',added:'2026-11-06T10:12',last:'2026-11-06T18:40'}]};
+let gwInfo=null,gwTimer=0;
+async function loadGateway(){
+ try{gwInfo=demo?gwDemo:await req('/api/gateway');renderGateway();}catch(ex){$('gw-state').textContent='—';}
+}
+function fmtWhen(iso){if(!iso)return '';const d=new Date(iso);return isNaN(d)?iso:d.toLocaleString('it-IT',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});}
+function gwEsc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function renderGateway(){
+ const g=gwInfo;if(!g)return;
+ const on=g.enabled&&g.running;
+ $('gw-state').textContent=on?'ATTIVO':g.enabled?(g.error?'ERRORE':'AVVIO…'):'SPENTO';
+ $('gw-state').classList.toggle('on',!!on);
+ if(document.activeElement!==$('gw-ip')&&!$('gw-ip').value)$('gw-ip').value=g.umbrel_ip||'';
+ $('gw-on').hidden=!!g.enabled;$('gw-off').hidden=!g.enabled;$('gw-ip').disabled=!!g.enabled;$('gw-guess').hidden=!!g.enabled;
+ $('gw-s2-text').textContent=g.enabled
+  ?(g.error?'⚠ '+g.error:'Il PC risponde solo a '+(g.umbrel_ip||'Umbrel')+' sulla porta '+g.pc_port+'.'+(g.wol?'':' Wake-on-LAN non pronto: dal Mac non potrai accendere il PC.'))
+  :'Indirizzo di Umbrel nella rete di casa: il PC risponderà solo a lui.';
+ $('gw-s2').classList.toggle('done',!!on);
+ const devs=g.devices||[];
+ $('gw-s6').classList.toggle('done',devs.length>0);
+ $('gw-url').textContent='http://umbrel:'+(g.port||8790);
+ $('gw-devs-wrap').hidden=!devs.length;
+ $('gw-devs').innerHTML=devs.map(d=>'<div class="gw-dev"><span><b>'+gwEsc(d.name)+'</b><small>Collegato '+fmtWhen(d.added)+(d.last?' · ultimo uso '+fmtWhen(d.last):'')+
+  '</small></span><button class="btn small ghost" type="button" data-dev="'+gwEsc(d.id)+'">Scollega</button></div>').join('');
+}
+$('gw-devs').addEventListener('click',async e=>{
+ const b=e.target.closest('[data-dev]');if(!b)return;
+ if(!confirm('Scollegare questo dispositivo? Per usarlo di nuovo servirà un nuovo codice.'))return;
+ if(demo){gwDemo.devices=gwDemo.devices.filter(d=>d.id!==b.dataset.dev);renderGateway();return;}
+ try{const r=await req('/api/devices/remove','POST',{id:b.dataset.dev});notify('✓ '+r.message);loadGateway();}catch(ex){notify('⚠ '+ex.message,true);}
+});
+$('gw-guess').addEventListener('click',async()=>{
+ if(demo){$('gw-ip').value='192.168.0.50';return;}
+ try{const r=await req('/api/gateway/guess');
+  if(r.umbrel_ip){$('gw-ip').value=r.umbrel_ip;notify('Umbrel trovato: '+r.umbrel_ip);}
+  else notify("umbrel.local non risponde: scrivi l'indirizzo che vedi nelle impostazioni di Umbrel o del router.",true);
+ }catch(ex){notify('⚠ '+ex.message,true);}
+});
+async function gwSet(enabled){
+ if(demo){Object.assign(gwDemo,{enabled,umbrel_ip:$('gw-ip').value,running:enabled});renderGateway();return;}
+ const b=enabled?$('gw-on'):$('gw-off');b.disabled=true;
+ if(enabled&&!(gwInfo&&gwInfo.firewall))notify('Conferma la richiesta di Windows: aggiunge una regola del firewall solo per Umbrel.');
+ try{const r=await req('/api/gateway/setup','POST',enabled?{enabled,umbrel_ip:$('gw-ip').value.trim()}:{enabled});
+  notify('✓ '+r.message);gwInfo={...r.gateway,local:true};renderGateway();setTimeout(loadGateway,4000);}
+ catch(ex){notify('⚠ '+ex.message,true);}finally{b.disabled=false;}
+}
+$('gw-on').addEventListener('click',()=>gwSet(true));
+$('gw-off').addEventListener('click',()=>gwSet(false));
+$('gw-compose').addEventListener('click',async()=>{
+ if(gwInfo&&!gwInfo.enabled){notify('Attiva prima il ponte (passo 2).',true);return;}
+ if(demo){notify('Anteprima: configurazione non disponibile.');return;}
+ try{const r=await req('/api/power/relay');
+  try{await navigator.clipboard.writeText(r.compose);notify('Configurazione copiata: incollala nello stack su Portainer.');}
+  catch(e){$('relay-text').textContent=r.compose;$('relay-box').hidden=false;notify('Copia non riuscita: la trovi in Accensione → Relay su Umbrel.',true);}
+ }catch(ex){notify('⚠ '+ex.message,true);}
+});
+$('gw-code-btn').addEventListener('click',async()=>{
+ try{
+  const r=demo?{code:'K7QM-4XPA',seconds:600}:await req('/api/devices/code','POST',{});
+  $('gw-code').textContent=r.code;$('gw-code').hidden=false;let left=r.seconds;clearInterval(gwTimer);
+  const tick=()=>{left--;
+   $('gw-code-left').textContent=left>0?'scade fra '+Math.floor(left/60)+':'+String(left%60).padStart(2,'0'):'scaduto';
+   if(left<=0){clearInterval(gwTimer);$('gw-code').hidden=true;}
+   if(left%5===0&&curView==='links'&&!demo)loadGateway();};
+  tick();gwTimer=setInterval(tick,1000);
+ }catch(ex){notify('⚠ '+ex.message,true);}
+});
+/* ---------- collegare un dispositivo con il codice del PC ---------- */
+function devName(){const u=navigator.userAgent;return /iPhone/.test(u)?'iPhone':/iPad/.test(u)?'iPad':/Macintosh|Mac OS X/.test(u)?'Mac':/Android/.test(u)?'Android':/Windows/.test(u)?'PC Windows':'Dispositivo';}
+function loginMode(code){$('login-form').hidden=code;$('pair-form').hidden=!code;$('login-error').textContent='';
+ $('login-lead').textContent=code?'Sul PC apri NEXAR → Collegamenti → App sul Mac e premi «Genera codice».':'Accedi con la chiave generata durante l’installazione.';
+ (code?$('pair-code'):$('key-input')).focus();}
+$('to-pair').addEventListener('click',()=>loginMode(true));
+$('to-key').addEventListener('click',()=>loginMode(false));
+$('pair-code').addEventListener('input',e=>{let v=e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,8);e.target.value=v.length>4?v.slice(0,4)+'-'+v.slice(4):v;});
+$('pair-form').addEventListener('submit',async e=>{
+ e.preventDefault();const code=$('pair-code').value.trim();if(code.replace('-','').length<8){$('login-error').textContent='Il codice ha 8 caratteri.';return;}
+ try{
+  const r=await fetch('/api/devices/pair',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code,name:devName()}),cache:'no-store'});
+  const o=await r.json().catch(()=>({}));if(!r.ok)throw new Error(o.detail||'Collegamento non riuscito');
+  devSet(o.token);key=o.token;$('pair-code').value='';
+  const s=await req('/api/status');$('login-error').textContent='';loginScreen(false);render(s);notify('✓ '+o.name+' collegato: non servirà più nessun codice.');
+ }catch(ex){$('login-error').textContent=ex.message;}
+});
+if(!key&&!tgInit&&/Macintosh|iPhone|iPad|Android/.test(navigator.userAgent))loginMode(true);
 $('auto-toggle').addEventListener('click',toggleAuto);
 document.querySelectorAll('[data-view]').forEach(b=>b.addEventListener('click',()=>navigate(b.dataset.view)));
 document.querySelectorAll('[data-action]').forEach(b=>b.addEventListener('click',()=>action(b.dataset.action,b)));

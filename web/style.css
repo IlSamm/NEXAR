@@ -2622,3 +2622,20 @@ kbd{display:inline-block;min-width:18px;padding:1px 6px;border-radius:6px;font:6
  border:1px solid rgba(255,255,255,.14);color:#fff;z-index:2;backdrop-filter:blur(6px)}
 .rc-show .i{width:18px;height:18px}
 @media (max-width:560px){.rc-b span{display:none}.rc-b{padding:0 9px}.rc-bar select{max-width:110px}}
+
+/* ---------- collegamento dispositivi (Mac via Umbrel) ---------- */
+.login input.pair-code{font:700 22px var(--font-d);letter-spacing:.22em;text-align:center;text-transform:uppercase}
+.login .btn.ghost{margin-top:2px}
+.gw-steps{display:grid;gap:12px;margin:4px 0 0;padding:0;list-style:none;counter-reset:gw}
+.gw-steps>li{counter-increment:gw;display:grid;grid-template-columns:28px 1fr;gap:10px;align-items:start}
+.gw-steps>li::before{content:counter(gw);display:grid;place-items:center;width:26px;height:26px;border-radius:50%;background:var(--bg2);border:1px solid var(--line2);font-weight:700;font-size:13px;color:var(--muted)}
+.gw-steps>li.done::before{content:'✓';background:rgba(34,197,94,.15);border-color:rgba(34,197,94,.45);color:#4ade80}
+.gw-steps b{display:block;margin-bottom:2px}.gw-steps p{margin:0;color:var(--muted);font-size:13px;line-height:1.45}
+.gw-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:8px}
+.gw-row input{height:38px;border-radius:11px;border:1px solid var(--line2);background:var(--bg2);padding:0 12px;width:170px;color:inherit}
+.gw-code{font:800 30px var(--font-d);letter-spacing:.2em;padding:10px 16px;border-radius:14px;background:var(--bg2);border:1px dashed var(--line2);user-select:all}
+.gw-url{font-family:ui-monospace,Consolas,monospace;font-size:13px;padding:3px 8px;border-radius:8px;background:var(--bg2);user-select:all}
+.gw-dev{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--line)}
+.gw-dev:first-child{border-top:0}.gw-dev span{flex:1;min-width:0}.gw-dev small{display:block;color:var(--muted);font-size:12px}
+.gw-devs-wrap{margin-top:16px;padding-top:12px;border-top:1px solid var(--line)}.gw-devs-title{display:block;font-size:13px;margin-bottom:4px}
+.tag.on{color:#4ade80;border-color:rgba(74,222,128,.4)}

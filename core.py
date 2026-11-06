@@ -26,6 +26,7 @@ import apps_remote
 import screen_remote
 import ai_watch
 import remote_control
+import gateway
 
 FROZEN = getattr(sys, 'frozen', False)
 INSTALL_DIR = Path(sys.executable).resolve().parent if FROZEN else Path(__file__).resolve().parent
@@ -216,6 +217,7 @@ class Control:
         self.ai_watch = ai_watch.AiWatch()
         self.remote = remote_control.Remote(lambda: self.config.get('remote_control') or {},
                                             notify=lambda m: self.notify(m), log=lambda m: self.log_event(m))
+        self.devices = gateway.Devices(self.config, save=lambda: self._save_config())
         self.gaming_owned = False      # Gaming acceso da NEXAR perché è partito un gioco
         self.gaming_prev = 'normal'
         self.gaming_declined = False   # l'utente è uscito da Gaming a gioco aperto: non riattivarlo
@@ -556,6 +558,48 @@ class Control:
         if pin is not None: self.remote.end(reason='PIN cambiato')
         self.log_event('🖱 Controllo remoto: ' + ('acceso' if rc.get('enabled') else 'spento') + (' · PIN aggiornato' if pin is not None else ''))
         return self.remote.info()
+
+    # ---------- ponte Umbrel + dispositivi collegati (Mac) ----------
+    def _save_config(self):
+        with self.lock: json_save(CONFIG_FILE, self.config)
+
+    def gateway_info(self, bridge=None):
+        g = self.config.get('gateway') or {}
+        net = self.state.get('inventory', {}).get('net') or {}
+        return {'enabled': bool(g.get('enabled')), 'umbrel_ip': g.get('umbrel_ip', ''), 'pc_ip': net.get('ip', ''),
+                'pc_port': gateway.GATEWAY_PORT, 'port': gateway.UMBREL_PORT, 'firewall': bool(g.get('firewall')),
+                'wol': bool(net.get('mac')), **(bridge.info() if bridge else {'running': False, 'error': ''}),
+                'devices': self.devices.list()}
+
+    def gateway_setup(self, enabled, umbrel_ip=None, firewall=None):
+        """Solo dal PC. Attivando chiede una volta i permessi per la regola del firewall (solo l'IP di Umbrel)."""
+        g = dict(self.config.get('gateway') or {})
+        if umbrel_ip is not None:
+            umbrel_ip = str(umbrel_ip).strip()
+            if not gateway.valid_lan_ip(umbrel_ip): raise ValueError('Indirizzo di Umbrel non valido (es. 192.168.0.50)')
+            if umbrel_ip != g.get('umbrel_ip'): g['firewall'] = False
+            g['umbrel_ip'] = umbrel_ip
+        if enabled and not g.get('umbrel_ip'): raise ValueError("Scrivi prima l'indirizzo di Umbrel")
+        if enabled and not g.get('firewall'):
+            run = firewall or (lambda: __import__('discovery').run_elevated(gateway.firewall_script(sys.executable, g['umbrel_ip']), wait=True))
+            if not run(): raise RuntimeError('Conferma amministratore annullata: senza la regola del firewall Umbrel non raggiunge il PC')
+            g['firewall'] = True
+        g['enabled'] = bool(enabled)
+        with self.lock:
+            self.config['gateway'] = g
+            json_save(CONFIG_FILE, self.config)
+        self.log_event('🍎 Ponte Umbrel ' + ('attivo verso ' + g['umbrel_ip'] if enabled else 'spento'))
+        return 'Ponte attivo: ora Umbrel può raggiungere NEXAR' if enabled else 'Ponte spento'
+
+    def relay_compose(self, bridge=False):
+        net = self.state.get('inventory', {}).get('net') or {}
+        tg = self.config.get('telegram', {})
+        if bridge:
+            return pc_power.relay_compose(tg.get('token') if net.get('mac') else None, tg.get('allowed_user_id'), net.get('mac', ''),
+                                          net.get('ip', ''), net.get('broadcast', '255.255.255.255'),
+                                          bridge={'pc_port': gateway.GATEWAY_PORT, 'port': gateway.UMBREL_PORT})
+        if not net.get('mac'): raise RuntimeError('Scheda di rete via cavo non trovata: premi "Cerca di nuovo" in Collegamenti')
+        return pc_power.relay_compose(tg.get('token'), tg.get('allowed_user_id'), net['mac'], net.get('ip', ''), net.get('broadcast', '255.255.255.255'))
 
     def ai_names(self):
         return {str(n).lower() for n in self.config.get('auto_detect', {}).get('process_names') or ['codex.exe', 'claude.exe']}
@@ -1275,12 +1319,6 @@ class Control:
         return {'uptime_s': round(time.time() - boot), 'boot': datetime.fromtimestamp(boot).isoformat(timespec='minutes'),
                 'pending': plan, 'hibernate': pc_power.hibernate_available(),
                 'net': self.state.get('inventory', {}).get('net')}
-
-    def relay_compose(self):
-        net = self.state.get('inventory', {}).get('net') or {}
-        tg = self.config.get('telegram', {})
-        if not net.get('mac'): raise RuntimeError('Scheda di rete via cavo non trovata: premi "Cerca di nuovo" in Collegamenti')
-        return pc_power.relay_compose(tg.get('token'), tg.get('allowed_user_id'), net['mac'], net.get('ip', ''), net.get('broadcast', '255.255.255.255'))
 
     def wol_setup(self):
         import discovery
