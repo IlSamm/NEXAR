@@ -586,6 +586,7 @@ function linkAction(r,jobs){
  if(r.key==='fans'&&r.level==='warn')return {label:'Configura',primary:true,...job('fans-setup'),run:()=>post('/api/fans/setup',{})};
  if((r.key==='sensors'||r.key==='rgb')&&r.level==='warn')return {label:'Collega',primary:true,...job('discover'),run:()=>post('/api/discover',{})};
  if(r.key==='fans')return {label:'Apri Fan Control',run:()=>post('/api/fancontrol/open',{})};
+ if(r.key==='autostart'&&r.fast)return {label:'Avvio veloce',primary:true,...job('autostart-fast'),run:()=>post('/api/autostart/fast',{})};
  if(r.key==='autostart')return {label:r.level==='ok'?'Disattiva':'Attiva',run:()=>post('/api/autostart',{enabled:r.level!=='ok'})};
  return null;
 }
@@ -2178,8 +2179,11 @@ const RC_KEYMAP={Enter:'enter',Escape:'esc',Tab:'tab',Backspace:'backspace',Dele
 document.addEventListener('keydown',e=>{
  if(!RC.on||!$('rc').open||e.target.closest?.('#rc-kb,select,#rc-pin'))return;
  if(['Control','Alt','Shift','Meta','AltGraph','CapsLock'].includes(e.key))return;
- const altgr=e.getModifierState&&e.getModifierState('AltGraph');
- const mods=altgr?[]:[e.ctrlKey&&'ctrl',e.altKey&&'alt',e.shiftKey&&'shift',e.metaKey&&'win'].filter(Boolean);
+ // Sul Mac Cmd fa da Ctrl (Cmd+C copia sul PC); il tasto Windows è nel pannello Tasti.
+ // Option+tasto che scrive un carattere (@ # [ ] sulla tastiera italiana) è testo, come AltGr su Windows.
+ const mac=/Mac|iPhone|iPad/.test(navigator.platform||navigator.userAgent);
+ const altgr=(e.getModifierState&&e.getModifierState('AltGraph'))||(mac&&e.altKey&&!e.metaKey&&!e.ctrlKey&&e.key.length===1);
+ const mods=altgr?[]:[...new Set([(e.ctrlKey||mac&&e.metaKey)&&'ctrl',e.altKey&&'alt',e.shiftKey&&'shift',!mac&&e.metaKey&&'win'].filter(Boolean))];
  let k=RC_KEYMAP[e.key]||(/^F\d{1,2}$/.test(e.key)?e.key.toLowerCase():'');
  if(!k&&e.key.length===1){
   if(!mods.some(m=>m!=='shift')){e.preventDefault();rcSend({t:'text',s:e.key});return;}

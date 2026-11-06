@@ -210,7 +210,8 @@ class WindowApi:
 
 def run():
     if not claim_single_instance():
-        show_other_instance()
+        # Partenza automatica doppia (attività + vecchio elenco di avvio): resta nascosta, non apre la finestra.
+        if '--minimized' not in sys.argv: show_other_instance()
         return
     port = int(config.get('web', {}).get('port', 8765))
     url = f"http://127.0.0.1:{port}/#access={config.get('access_token', '')}"

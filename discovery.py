@@ -410,14 +410,61 @@ def autostart_target():
     return f'"{pyw if pyw.is_file() else sys.executable}" "{Path(__file__).with_name("desktop.py")}" --minimized'
 
 AUTOSTART_NAME, AUTOSTART_LEGACY = 'NEXAR', 'PC ECO Control'
+AUTOSTART_TASK = 'NEXAR - Avvio'
+
+# Avvio veloce: i programmi nell'elenco "Esecuzione automatica" partono quando Windows ha finito di caricare
+# (con tanti programmi all'avvio anche 1-2 minuti dopo l'accesso). Un'attività pianificata "all'accesso" parte subito.
+def autostart_task_ok() -> bool:
+    if os.name != 'nt' or not getattr(sys, 'frozen', False): return False
+    r = subprocess.run(['schtasks', '/query', '/tn', AUTOSTART_TASK, '/xml'], capture_output=True, **_no_window())
+    if r.returncode != 0: return False
+    raw = r.stdout
+    text = raw.decode('utf-16', errors='replace') if raw[:2] in (b'\xff\xfe', b'\xfe\xff') else raw.decode('utf-8', errors='replace')
+    return sys.executable.lower() in text.lower()
+
+def autostart_task_script(exe: str) -> str:
+    user = f"{os.environ.get('USERDOMAIN', '')}\\{os.environ.get('USERNAME', '')}".strip('\\')
+    return (f"$a=New-ScheduledTaskAction -Execute {_q(exe)} -Argument '--minimized' -WorkingDirectory {_q(Path(exe).parent)};"
+            f"$t=New-ScheduledTaskTrigger -AtLogOn -User {_q(user)};"
+            f"$p=New-ScheduledTaskPrincipal -UserId {_q(user)} -RunLevel Limited -LogonType Interactive;"
+            # priorità 4 = normale (quella predefinita delle attività rallenterebbe NEXAR)
+            "$s=New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit 0 -Priority 4 -MultipleInstances IgnoreNew;"
+            f"Register-ScheduledTask -TaskName {_q(AUTOSTART_TASK)} -Action $a -Trigger $t -Principal $p -Settings $s -Force;")
+
+def autostart_legacy_off():
+    """Con l'avvio veloce attivo, niente seconda partenza dall'elenco di Windows."""
+    import winreg
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY, 0, winreg.KEY_SET_VALUE) as k:
+            for name in (AUTOSTART_NAME, AUTOSTART_LEGACY):
+                try: winreg.DeleteValue(k, name)
+                except FileNotFoundError: pass
+    except OSError as ex: logging.info('Avvio dal registro non tolto: %s', ex)
+    link = startup_link()
+    if link:
+        try: link.unlink()
+        except (FileNotFoundError, OSError): pass
+
+def autostart_fast() -> str:
+    """Una conferma amministratore: NEXAR parte appena accedi a Windows."""
+    if not getattr(sys, 'frozen', False): raise RuntimeError('Si attiva dall\'app installata')
+    if not run_elevated(autostart_task_script(sys.executable), wait=True): raise RuntimeError('Conferma amministratore annullata')
+    if not autostart_task_ok(): raise RuntimeError('Attività di avvio non creata')
+    autostart_legacy_off()
+    return 'Avvio veloce attivo: NEXAR parte appena accedi a Windows'
+
+def autostart_fast_off():
+    if os.name == 'nt' and task_exists(AUTOSTART_TASK):
+        run_elevated(f"Unregister-ScheduledTask -TaskName {_q(AUTOSTART_TASK)} -Confirm:$false", wait=True)
 
 def startup_link() -> Path | None:
     folder = known_folder(CSIDL_STARTUP)
     return folder / 'NEXAR.lnk' if folder else None
 
 def autostart_get() -> bool:
-    """Attivo solo se punta a questo programma (registro o cartella Esecuzione automatica)."""
+    """Attivo solo se punta a questo programma (attività all'accesso, registro o cartella Esecuzione automatica)."""
     if os.name != 'nt': return False
+    if autostart_task_ok(): return True
     import winreg
     try:
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY) as k:
@@ -539,14 +586,20 @@ def autoconfigure(config: dict, state: dict, allow_uac=False) -> list[dict]:
     if os.name == 'nt':
         # Solo il programma installato si iscrive all'avvio: una copia di prova non deve prenderne il posto.
         wanted, err = config.get('autostart', True), ''
-        if wanted and getattr(sys, 'frozen', False) and not autostart_get():
+        fast = wanted and autostart_task_ok()
+        if fast: autostart_legacy_off()
+        elif wanted and getattr(sys, 'frozen', False) and not autostart_get():
             try: autostart_set(True)
             except OSError as ex: err = str(ex)[:120]; logging.warning('Avvio automatico: %s', ex)
         on = autostart_get()
         why = ('Disattivato: accendilo qui sotto' if not wanted else 'Non riuscito: ' + err if err
                else 'Si attiva dall\'app installata' if not getattr(sys, 'frozen', False) else 'Non attivo')
-        report.append(item('autostart', 'Avvio con Windows', 'ok' if on else 'warn',
-                           'Parte da solo all\'accesso' if on else why))
+        if fast: report.append(item('autostart', 'Avvio con Windows', 'ok', 'Parte subito, appena accedi a Windows'))
+        elif on:
+            report.append(item('autostart', 'Avvio con Windows', 'warn',
+                               'Parte 1–2 minuti dopo l\'accesso: premi Avvio veloce (una conferma amministratore)'))
+            report[-1]['fast'] = True
+        else: report.append(item('autostart', 'Avvio con Windows', 'warn', why))
         try:
             made = ensure_shortcuts(state)
             if made: logging.info('Icone NEXAR create/aggiornate: %s', ', '.join(made))

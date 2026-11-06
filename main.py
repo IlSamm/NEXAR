@@ -245,6 +245,20 @@ def install(data: Install):
     try: return {'ok':True,'message':controller.run_job('install-'+data.key,run)}
     except RuntimeError as ex: raise HTTPException(409,str(ex))
 
+@app.post('/api/autostart/fast',dependencies=[Depends(authorized),Depends(local_only)])
+def autostart_fast():
+    import discovery
+    def run():
+        msg = discovery.autostart_fast()
+        with controller.lock:
+            controller.config['autostart'] = True
+            from core import json_save
+            json_save(CONFIG_FILE, controller.config)
+        controller.discover()
+        return msg
+    try: return {'ok':True,'message':controller.run_job('autostart-fast',run)}
+    except RuntimeError as ex: raise HTTPException(409,str(ex))
+
 class FanOne(BaseModel):
     id: str
     percent: int | None = None
@@ -273,7 +287,9 @@ def autostart(data: Toggle):
     with controller.lock:
         controller.config['autostart']=data.enabled
         json_save(CONFIG_FILE,controller.config)
-    try: discovery.autostart_set(data.enabled)
+    try:
+        discovery.autostart_set(data.enabled)
+        if not data.enabled: discovery.autostart_fast_off()
     except OSError as ex: raise HTTPException(400,str(ex))
     try: controller.run_job('discover',controller.discover)
     except RuntimeError: pass  # una ricerca è già in corso e vedrà il nuovo valore

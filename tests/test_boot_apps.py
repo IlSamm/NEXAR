@@ -173,3 +173,34 @@ def test_remote_apps_only_open_pinned(tmp_path, monkeypatch):
     c.app_pin(steam, False)
     assert [a['name'] for a in c.apps_view(True)['pinned']] == ['Claude', 'Codex']
     assert json.loads((tmp_path / 'config.json').read_text(encoding='utf-8'))['remote_apps'][0]['name'] == 'Claude'
+
+
+def _autostart_report(monkeypatch, task_ok, run_ok):
+    import sys
+    calls = []
+    monkeypatch.setattr(sys, 'frozen', True, raising=False)
+    monkeypatch.setattr(discovery, 'autostart_task_ok', lambda: task_ok)
+    monkeypatch.setattr(discovery, 'autostart_get', lambda: task_ok or run_ok)
+    monkeypatch.setattr(discovery, 'autostart_set', lambda on: calls.append(('set', on)))
+    monkeypatch.setattr(discovery, 'autostart_legacy_off', lambda: calls.append('legacy_off'))
+    monkeypatch.setattr(discovery, 'ensure_shortcuts', lambda state: [])
+    for name in ('find_openrgb', 'find_fancontrol', 'find_lhm', 'find_nvidia_smi'): monkeypatch.setattr(discovery, name, lambda: '')
+    monkeypatch.setattr(discovery, 'sensors_online', lambda url=None: False)
+    rep = discovery.autoconfigure({}, {})
+    return next(r for r in rep if r['key'] == 'autostart'), calls
+
+
+def test_fast_autostart_is_ok_and_removes_the_slow_one(monkeypatch):
+    item, calls = _autostart_report(monkeypatch, task_ok=True, run_ok=True)
+    assert item['level'] == 'ok' and 'subito' in item['detail'] and calls == ['legacy_off']
+
+
+def test_slow_autostart_offers_fast_button(monkeypatch):
+    item, calls = _autostart_report(monkeypatch, task_ok=False, run_ok=True)
+    assert item['level'] == 'warn' and item.get('fast') and 'Avvio veloce' in item['detail'] and calls == []
+
+
+def test_fast_autostart_task_script():
+    s = discovery.autostart_task_script(r'C:\Apps\NEXAR\NEXAR.exe')
+    assert "-AtLogOn" in s and "-RunLevel Limited" in s and "-Priority 4" in s and "'--minimized'" in s and discovery.AUTOSTART_TASK in s
+    assert 'Start-ScheduledTask' not in s            # non apre una seconda NEXAR mentre è già aperta
