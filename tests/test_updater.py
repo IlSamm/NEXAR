@@ -60,7 +60,8 @@ def test_swap_script_is_plain_batch():
     assert 'powershell' not in low and 'encodedcommand' not in low and 'bypass' not in low
     assert r'robocopy.exe" "C:\T\NEXAR\_internal" "C:\P\NEXAR\_internal" /MIR' in s and 'PID eq 1234' in s
     # comandi di sistema col percorso completo: un "find" di Git nel PATH faceva saltare l'attesa
-    assert r'"%W%\find.exe"' in s and r'"%W%\tasklist.exe"' in s and '| find ' not in s
+    assert r'"%W%\findstr.exe"' in s and r'"%W%\tasklist.exe"' in s and '|' not in s.replace('||', '')   # niente pipe: find aspettava la tastiera
+    assert all('<nul' in l for l in s.splitlines() if '.exe"' in l and not l.startswith(('copy', 'start')))
     labels = [l for l in s.splitlines() if l.startswith(':')]
     assert len(labels) == len(set(labels))                                       # etichette doppie = ciclo infinito
     assert r'move "C:\T\NEXAR\_internal" "C:\P\NEXAR\_internal"' in s          # scambio istantaneo prima della copia

@@ -64,11 +64,13 @@ CREATE_BREAKAWAY_FROM_JOB = 0x01000000
 def spawn_detached(args):
     """Il sostituto deve sopravvivere alla chiusura di NEXAR. Se l'app gira dentro un job di Windows
     (avvio da terminale o da un'altra app), un figlio normale verrebbe chiuso insieme a lei: si esce dal job.
-    Se il job non lo consente si ripiega su un processo staccato."""
+    Se il job non lo consente si parte comunque senza finestra.
+    Mai DETACHED_PROCESS: senza console nascosta ogni comando dello script (find, ping…) apriva una
+    finestra nera, e "find" restava lì ad aspettare la tastiera bloccando l'aggiornamento."""
     base = getattr(subprocess, 'CREATE_NO_WINDOW', 0) | getattr(subprocess, 'CREATE_NEW_PROCESS_GROUP', 0)
     io = dict(stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, close_fds=True)
     try: return subprocess.Popen(args, creationflags=base | CREATE_BREAKAWAY_FROM_JOB, **io)
-    except OSError: return subprocess.Popen(args, creationflags=base | getattr(subprocess, 'DETACHED_PROCESS', 0), **io)
+    except OSError: return subprocess.Popen(args, creationflags=base, **io)
 
 # Script batch leggibile (niente PowerShell nascosto: gli antivirus lo considerano un segnale di malware).
 SWAP = r'''@echo off
@@ -81,16 +83,18 @@ rem faceva credere che NEXAR fosse già chiusa.
 set W=%SystemRoot%\System32
 set /a n=0
 :wait
-"%W%\tasklist.exe" /FI "PID eq {pid}" 2>nul | "%W%\find.exe" "{pid}" >nul || goto copy
+rem Niente pipe e niente comandi che leggono da tastiera: l'elenco va in un file e findstr legge il file.
+"%W%\tasklist.exe" /FI "PID eq {pid}" /NH /FO CSV <nul >"%~dp0swap-wait.txt" 2>nul
+"%W%\findstr.exe" /C:"{pid}" "%~dp0swap-wait.txt" <nul >nul 2>&1 || goto copy
 set /a n+=1
 if %n% geq 90 goto copy
-"%W%\ping.exe" -n 2 127.0.0.1 >nul
+"%W%\ping.exe" -n 2 127.0.0.1 <nul >nul
 goto wait
 :copy
 rem Altre copie di NEXAR rimaste aperte (una seconda finestra, o l'app bloccata in chiusura)
 rem terrebbero bloccati i file e l'aggiornamento resterebbe a metà: si chiudono.
-"%W%\taskkill.exe" /F /IM {exe} >nul 2>&1
-"%W%\ping.exe" -n 2 127.0.0.1 >nul
+"%W%\taskkill.exe" /F /IM {exe} <nul >nul 2>&1
+"%W%\ping.exe" -n 2 127.0.0.1 <nul >nul
 rem Scambio istantaneo: la nuova _internal è già estratta sullo stesso disco, basta rinominare le cartelle.
 rem Copiare migliaia di file (con l'antivirus che li controlla uno per uno) teneva NEXAR chiusa per minuti.
 set mode=scambio
@@ -106,7 +110,7 @@ move "{dst}\_internal.old" "{dst}\_internal" >nul 2>&1
 :mirror
 set mode=copia
 rem Solo il programma: _internal viene rispecchiata, l'exe sostituito. Nient'altro nella cartella viene cancellato.
-"%W%\robocopy.exe" "{src}\_internal" "{dst}\_internal" /MIR /MT:16 /R:3 /W:1 /NFL /NDL /NJH /NJS >nul
+"%W%\robocopy.exe" "{src}\_internal" "{dst}\_internal" /MIR /MT:16 /R:3 /W:1 /NFL /NDL /NJH /NJS <nul >nul
 set rc=%errorlevel%
 :program
 set ok=no
@@ -116,7 +120,7 @@ copy /y "{src}\{exe}" "{dst}\{exe}" >nul 2>&1
 if not errorlevel 1 set ok=si& goto done
 set /a c+=1
 if %c% geq 15 goto done
-"%W%\ping.exe" -n 3 127.0.0.1 >nul
+"%W%\ping.exe" -n 3 127.0.0.1 <nul >nul
 goto exe
 :done
 >>"{log}" echo %date% %time% %mode% robocopy=%rc% exe=%ok% attesa=%n%s
