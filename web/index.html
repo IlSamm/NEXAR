@@ -49,7 +49,7 @@
  <symbol id="i-game" viewBox="0 0 24 24"><path d="M7.5 7h9a5 5 0 0 1 4.9 6l-.8 3.7a2.4 2.4 0 0 1-4.2 1L14.6 16H9.4l-1.8 1.7a2.4 2.4 0 0 1-4.2-1L2.6 13a5 5 0 0 1 4.9-6z"/><path d="M7.5 10v3M6 11.5h3"/><circle cx="15.5" cy="11" r=".9"/><circle cx="17.5" cy="13" r=".9"/></symbol>
  <symbol id="i-max" viewBox="0 0 24 24"><path d="M5 18 12 6l7 12M8.5 13h7"/></symbol>
  <symbol id="i-clean" viewBox="0 0 24 24"><path d="m14.5 3.5 6 6M17.5 6.5 11 13"/><path d="M11 13c-3 0-6.5 1.5-7.5 7.5 6-1 7.5-4.5 7.5-7.5z"/><path d="M5 9.5l1-2 1 2 2 1-2 1-1 2-1-2-2-1zM15 17l.7-1.3L17 15l-1.3-.7L15 13l-.7 1.3L13 15l1.3.7z"/></symbol>
- <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4.5v15l12.5-7.5z"/></symbol><symbol id="i-prev" viewBox="0 0 24 24"><path d="M18 6v12l-9-6 9-6Z"/><path d="M6 6v12"/></symbol><symbol id="i-next" viewBox="0 0 24 24"><path d="M6 6v12l9-6-9-6Z"/><path d="M18 6v12"/></symbol><symbol id="i-playpause" viewBox="0 0 24 24"><path d="M4 6v12l8-6-8-6Z"/><path d="M15.5 6v12M20 6v12"/></symbol><symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 15.5V4.5m-4.5 4.5L12 4.5 16.5 9M5 19.5h14"/></symbol><symbol id="i-music" viewBox="0 0 24 24"><path d="M9 18V5.5l11-2V16"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></symbol>
+ <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4.5v15l12.5-7.5z"/></symbol><symbol id="i-prev" viewBox="0 0 24 24"><path d="M18 6v12l-9-6 9-6Z"/><path d="M6 6v12"/></symbol><symbol id="i-next" viewBox="0 0 24 24"><path d="M6 6v12l9-6-9-6Z"/><path d="M18 6v12"/></symbol><symbol id="i-playpause" viewBox="0 0 24 24"><path d="M4 6v12l8-6-8-6Z"/><path d="M15.5 6v12M20 6v12"/></symbol><symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 15.5V4.5m-4.5 4.5L12 4.5 16.5 9M5 19.5h14"/></symbol><symbol id="i-expand" viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></symbol><symbol id="i-fit" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="14" rx="2.5"/><path d="M9 9.5 7 12l2 2.5M15 9.5l2 2.5-2 2.5"/></symbol><symbol id="i-tap" viewBox="0 0 24 24"><path d="M9.5 11V5.5a1.75 1.75 0 0 1 3.5 0V11l3.6.7a2.3 2.3 0 0 1 1.8 2.6l-.7 4.2A3 3 0 0 1 14.7 21h-3.3a3 3 0 0 1-2.4-1.2l-3.3-4.4a1.6 1.6 0 0 1 2.4-2.1L9.5 15"/><path d="M6.5 6.5a5 5 0 0 1 9.4-.8"/></symbol><symbol id="i-mouse-r" viewBox="0 0 24 24"><rect x="6" y="3" width="12" height="18" rx="6"/><path d="M12 3v7h6"/><path d="M12.6 3.6h4.2v5.8h-4.2z" fill="currentColor" stroke="none" opacity=".55"/></symbol><symbol id="i-music" viewBox="0 0 24 24"><path d="M9 18V5.5l11-2V16"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></symbol>
  <symbol id="i-eye-off" viewBox="0 0 24 24"><path d="M3 3l18 18M10.6 5.1A10 10 0 0 1 12 5c5.5 0 9 5 9.5 7a13 13 0 0 1-2.9 4.1M6.6 6.6C4.4 8 3 10.2 2.5 12c.5 2 4 7 9.5 7 1.9 0 3.6-.6 5-1.5M9.9 9.9a3 3 0 0 0 4.2 4.2"/></symbol>
  <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2.5 12C3 10 6.5 5 12 5s9 5 9.5 7c-.5 2-4 7-9.5 7S3 14 2.5 12z"/><circle cx="12" cy="12" r="3"/></symbol>
  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></symbol>
@@ -806,39 +806,50 @@
    <section class="page" id="page-screen">
     <div class="scr-layout scr-card" id="scr-card">
      <section class="card scr-main">
-     <div class="card-head"><div><h3>Schermo del PC</h3><p id="scr-sub">Guarda cosa succede sul PC, anche da Telegram</p></div>
-      <button class="btn small" type="button" id="scr-refresh"><svg class="i"><use href="#i-refresh"/></svg>Aggiorna</button></div>
-     <button class="scr-view" type="button" id="scr-view" aria-label="Schermo del PC a tutto schermo">
-      <img id="scr-img" alt="Schermo del PC"><span class="scr-empty" id="scr-empty"><svg class="i"><use href="#i-monitor"/></svg><b>Tocca per vedere lo schermo</b></span>
-      <span class="scr-stamp" id="scr-time"></span><i class="scr-scan" aria-hidden="true"></i>
-     </button>
-     <div class="scr-tools">
-      <button class="rc-take" type="button" id="rc-take"><svg class="i"><use href="#i-mouse"/></svg>Prendi il controllo</button>
-      <button class="scr-live" type="button" id="scr-live" role="switch" aria-checked="false"><i></i>Dal vivo</button>
-      <span class="scr-sep" aria-hidden="true"></span>
-      <button type="button" data-scr="down" title="Volume −10" aria-label="Volume meno"><svg class="i"><use href="#i-vol-down"/></svg></button>
-      <button type="button" data-scr="mute" title="Muto" aria-label="Muto"><svg class="i"><use href="#i-vol-x"/></svg></button>
-      <button type="button" data-scr="up" title="Volume +10" aria-label="Volume più"><svg class="i"><use href="#i-vol"/></svg></button>
-      <span class="scr-sep" aria-hidden="true"></span>
-      <button type="button" data-scr="monitor_off" class="wide"><svg class="i"><use href="#i-moon"/></svg>Spegni schermi</button>
-      <button type="button" data-scr="lock" class="wide"><svg class="i"><use href="#i-lock"/></svg>Blocca</button>
-     </div>
+      <div class="card-head"><div><h3>Schermo del PC</h3><p id="scr-sub">Guarda cosa succede sul PC, anche da Telegram</p></div>
+       <div class="scr-head-act"><button class="scr-live" type="button" id="scr-live" role="switch" aria-checked="false"><i></i>Dal vivo</button>
+       <button class="btn small" type="button" id="scr-refresh"><svg class="i"><use href="#i-refresh"/></svg><span>Aggiorna</span></button></div></div>
+      <div class="scr-monitor">
+       <button class="scr-view" type="button" id="scr-view" aria-label="Schermo del PC a tutto schermo">
+        <img id="scr-img" alt="Schermo del PC"><span class="scr-empty" id="scr-empty"><span class="scr-empty-ico"><svg class="i"><use href="#i-monitor"/></svg></span><b>Tocca per vedere lo schermo</b></span>
+        <span class="scr-stamp" id="scr-time"></span><i class="scr-scan" aria-hidden="true"></i><i class="scr-glare" aria-hidden="true"></i>
+       </button>
+       <button class="scr-cta" type="button" data-rc-take><span class="scr-cta-ico"><svg class="i"><use href="#i-mouse"/></svg></span><span><b>Prendi il controllo</b><small>Mouse e tastiera, con il PIN</small></span></button>
+      </div>
+      <div class="scr-stand" aria-hidden="true"><i></i></div>
+      <div class="scr-dock">
+       <div class="scr-grp" role="group" aria-label="Volume"><span class="scr-grp-l"><svg class="i"><use href="#i-vol"/></svg>Volume</span>
+        <button type="button" data-scr="down" title="Volume −10" aria-label="Volume meno"><svg class="i"><use href="#i-vol-down"/></svg></button>
+        <button type="button" data-scr="mute" title="Muto" aria-label="Muto"><svg class="i"><use href="#i-vol-x"/></svg></button>
+        <button type="button" data-scr="up" title="Volume +10" aria-label="Volume più"><svg class="i"><use href="#i-vol"/></svg></button></div>
+       <div class="scr-grp" role="group" aria-label="Schermi e sessione">
+        <button type="button" data-scr="monitor_off" class="wide"><svg class="i"><use href="#i-moon"/></svg>Spegni schermi</button>
+        <button type="button" data-scr="lock" class="wide"><svg class="i"><use href="#i-lock"/></svg>Blocca</button></div>
+      </div>
      </section>
      <div class="scr-side">
+      <section class="card rc-panel" id="rc-panel" data-state="off">
+       <div class="rc-hero">
+        <div class="rc-orb" aria-hidden="true"><i class="rc-ring"></i><i class="rc-ring r2"></i><svg class="i"><use href="#i-mouse"/></svg></div>
+        <div class="rc-hero-t"><small>Controllo remoto</small><b id="rc-state">—</b><span id="rc-note">Mouse e tastiera da lontano, sempre con il PIN</span></div>
+        <button class="toggle" type="button" id="rc-enabled" role="switch" aria-label="Controllo remoto"><span></span></button>
+       </div>
+       <div class="rc-live" id="rc-live" hidden><i></i><div><b>Sessione in corso</b><small id="rc-live-sub">—</small></div><button class="btn small danger" type="button" id="rc-live-end">Termina</button></div>
+       <button class="rc-take" type="button" id="rc-take"><svg class="i"><use href="#i-mouse"/></svg><span>Prendi il controllo</span><svg class="i chev"><use href="#i-chev"/></svg></button>
+       <ul class="rc-facts"><li><svg class="i"><use href="#i-lock"/></svg>PIN di 6 cifre a ogni sessione</li><li><svg class="i"><use href="#i-clock"/></svg><span id="rc-fact-idle">Si chiude da sola se non la usi</span></li><li><svg class="i"><use href="#i-eye"/></svg>Sul PC vedi sempre chi è collegato</li></ul>
+       <div class="rc-setup" id="rc-setup"><button class="btn small" type="button" id="rc-pin-set"><svg class="i"><use href="#i-lock"/></svg><span>Scegli il PIN</span></button>
+        <label class="rc-idle">Chiudi dopo <select id="rc-idle"><option value="5">5 min</option><option value="10">10 min</option><option value="15">15 min</option><option value="30">30 min</option></select></label></div>
+      </section>
       <section class="card scr-wcard">
-     <div class="card-head"><div><h3>Finestre aperte <small class="scr-count" id="scr-wcount"></small></h3><p>Chiudi quella bloccata senza essere al PC</p></div></div>
-     <div class="scr-wins" id="scr-wins"><p class="muted">Caricamento…</p></div>
+       <div class="card-head"><div><h3>Finestre aperte <small class="scr-count" id="scr-wcount"></small></h3><p>Chiudi quella bloccata senza essere al PC</p></div></div>
+       <div class="scr-wins" id="scr-wins"><p class="muted">Caricamento…</p></div>
       </section>
       <section class="card scr-ocard">
-       <div class="card-head"><div><h3>Controllo e privacy</h3><p>Decidi tu cosa si può fare da lontano</p></div></div>
-       <div class="rc-live" id="rc-live" hidden><i></i><div><b>Controllo remoto attivo</b><small id="rc-live-sub">—</small></div><button class="btn small danger" type="button" id="rc-live-end">Termina</button></div>
-     <div class="scr-opts">
-      <label class="switch-row"><span class="opt-ico c-power"><svg class="i"><use href="#i-mouse"/></svg></span><div><b>Controllo remoto</b><small id="rc-note">Mouse e tastiera da lontano, sempre con il PIN</small></div><button class="toggle" type="button" id="rc-enabled" role="switch"><span></span></button></label>
-      <div class="rc-setup" id="rc-setup"><button class="btn small" type="button" id="rc-pin-set"><svg class="i"><use href="#i-lock"/></svg><span>Scegli il PIN</span></button>
-       <label class="rc-idle">Chiudi dopo <select id="rc-idle"><option value="5">5 min</option><option value="10">10 min</option><option value="15">15 min</option><option value="30">30 min</option></select> senza comandi</label></div>
-      <label class="switch-row"><span class="opt-ico c-teal"><svg class="i"><use href="#i-bot"/></svg></span><div><b>Avvisami quando l'AI finisce</b><small>Messaggio su Telegram quando Codex o Claude chiudono un lavoro lungo e tu non sei al PC</small></div><button class="toggle" type="button" id="scr-ai" role="switch"><span></span></button></label>
-      <label class="switch-row"><span class="opt-ico c-blue"><svg class="i"><use href="#i-eye"/></svg></span><div><b>Vedere lo schermo da remoto</b><small>Solo tu, dalla dashboard o dal tuo Telegram abbinato</small></div><button class="toggle" type="button" id="scr-allow" role="switch"><span></span></button></label>
-     </div>
+       <div class="card-head"><div><h3>Privacy e avvisi</h3><p>Decidi tu cosa si può fare da lontano</p></div></div>
+       <div class="scr-opts">
+        <label class="switch-row"><span class="opt-ico c-blue"><svg class="i"><use href="#i-eye"/></svg></span><div><b>Vedere lo schermo da remoto</b><small>Solo tu, dalla dashboard o dal tuo Telegram abbinato</small></div><button class="toggle" type="button" id="scr-allow" role="switch"><span></span></button></label>
+        <label class="switch-row"><span class="opt-ico c-teal"><svg class="i"><use href="#i-bot"/></svg></span><div><b>Avvisami quando l'AI finisce</b><small>Messaggio su Telegram quando Codex o Claude chiudono un lavoro lungo e tu non sei al PC</small></div><button class="toggle" type="button" id="scr-ai" role="switch"><span></span></button></label>
+       </div>
       </section>
      </div>
     </div>
@@ -878,20 +889,37 @@
 <dialog class="rc" id="rc" aria-label="Controllo remoto del PC">
  <div class="rc-bar" id="rc-bar">
   <button class="rc-b end" type="button" id="rc-end"><svg class="i"><use href="#i-x"/></svg><span>Termina</span></button>
-  <select id="rc-mon" aria-label="Schermo"></select>
-  <select id="rc-q" aria-label="Qualità"><option value="eco">Risparmio dati</option><option value="balanced" selected>Bilanciata</option><option value="sharp">Nitida</option></select>
-  <select id="rc-fps" aria-label="Fotogrammi al secondo"><option value="5">5 fps</option><option value="10" selected>10 fps</option><option value="15">15 fps</option></select>
-  <div class="rc-seg" id="rc-mode" role="group" aria-label="Modo"><button type="button" data-mode="touch" class="on">Tocco</button><button type="button" data-mode="pad">Touchpad</button></div>
-  <button class="rc-b" type="button" id="rc-kb-btn"><svg class="i"><use href="#i-kbd"/></svg><span>Scrivi</span></button>
-  <button class="rc-b" type="button" id="rc-keys-btn"><svg class="i"><use href="#i-grid"/></svg><span>Tasti</span></button>
-  <span class="rc-stat" id="rc-stat">Collegamento…</span>
-  <button class="rc-b icon" type="button" id="rc-hide" aria-label="Nascondi la barra"><svg class="i"><use href="#i-chev"/></svg></button>
+  <div class="rc-conn" id="rc-conn"><i class="rc-dot"></i><b>PC</b><span class="rc-stat" id="rc-stat">Collegamento…</span><span class="rc-sig" id="rc-sig" aria-hidden="true"><i></i><i></i><i></i><i></i></span></div>
+  <div class="rc-tools">
+   <button class="rc-b icon" type="button" id="rc-fit" title="Adatta allo schermo" aria-label="Adatta allo schermo" hidden><svg class="i"><use href="#i-fit"/></svg></button>
+   <button class="rc-b icon" type="button" id="rc-fs" title="Schermo intero" aria-label="Schermo intero"><svg class="i"><use href="#i-expand"/></svg></button>
+   <button class="rc-b" type="button" id="rc-set-btn" aria-expanded="false"><svg class="i"><use href="#i-sliders"/></svg><span>Immagine</span></button>
+   <button class="rc-b icon" type="button" id="rc-hide" title="Nascondi i comandi" aria-label="Nascondi i comandi"><svg class="i"><use href="#i-chev"/></svg></button>
+  </div>
+ </div>
+ <div class="rc-set" id="rc-set" hidden>
+  <div class="rc-set-g" id="rc-mon-g"><small>Schermo</small><select id="rc-mon" aria-label="Schermo" hidden></select><div class="rc-chips" data-for="rc-mon"></div></div>
+  <div class="rc-set-g"><small>Qualità</small><select id="rc-q" aria-label="Qualità" hidden><option value="eco">Risparmio dati</option><option value="balanced" selected>Bilanciata</option><option value="sharp">Nitida</option></select><div class="rc-chips" data-for="rc-q"></div></div>
+  <div class="rc-set-g"><small>Fluidità</small><select id="rc-fps" aria-label="Fotogrammi al secondo" hidden><option value="5">5 fps</option><option value="10" selected>10 fps</option><option value="15">15 fps</option></select><div class="rc-chips" data-for="rc-fps"></div></div>
+  <p class="rc-set-note">Con il 4G o una rete lenta scegli Risparmio dati e 5 fps.</p>
  </div>
  <div class="rc-stage" id="rc-stage"><div class="rc-zoom" id="rc-zoom"><img id="rc-img" alt="Schermo del PC" draggable="false"><i class="rc-cur" id="rc-cur" hidden></i></div>
+  <div class="rc-load" id="rc-load"><i class="rc-load-ring"></i><b>Collegamento al PC…</b><small>Arriva la prima immagine dello schermo</small></div>
   <div class="rc-msg" id="rc-msg" hidden></div><div class="rc-hint" id="rc-hint"></div></div>
- <div class="rc-keys" id="rc-keys" hidden><div class="rc-latch"><button type="button" data-latch="ctrl">Ctrl</button><button type="button" data-latch="alt">Alt</button><button type="button" data-latch="shift">Shift</button><button type="button" data-latch="win">Win</button></div><div class="rc-kgrid"><button type="button" data-k="esc">Esc</button><button type="button" data-k="tab">Tab</button><button type="button" data-k="backspace">⌫</button><button type="button" data-k="delete">Canc</button><button type="button" data-k="enter">Invio</button><button type="button" data-k="left">←</button><button type="button" data-k="up">↑</button><button type="button" data-k="down">↓</button><button type="button" data-k="right">→</button><button type="button" data-k="home">Inizio</button><button type="button" data-k="end">Fine</button><button type="button" data-k="pageup">Pag ↑</button><button type="button" data-k="pagedown">Pag ↓</button><button type="button" data-k="f5">F5</button><button type="button" data-k="win">⊞ Start</button><button type="button" data-k="c" data-m="ctrl">Copia<small>Ctrl+C</small></button><button type="button" data-k="v" data-m="ctrl">Incolla<small>Ctrl+V</small></button><button type="button" data-k="x" data-m="ctrl">Taglia<small>Ctrl+X</small></button><button type="button" data-k="z" data-m="ctrl">Annulla<small>Ctrl+Z</small></button><button type="button" data-k="a" data-m="ctrl">Seleziona tutto<small>Ctrl+A</small></button><button type="button" data-k="s" data-m="ctrl">Salva<small>Ctrl+S</small></button><button type="button" data-k="f" data-m="ctrl">Cerca<small>Ctrl+F</small></button><button type="button" data-k="tab" data-m="alt">Cambia finestra<small>Alt+Tab</small></button><button type="button" data-k="d" data-m="win">Desktop<small>Win+D</small></button><button type="button" data-k="f4" data-m="alt">Chiudi finestra<small>Alt+F4</small></button></div></div>
+ <div class="rc-keys" id="rc-keys" hidden>
+  <div class="rc-kcol"><small class="rc-kt">Si aggiungono al tasto dopo</small><div class="rc-latch"><button type="button" data-latch="ctrl">Ctrl</button><button type="button" data-latch="alt">Alt</button><button type="button" data-latch="shift">Shift</button><button type="button" data-latch="win">Win</button></div>
+   <div class="rc-knav"><div class="rc-dpad"><button type="button" data-k="up" class="u" aria-label="Su">↑</button><button type="button" data-k="left" class="l" aria-label="Sinistra">←</button><button type="button" data-k="down" class="d" aria-label="Giù">↓</button><button type="button" data-k="right" class="r" aria-label="Destra">→</button></div>
+    <div class="rc-kgrid"><button type="button" data-k="esc">Esc</button><button type="button" data-k="tab">Tab</button><button type="button" data-k="backspace">⌫</button><button type="button" data-k="delete">Canc</button><button type="button" data-k="enter">Invio</button><button type="button" data-k="home">Inizio</button><button type="button" data-k="end">Fine</button><button type="button" data-k="pageup">Pag ↑</button><button type="button" data-k="pagedown">Pag ↓</button><button type="button" data-k="f5">F5</button><button type="button" data-k="win">⊞ Start</button></div></div></div>
+  <div class="rc-kcol"><small class="rc-kt">Scorciatoie</small><div class="rc-short"><button type="button" data-k="c" data-m="ctrl"><b>Copia</b><small>Ctrl+C</small></button><button type="button" data-k="v" data-m="ctrl"><b>Incolla</b><small>Ctrl+V</small></button><button type="button" data-k="x" data-m="ctrl"><b>Taglia</b><small>Ctrl+X</small></button><button type="button" data-k="z" data-m="ctrl"><b>Annulla</b><small>Ctrl+Z</small></button><button type="button" data-k="a" data-m="ctrl"><b>Seleziona tutto</b><small>Ctrl+A</small></button><button type="button" data-k="s" data-m="ctrl"><b>Salva</b><small>Ctrl+S</small></button><button type="button" data-k="f" data-m="ctrl"><b>Cerca</b><small>Ctrl+F</small></button><button type="button" data-k="tab" data-m="alt"><b>Cambia finestra</b><small>Alt+Tab</small></button><button type="button" data-k="d" data-m="win"><b>Desktop</b><small>Win+D</small></button><button type="button" data-k="f4" data-m="alt"><b>Chiudi finestra</b><small>Alt+F4</small></button></div></div>
+ </div>
  <div class="rc-kb" id="rc-kb" hidden><input id="rc-text" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="send" aria-label="Scrivi sul PC" placeholder="Scrivi: arriva subito sul PC"><button class="rc-b" type="button" data-k="backspace" aria-label="Cancella">⌫</button><button class="rc-b" type="button" data-k="enter">Invio</button></div>
- <button class="rc-show" type="button" id="rc-show" hidden aria-label="Mostra la barra"><svg class="i"><use href="#i-sliders"/></svg></button>
+ <div class="rc-dock" id="rc-dock">
+  <div class="rc-seg" id="rc-mode" role="group" aria-label="Modo"><i class="rc-seg-ink" aria-hidden="true"></i><button type="button" data-mode="touch" class="on"><svg class="i"><use href="#i-tap"/></svg><span>Tocco</span></button><button type="button" data-mode="pad"><svg class="i"><use href="#i-mouse"/></svg><span>Touchpad</span></button></div>
+  <button class="rc-d" type="button" id="rc-rmb" aria-pressed="false"><svg class="i"><use href="#i-mouse-r"/></svg><span>Clic destro</span></button>
+  <button class="rc-d" type="button" id="rc-kb-btn"><svg class="i"><use href="#i-kbd"/></svg><span>Scrivi</span></button>
+  <button class="rc-d" type="button" id="rc-keys-btn"><svg class="i"><use href="#i-grid"/></svg><span>Tasti</span></button>
+ </div>
+ <button class="rc-show" type="button" id="rc-show" hidden aria-label="Mostra i comandi"><svg class="i"><use href="#i-sliders"/></svg></button>
 </dialog>
 <dialog class="scr-full" id="scr-full" aria-label="Schermo del PC"><img id="scr-full-img" alt="Schermo del PC"><button class="scr-full-x" type="button" id="scr-full-x" aria-label="Chiudi"><svg class="i"><use href="#i-x"/></svg></button><button class="scr-full-r" type="button" id="scr-full-r"><svg class="i"><use href="#i-refresh"/></svg>Aggiorna</button></dialog>
 <dialog class="sheet app-sheet" id="app-sheet" aria-labelledby="as-title">

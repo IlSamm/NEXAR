@@ -2072,13 +2072,18 @@ function renderRemote(){
  const i=rcInfo||{};const local=!!i.local;
  $('rc-enabled').setAttribute('aria-checked',i.enabled?'true':'false');
  $('rc-note').textContent=i.locked_for?`Bloccato per troppi PIN sbagliati: ancora ${Math.ceil(i.locked_for/60)} min`
-  :i.enabled?`Acceso · ogni sessione chiede il PIN · si chiude dopo ${i.idle_minutes} min senza comandi`
+  :i.active?'Qualcuno sta usando il PC da lontano':i.enabled?(i.pin_set?'Acceso: collegati da dove vuoi':'Acceso, ma manca il PIN')
   :local?(i.pin_set?'Spento: accendilo per usarlo da lontano':'Scegli un PIN, poi accendilo'):'Spento: si accende dal PC, per sicurezza';
  $('rc-setup').hidden=!local;$('rc-pin-set').querySelector('span').textContent=i.pin_set?'Cambia il PIN':'Scegli il PIN';
  $('rc-idle').value=String(i.idle_minutes||10);
  $('rc-live').hidden=!i.active;
  if(i.active&&i.session)$('rc-live-sub').textContent=`Da ${i.session.who} · da ${Math.max(1,Math.round(i.session.since_s/60))} min`;
  $('rc-take').classList.toggle('off',!i.enabled);
+ const st=i.active?'live':i.locked_for?'locked':!i.enabled?'off':!i.pin_set?'pin':'ready';
+ $('rc-panel').dataset.state=st;
+ $('rc-state').textContent={live:'In uso',locked:'Bloccato',off:'Spento',pin:'Manca il PIN',ready:'Pronto'}[st];
+ $('rc-take').querySelector('span').textContent=st==='live'?'Riprendi il controllo':!i.enabled&&local?'Accendi e collegati':'Prendi il controllo';
+ $('rc-fact-idle').textContent=`Si chiude da sola dopo ${i.idle_minutes||10} min senza comandi`;
 }
 async function rcSetup(body){
  if(demo){Object.assign(DEMO_RC,body.enabled!==undefined?{enabled:body.enabled}:{},body.pin?{pin_set:true}:{},body.idle_minutes?{idle_minutes:body.idle_minutes}:{});rcInfo={...DEMO_RC};renderRemote();return true;}
@@ -2119,6 +2124,7 @@ $('rc-enabled').addEventListener('click',e=>{e.preventDefault();const on=$('rc-e
   (demo?Promise.resolve({info:{...DEMO_RC,enabled:false}}):rcPost('/api/remote/off',{})).then(r=>{rcInfo={...r.info,local:false};renderRemote();notify('✓ Controllo remoto spento');}).catch(ex=>notify('⚠ '+ex.message,true));return;}
  if(on&&!rcInfo.pin_set){pinSheet('set');return;}rcSetup({enabled:on});});
 $('rc-pin-set').addEventListener('click',()=>pinSheet('set'));
+document.querySelectorAll('[data-rc-take]').forEach(b=>b.addEventListener('click',()=>$('rc-take').click()));
 $('rc-idle').addEventListener('change',()=>rcSetup({idle_minutes:+$('rc-idle').value}));
 $('rc-live-end').addEventListener('click',async()=>{if(RC.on){rcClose();return;}
  try{const r=demo?{message:'Controllo terminato'}:await rcPost('/api/remote/end',{});notify('✓ '+r.message);loadRemote();}catch(ex){notify('⚠ '+ex.message,true);}});
@@ -2127,9 +2133,10 @@ function rcOpen(s){
  Object.assign(RC,{token:s.token,on:true,v:0,seq:0,mons:s.monitors||[],q:[],sending:false,cur:null,z:{s:1,x:0,y:0},idle:s.idle_minutes||10,lastIn:Date.now(),frames:[],bytes:[]});
  RC.pts.clear();RC.g=null;RC.latch.clear();
  const sel=$('rc-mon');sel.replaceChildren(...RC.mons.map(m=>{const o=el('option','',m.name);o.value=m.id;return o;}));
- if(RC.mons.length>1){const o=el('option','','Tutti gli schermi');o.value='all';sel.append(o);}sel.hidden=RC.mons.length<2;
+ if(RC.mons.length>1){const o=el('option','','Tutti gli schermi');o.value='all';sel.append(o);}$('rc-mon-g').hidden=RC.mons.length<2;
  $('rc-q').value='balanced';$('rc-fps').value='10';let saved='';try{saved=localStorage.getItem('nexar.rcMode')||'';}catch(e){}rcMode(saved==='pad'?'pad':'touch');
  $('rc-keys').hidden=true;$('rc-kb').hidden=true;$('rc').classList.remove('bar-off');$('rc-show').hidden=true;
+ rcSetPanel(false);rcChips();rcRight(false);$('rc-load').hidden=false;$('rc-fit').hidden=true;$('rc-conn').classList.remove('bad');$('rc-sig').dataset.l='0';
  rcMsg('');$('rc').showModal();rcLayout();rcLoop();rcIdleWatch();
  const coarse=matchMedia('(pointer:coarse)').matches,portrait=innerHeight>innerWidth;
  rcHint(!coarse?'Il mouse e la tastiera ora comandano il PC':portrait?'Gira il telefono per vederlo più grande · due dita = zoom':'Tocca = clic · tieni premuto = tasto destro · due dita = scorri o zoom');
@@ -2144,6 +2151,7 @@ async function rcClose(reason){
  if($('rc').open)$('rc').close();
  if(RC.url.startsWith('blob:'))URL.revokeObjectURL(RC.url);RC.url='';$('rc-img').removeAttribute('src');
  if(tgApp){try{tgApp.enableVerticalSwipes?.();}catch(e){}try{if(tgApp.isFullscreen)tgApp.exitFullscreen?.();}catch(e){}}
+ if(document.fullscreenElement){try{document.exitFullscreen();}catch(e){}}
  if(reason)notify(reason,true);loadRemote();
 }
 $('rc').addEventListener('cancel',e=>{e.preventDefault();});   // Esc va al PC, non chiude
@@ -2156,8 +2164,8 @@ function rcHint(t){const h=$('rc-hint');h.textContent=t;h.classList.add('show');
 
 // dimensioni: immagine "contenuta" nello spazio disponibile, poi zoom/spostamento con transform
 function rcLayout(){
- const st=$('rc-stage').getBoundingClientRect(),z=$('rc-zoom');
- const k=Math.min(st.width/RC.w,st.height/RC.h);const w=RC.w*k,h=RC.h*k;
+ const st=$('rc-stage').getBoundingClientRect(),z=$('rc-zoom'),M=matchMedia('(pointer:coarse)').matches?0:14;
+ const k=Math.min((st.width-2*M)/RC.w,(st.height-2*M)/RC.h);const w=RC.w*k,h=RC.h*k;
  RC.base={w,h,x:(st.width-w)/2,y:(st.height-h)/2};z.style.width=w+'px';z.style.height=h+'px';rcApplyZoom();
 }
 function rcApplyZoom(){
@@ -2166,7 +2174,7 @@ function rcApplyZoom(){
  else{const W=b.w*z.s,H=b.h*z.s;   // niente bordi vuoti quando ingrandito
   z.x=W<=st.width?(st.width-W)/2-b.x:Math.min(-b.x,Math.max(st.width-W-b.x,z.x));
   z.y=H<=st.height?(st.height-H)/2-b.y:Math.min(-b.y,Math.max(st.height-H-b.y,z.y));}
- $('rc-zoom').style.transform=`translate(${b.x+z.x}px,${b.y+z.y}px) scale(${z.s})`;rcDrawCursor();
+ $('rc-zoom').style.transform=`translate(${b.x+z.x}px,${b.y+z.y}px) scale(${z.s})`;rcDrawCursor();$('rc-fit').hidden=z.s<=1;
 }
 addEventListener('resize',()=>{if(RC.on)rcLayout();});
 function rcNorm(cx,cy){const r=$('rc-img').getBoundingClientRect();return{x:Math.min(1,Math.max(0,(cx-r.left)/r.width)),y:Math.min(1,Math.max(0,(cy-r.top)/r.height))};}
@@ -2179,7 +2187,7 @@ function rcDrawCursor(){
 async function rcLoop(){
  let fails=0;
  while(RC.on){
-  if(demo){await new Promise(r=>setTimeout(r,800));if(!RC.on)break;if(!RC.seq){const u=demoShot();RC.w=1600;RC.h=900;RC.seq=1;$('rc-img').src=u;rcLayout();RC.cur=RC.cur||{x:.42,y:.4};rcDrawCursor();$('rc-stat').textContent='Anteprima';}continue;}
+  if(demo){await new Promise(r=>setTimeout(r,800));if(!RC.on)break;if(!RC.seq){const u=demoShot();RC.w=1600;RC.h=900;RC.seq=1;$('rc-img').src=u;$('rc-load').hidden=true;$('rc-sig').dataset.l='4';rcLayout();RC.cur=RC.cur||{x:.42,y:.4};rcDrawCursor();$('rc-stat').textContent='Anteprima';}continue;}
   try{
    const t0=performance.now();
    const r=await fetch(`/api/remote/frame?v=${RC.v}&seq=${RC.seq}`,{headers:rcHead(),cache:'no-store'});
@@ -2190,7 +2198,7 @@ async function rcLoop(){
     meta=JSON.parse(r.headers.get('x-remote-meta')||'{}');const blob=await r.blob();
     const u=URL.createObjectURL(blob);const im=$('rc-img');
     await new Promise(res=>{im.onload=im.onerror=res;im.src=u;});
-    if(RC.url.startsWith('blob:'))URL.revokeObjectURL(RC.url);RC.url=u;RC.seq=meta.seq;
+    if(RC.url.startsWith('blob:'))URL.revokeObjectURL(RC.url);RC.url=u;RC.seq=meta.seq;$('rc-load').hidden=true;
     if(meta.w!==RC.w||meta.h!==RC.h){RC.w=meta.w;RC.h=meta.h;rcLayout();}
     const now=performance.now();RC.frames.push(now);RC.bytes.push([now,blob.size]);
    }else meta=await r.json();
@@ -2200,7 +2208,7 @@ async function rcLoop(){
    else if(!$('rc-msg').dataset.keep)rcMsg('');
    rcStats();
   }catch(ex){
-   fails++;$('rc-stat').textContent='Connessione persa, riprovo…';
+   fails++;$('rc-stat').textContent='Connessione persa, riprovo…';$('rc-conn').classList.add('bad');$('rc-sig').dataset.l='0';
    await new Promise(r=>setTimeout(r,Math.min(4000,400*fails)));
   }
  }
@@ -2209,6 +2217,9 @@ function rcStats(){
  const now=performance.now();RC.frames=RC.frames.filter(t=>now-t<3000);RC.bytes=RC.bytes.filter(b=>now-b[0]<3000);
  const fps=RC.frames.length/3,kbs=RC.bytes.reduce((a,b)=>a+b[1],0)/3/1024;
  $('rc-stat').textContent=`${fps.toFixed(fps<10?1:0)} fps · ${kbs<1000?Math.round(kbs)+' KB/s':(kbs/1024).toFixed(1)+' MB/s'}`;
+ // segnale: fotogrammi arrivati rispetto a quelli chiesti (lo schermo fermo ne manda pochi, ma il collegamento è buono)
+ const want=+$('rc-fps').value||10,r=fps/want,fresh=RC.frames.length?now-RC.frames[RC.frames.length-1]<6000:false;
+ $('rc-sig').dataset.l=String(r>.75||fresh&&r>.2?4:r>.5?3:r>.2?2:1);$('rc-conn').classList.remove('bad');
 }
 // comandi: in fila, uno alla volta (i movimenti si accorpano)
 function rcSend(ev){
@@ -2242,6 +2253,22 @@ function rcMode(m){RC.mode=m;$('rc').classList.toggle('pad',m==='pad');document.
  try{localStorage.setItem('nexar.rcMode',m);}catch(e){}}
 document.querySelectorAll('#rc-mode button').forEach(b=>b.addEventListener('click',()=>{rcMode(b.dataset.mode);
  rcHint(b.dataset.mode==='pad'?'Muovi il dito per spostare il puntatore · tocca = clic · tieni premuto e muovi = trascina':'Tocca dove vuoi cliccare · tieni premuto = tasto destro');}));
+// impostazioni dell'immagine come pulsanti (i select restano la fonte del valore)
+function rcChips(){
+ document.querySelectorAll('#rc .rc-chips').forEach(box=>{const sel=$(box.dataset.for);
+  box.replaceChildren(...[...sel.options].map(o=>{const b=el('button',o.value===sel.value?'on':'',o.textContent);b.type='button';
+   b.addEventListener('click',()=>{box.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));if(sel.value===o.value)return;sel.value=o.value;sel.dispatchEvent(new Event('change'));});return b;}));});
+}
+function rcSetPanel(on){$('rc-set').hidden=!on;$('rc-set-btn').setAttribute('aria-expanded',on?'true':'false');}
+$('rc-set-btn').addEventListener('click',()=>rcSetPanel($('rc-set').hidden));
+$('rc-stage').addEventListener('pointerdown',e=>{if(!$('rc-set').hidden){rcSetPanel(false);e.stopImmediatePropagation();}},true);
+$('rc-fit').addEventListener('click',()=>{RC.z={s:1,x:0,y:0};rcApplyZoom();});
+$('rc-fs').hidden=!document.fullscreenEnabled;
+$('rc-fs').addEventListener('click',()=>{try{document.fullscreenElement?document.exitFullscreen():$('rc').requestFullscreen();}catch(e){}});
+document.addEventListener('fullscreenchange',()=>{$('rc-fs').classList.toggle('on',!!document.fullscreenElement);if(RC.on)setTimeout(rcLayout,60);});
+function rcRight(on){RC.rmb=on;$('rc-rmb').classList.toggle('on',on);$('rc-rmb').setAttribute('aria-pressed',on?'true':'false');}
+function rcBtn(){if(!RC.rmb)return 'left';rcRight(false);return 'right';}
+$('rc-rmb').addEventListener('click',()=>{rcRight(!RC.rmb);if(RC.rmb)rcHint('Il prossimo tocco fa clic destro');});
 $('rc-hide').addEventListener('click',()=>{$('rc').classList.add('bar-off');$('rc-show').hidden=false;setTimeout(rcLayout,30);});
 $('rc-show').addEventListener('click',()=>{$('rc').classList.remove('bar-off');$('rc-show').hidden=true;setTimeout(rcLayout,30);});
 $('rc-keys-btn').addEventListener('click',()=>{$('rc-keys').hidden=!$('rc-keys').hidden;$('rc-keys-btn').classList.toggle('on',!$('rc-keys').hidden);setTimeout(rcLayout,30);});
@@ -2347,8 +2374,8 @@ function rcPointerEnd(e){
   if(e.type==='pointercancel'){if(g.drag)rcSend({t:'up',b:'left'});RC.g=null;return;}
   if(g.drag){const n=RC.mode==='touch'?rcNorm(e.clientX,e.clientY):RC.cur;rcSend({t:'up',b:'left',x:n.x,y:n.y});}
   else if(!g.moved&&!g.held){
-   if(RC.mode==='touch'){const n=rcNorm(e.clientX,e.clientY);RC.cur=n;rcDrawCursor();rcSend({t:'click',b:'left',x:n.x,y:n.y});}
-   else rcSend({t:'click',b:'left',x:RC.cur?.x??.5,y:RC.cur?.y??.5});
+   if(RC.mode==='touch'){const n=rcNorm(e.clientX,e.clientY);RC.cur=n;rcDrawCursor();rcSend({t:'click',b:rcBtn(),x:n.x,y:n.y});}
+   else rcSend({t:'click',b:rcBtn(),x:RC.cur?.x??.5,y:RC.cur?.y??.5});
   }
   RC.g=null;
  }else if(g.kind==='two'){
