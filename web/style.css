@@ -2639,3 +2639,7 @@ kbd{display:inline-block;min-width:18px;padding:1px 6px;border-radius:6px;font:6
 .gw-dev:first-child{border-top:0}.gw-dev span{flex:1;min-width:0}.gw-dev small{display:block;color:var(--muted);font-size:12px}
 .gw-devs-wrap{margin-top:16px;padding-top:12px;border-top:1px solid var(--line)}.gw-devs-title{display:block;font-size:13px;margin-bottom:4px}
 .tag.on{color:#4ade80;border-color:rgba(74,222,128,.4)}
+.gw-adv{margin-top:14px;padding-top:10px;border-top:1px solid var(--line)}
+.gw-adv>summary{cursor:pointer;color:var(--muted);font-size:13px;padding:4px 0}
+.gw-adv>.gw-steps{margin-top:10px}
+#gw-download{text-decoration:none}

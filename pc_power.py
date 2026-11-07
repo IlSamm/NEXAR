@@ -207,7 +207,12 @@ class H(http.server.BaseHTTPRequestHandler):
 class S(socketserver.ThreadingMixIn, http.server.HTTPServer):
     daemon_threads = True; allow_reuse_address = True
 if __name__ == "__main__":
-    S(("0.0.0.0", LISTEN), H).serve_forever()
+    srv = S(("0.0.0.0", LISTEN), H)
+    try: nets = subprocess.check_output(["ip", "-4", "-o", "addr"], text=True)
+    except Exception: nets = "?"
+    print("NEXAR ponte in ascolto sulla porta", LISTEN, "-> PC", IP + ":" + str(PORT), "| PC raggiungibile:", app_up(), flush=True)
+    print("Reti viste dal ponte:", " ".join(l.split()[1] + "=" + l.split()[3] for l in nets.splitlines() if len(l.split()) > 3), flush=True)
+    srv.serve_forever()
 '''
 
 def relay_compose(token, user_id, mac, ip, broadcast, bridge=None):

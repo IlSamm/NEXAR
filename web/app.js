@@ -21,6 +21,8 @@ const DEV_KEY='nexar.device';
 function devGet(){try{return localStorage.getItem(DEV_KEY)||'';}catch(e){return '';}}
 function devSet(v){try{v?localStorage.setItem(DEV_KEY,v):localStorage.removeItem(DEV_KEY);}catch(e){}}
 let key=sessionStorage.getItem('pc_eco_key')||devGet();
+// Dentro l'app NEXAR per Mac: avvisa l'app quando il PC non risponde o il Mac va ricollegato.
+function macApp(msg){try{const h=window.webkit&&window.webkit.messageHandlers&&window.webkit.messageHandlers.nexar;if(h){h.postMessage(msg);return true;}}catch(e){}return false;}
 const initialHash=location.hash.match(/^#access=([A-Za-z0-9_-]{28,})$/);
 if(initialHash&&(location.hostname==='127.0.0.1'||location.hostname==='localhost')){
  key=initialHash[1];sessionStorage.setItem('pc_eco_key',key);
@@ -138,11 +140,13 @@ async function req(path,method='GET',data){
  try{
   const r=await fetch(path,{method,headers,body:data===undefined?undefined:JSON.stringify(data),signal:ctrl.signal,cache:'no-store'});
   if(r.status===401&&tgInit)throw new Error('Questo account Telegram non è abbinato al PC.');
-  if(r.status===401){const was=key&&key===devGet();sessionStorage.removeItem('pc_eco_key');if(was)devSet('');key='';loginScreen(true);
+  if(r.status===401){const was=key&&key===devGet();sessionStorage.removeItem('pc_eco_key');if(was){devSet('');macApp('unpaired');}key='';loginScreen(true);
    throw new Error(was?'Questo dispositivo è stato scollegato dal PC: collegalo di nuovo con un codice.':'Chiave di accesso non valida.');}
-  if(r.status===503&&!path.startsWith('/__')){let o={};try{o=await r.clone().json();}catch(e){}if(o.off){location.reload();throw new Error(o.detail);}}
+  if(r.status===503&&!path.startsWith('/__')){let o={};try{o=await r.clone().json();}catch(e){}if(o.off){if(!macApp('check'))location.reload();throw new Error(o.detail);}}
+  if(r.status>=520&&r.status<=530)macApp('check');   // tunnel Cloudflare caduto: l'app per Mac cerca il nuovo indirizzo
   const obj=await r.json();if(!r.ok)throw new Error(obj.detail||'Errore di comunicazione');return obj;
- }finally{clearTimeout(t);}
+ }catch(ex){if(ex instanceof TypeError||ex.name==='AbortError')macApp('check');throw ex;}
+ finally{clearTimeout(t);}
 }
 async function post(path,body){
  if(demo){notify('Anteprima: comando non attivo.');return;}
@@ -2366,7 +2370,7 @@ $('links-refresh').addEventListener('click',()=>post('/api/discover',{}));
 $('fans-upgrade-btn').addEventListener('click',()=>post('/api/fans/setup',{}));
 $('logout').addEventListener('click',()=>{
  if(key&&key===devGet()&&!confirm('Esci da NEXAR su questo dispositivo? Per rientrare servirà un nuovo codice dal PC.'))return;
- if(key===devGet())devSet('');sessionStorage.removeItem('pc_eco_key');key='';loginScreen(true);});
+ if(key===devGet()){devSet('');if(macApp('logout'))return;}sessionStorage.removeItem('pc_eco_key');key='';loginScreen(true);});
 /* ---------- App sul Mac: ponte Umbrel + dispositivi ---------- */
 const gwDemo={enabled:false,umbrel_ip:'',pc_ip:'192.168.0.128',pc_port:8767,port:8790,firewall:false,wol:true,running:false,error:'',local:true,
  devices:[{id:'a1b2',name:'Mac',added:'2026-11-06T10:12',last:'2026-11-06T18:40'}]};
@@ -2379,8 +2383,9 @@ function gwEsc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'
 function renderGateway(){
  const g=gwInfo;if(!g)return;
  const on=g.enabled&&g.running;
- $('gw-state').textContent=on?'ATTIVO':g.enabled?(g.error?'ERRORE':'AVVIO…'):'SPENTO';
- $('gw-state').classList.toggle('on',!!on);
+ const nd=(g.devices||[]).length;
+ $('gw-state').textContent=nd?(nd===1?'1 COLLEGATO':nd+' COLLEGATI'):'DA COLLEGARE';
+ $('gw-state').classList.toggle('on',nd>0);$('gw-s0').classList.toggle('done',nd>0);
  if(document.activeElement!==$('gw-ip')&&!$('gw-ip').value)$('gw-ip').value=g.umbrel_ip||'';
  $('gw-on').hidden=!!g.enabled;$('gw-off').hidden=!g.enabled;$('gw-ip').disabled=!!g.enabled;$('gw-guess').hidden=!!g.enabled;
  $('gw-s2-text').textContent=g.enabled
@@ -2389,7 +2394,6 @@ function renderGateway(){
  $('gw-s2').classList.toggle('done',!!on);
  const devs=g.devices||[];
  $('gw-s6').classList.toggle('done',devs.length>0);
- $('gw-url').textContent='http://umbrel:'+(g.port||8790);
  $('gw-devs-wrap').hidden=!devs.length;
  $('gw-devs').innerHTML=devs.map(d=>'<div class="gw-dev"><span><b>'+gwEsc(d.name)+'</b><small>Collegato '+fmtWhen(d.added)+(d.last?' · ultimo uso '+fmtWhen(d.last):'')+
   '</small></span><button class="btn small ghost" type="button" data-dev="'+gwEsc(d.id)+'">Scollega</button></div>').join('');
@@ -2429,6 +2433,7 @@ $('gw-code-btn').addEventListener('click',async()=>{
  try{
   const r=demo?{code:'K7QM-4XPA',seconds:600}:await req('/api/devices/code','POST',{});
   $('gw-code').textContent=r.code;$('gw-code').hidden=false;let left=r.seconds;clearInterval(gwTimer);
+  if(r.online===false)notify('Preparo il collegamento a Internet per il Mac: qualche secondo e il codice funziona.');
   const tick=()=>{left--;
    $('gw-code-left').textContent=left>0?'scade fra '+Math.floor(left/60)+':'+String(left%60).padStart(2,'0'):'scaduto';
    if(left<=0){clearInterval(gwTimer);$('gw-code').hidden=true;}

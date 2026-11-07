@@ -1,0 +1,28 @@
+name: App per Mac
+# Compila NEXAR.app e la allega alla release (NEXAR-Mac.zip). A mano: Actions → App per Mac → Run workflow.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  mac:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compila e prova
+        run: bash mac/build.sh "${{ github.event.release.tag_name || 'v0.0.0' }}"
+      - name: Allega alla release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ github.event.release.tag_name }}" build/NEXAR-Mac.zip --clobber --repo "${{ github.repository }}"
+      - name: Scaricabile dalla prova
+        if: github.event_name != 'release'
+        uses: actions/upload-artifact@v4
+        with:
+          name: NEXAR-Mac
+          path: build/NEXAR-Mac.zip

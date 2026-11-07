@@ -24,6 +24,7 @@ from core import ROOT, ASSET_ROOT, CONFIG_FILE, DATA_DIR, FROZEN, INSTALL_DIR, M
 from telegram_bot import TelegramBot
 from tunnel import TUNNEL_PORT, Tunnel
 import gateway
+import beacon as beacon_mod
 from updater import Updater
 from version import VERSION
 
@@ -41,16 +42,24 @@ failures = defaultdict(deque)
 
 tunnel = None
 bridge = None
+beacon = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global tunnel, bridge
+    global tunnel, bridge, beacon
     bot = TelegramBot(controller)
     controller.notify = bot.notify
     tunnel = Tunnel(controller, app)
     bot.tunnel = tunnel
     bot.updater = updater
-    tunnel.on_url = bot.set_webapp
+    # App per Mac: il PC pubblica (cifrato) l'indirizzo del tunnel, che cambia a ogni avvio.
+    beacon = beacon_mod.Beacon(controller.config, save=controller._save_config, get_url=lambda: tunnel.url,
+                               info=lambda: {'bot': (getattr(controller, 'telegram_bot', None) or {}).get('username', ''), 'v': VERSION})
+    controller.beacon = beacon
+    def on_url(url):
+        bot.set_webapp(url); beacon.kick.set()
+    tunnel.on_url = on_url
+    threading.Thread(target=beacon.run,args=(stop,),daemon=True,name='mac-beacon').start()
     threading.Thread(target=tunnel.run,args=(stop,),daemon=True,name='tunnel').start()
     bridge = gateway.Bridge(lambda: controller.config.get('gateway'), app)
     threading.Thread(target=bridge.run,args=(stop,),daemon=True,name='umbrel-bridge-loop').start()
@@ -353,7 +362,8 @@ def gateway_setup(data: GatewaySetup):
 @app.post('/api/devices/code',dependencies=[Depends(authorized),Depends(local_only)])
 def device_code():
     code, ttl = controller.devices.new_code()
-    return {'code':code,'seconds':ttl}
+    if beacon: beacon.announce_code(code, ttl)
+    return {'code':code,'seconds':ttl,'online':bool(tunnel and tunnel.url)}
 
 class Pair(BaseModel):
     code: str
@@ -371,7 +381,9 @@ def device_pair(data: Pair, request: Request):
     q.clear()
     controller.log_event(f'🔗 Nuovo dispositivo collegato: {name}')
     controller.notify(f'🔗 Nuovo dispositivo collegato a NEXAR: {name}. Se non sei stato tu, toglilo da Collegamenti.')
-    return {'ok':True,'token':token,'name':name}
+    out = {'ok':True,'token':token,'name':name}
+    if beacon: out['beacon'] = beacon.secret(); beacon.kick.set()
+    return out
 
 class DeviceId(BaseModel):
     id: str

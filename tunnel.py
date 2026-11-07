@@ -26,7 +26,8 @@ class Tunnel:
 
     def wanted(self) -> bool:
         tg = self.ctrl.config.get('telegram', {})
-        return bool(tg.get('token') and tg.get('allowed_user_id') and tg.get('webapp', True))
+        mac = getattr(self.ctrl, 'beacon', None)   # app per Mac collegata o codice in attesa
+        return bool(tg.get('token') and tg.get('allowed_user_id') and tg.get('webapp', True)) or bool(mac and mac.wanted())
 
     def manual_url(self) -> str:
         url = str(self.ctrl.config.get('telegram', {}).get('webapp_url', '')).strip()
