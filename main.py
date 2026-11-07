@@ -10,7 +10,7 @@ from contextlib import asynccontextmanager
 from collections import defaultdict, deque
 
 from fastapi import FastAPI, Header, HTTPException, Request, Depends
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 import psutil
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -101,7 +101,7 @@ async def no_cache_and_security(request: Request, call_next):
         if not (g.get('enabled') and request.client and request.client.host == g.get('umbrel_ip')):
             return JSONResponse({'detail':'Accesso consentito solo da Umbrel'}, status_code=403)
     response = await call_next(request)
-    response.headers['Cache-Control']='no-store'
+    if 'no-transform' not in response.headers.get('Cache-Control',''): response.headers['Cache-Control']='no-store'
     response.headers['X-Content-Type-Options']='nosniff'
     response.headers['X-Frame-Options']='DENY'
     response.headers['Referrer-Policy']='no-referrer'
@@ -620,6 +620,12 @@ def remote_frame(v: int = 0, seq: int = 0, x_remote_session: str | None = Header
     meta, jpg = remote_errors(lambda: controller.remote.next(x_remote_session, v, seq))
     if jpg is None: return JSONResponse(meta)
     return Response(jpg, media_type='image/jpeg', headers={'X-Remote-Meta': json.dumps(meta), 'Cache-Control':'no-store'})
+@app.get('/api/remote/stream',dependencies=[Depends(authorized)])
+def remote_stream(x_remote_session: str | None = Header(default=None)):
+    remote_errors(lambda: controller.remote.check(x_remote_session))
+    # "no-transform": nessun proxy deve comprimere o trattenere il flusso.
+    return StreamingResponse(controller.remote.stream(x_remote_session), media_type='application/octet-stream',
+                             headers={'Cache-Control':'no-store, no-transform','X-Accel-Buffering':'no'})
 @app.post('/api/remote/input',dependencies=[Depends(authorized)])
 def remote_input(data: RemoteInput, x_remote_session: str | None = Header(default=None)):
     return {'ok':True,'done':remote_errors(lambda: controller.remote.input(x_remote_session, data.events))}

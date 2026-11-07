@@ -157,3 +157,53 @@ def test_api_pin_setup_only_local_and_frames_over_http(monkeypatch):
     assert far.post('/api/remote/config', headers=hs, json={'mon': 1, 'quality': 'sharp'}).json()['quality'] == 'sharp'
     assert far.post('/api/remote/end', headers=h).json()['message'] == 'Controllo terminato'
     assert far.post('/api/remote/input', headers=hs, json={'events': [{'t': 'alive'}]}).status_code == 403
+
+
+def test_stream_sends_frames_and_ends(monkeypatch):
+    import struct, json as js
+    r, cfg, *_ = make()
+    tok = r.start('482915')['token']
+    g = r.stream(tok)
+    def read():
+        b = next(g); ml, jl = struct.unpack('>II', b[:8])
+        assert len(b) == 8 + ml + jl
+        return js.loads(b[8:8 + ml]), b[8 + ml:]
+    got = [read() for _ in range(3)]
+    assert any(j[:2] == b'\xff\xd8' and m['seq'] >= 1 for m, j in got)       # arriva un JPEG nel flusso
+    r.end()
+    for _ in range(3):
+        m, j = read()
+        if 'end' in m: break
+    assert 'end' in m and not j
+    with pytest.raises(StopIteration): next(g)
+
+
+def test_stream_over_http(monkeypatch):
+    from fastapi.testclient import TestClient
+    import struct, main
+    r, cfg, *_ = make()
+    monkeypatch.setattr(main.controller, 'remote', r)
+    h = {'X-PC-ECO-Key': main.key}
+    far = TestClient(main.app, client=('192.168.1.49', 1234))
+    assert far.get('/api/remote/stream', headers=h).status_code == 403         # serve la sessione
+    tok = far.post('/api/remote/start', headers=h, json={'pin': '482915'}).json()['token']
+    with far.stream('GET', '/api/remote/stream', headers={**h, 'X-Remote-Session': tok}) as resp:
+        assert resp.status_code == 200 and 'no-transform' in resp.headers['cache-control']
+        buf = b''
+        for chunk in resp.iter_bytes():
+            buf += chunk
+            if len(buf) >= 8:
+                ml, jl = struct.unpack('>II', buf[:8])
+                if len(buf) >= 8 + ml + jl and jl: break
+                if len(buf) >= 8 + ml + jl: buf = buf[8 + ml + jl:]
+        r.end()
+    assert buf[8 + ml:8 + ml + 2] == b'\xff\xd8'
+
+
+def test_encode_presets_are_sharper_and_cheap():
+    from PIL import Image
+    img = Image.new('RGB', (2560, 1440), (20, 40, 60))
+    sizes = {k: rc.encode(img, k)[2] for k in rc.QUALITY}
+    assert sizes == {'eco': (1280, 720), 'balanced': (1920, 1080), 'sharp': (2560, 1440)}
+    assert rc.encode(img, 'eco')[1] == rc.encode(img, 'eco')[1]          # stessa immagine, stessa impronta
+    assert 20 in rc.FPS_CHOICES and 30 in rc.FPS_CHOICES

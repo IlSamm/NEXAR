@@ -2983,3 +2983,7 @@ kbd{display:inline-block;min-width:18px;padding:1px 6px;border-radius:6px;font:6
  .rc-dpad{grid-template-columns:repeat(3,40px)}}
 @media (max-height:500px){.rc-d,.rc-dock .rc-seg{height:44px}.rc-d{flex-direction:row;gap:6px}.rc-dock .rc-seg button{flex-direction:row;gap:6px}.rc-dock{padding-top:6px;padding-bottom:max(6px,env(safe-area-inset-bottom))}}
 @media (prefers-reduced-motion:reduce){.rc-dot,.rc-load-ring{animation:none}}
+/* 1.0.47 · niente scorrimento della pagina sotto finestre e controllo remoto */
+html:has(dialog[open]),html:has(.palette:not([hidden])){overflow:hidden}
+dialog,.rc-keys,.rc-set,.relay pre,.events,.boost-apps,.startup-list,.pal-list,.as-list,.scr-wins{overscroll-behavior:contain}
+.rc{overscroll-behavior:none}

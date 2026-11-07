@@ -13,19 +13,24 @@ import ctypes
 import hashlib
 import hmac
 import io
+import json
 import logging
+import struct
 import os
 import secrets
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from ctypes import wintypes
 
 PIN_ITER = 200_000
 MAX_FAILS, LOCK_SECONDS = 5, 900
 IDLE_DEFAULT, IDLE_CHOICES = 10, (5, 10, 15, 30)
 POLL_IDLE = 6            # nessuno chiede fotogrammi da 6 s: non si cattura (CPU a riposo)
-QUALITY = {'eco': (1024, 45), 'balanced': (1440, 60), 'sharp': (1920, 75)}
-FPS_CHOICES = (5, 10, 15)
+# larghezza massima, qualità JPEG, sottocampionamento colore (2 = 4:2:0 leggero, 0 = 4:4:4: testo nitido senza aloni)
+QUALITY = {'eco': (1280, 55, 2), 'balanced': (1920, 74, 2), 'sharp': (2560, 84, 0)}
+FPS_CHOICES = (5, 10, 15, 20, 30)
+FPS_DEFAULT = 20
 MAX_EVENTS = 200
 
 # ---------- PIN ----------
@@ -152,12 +157,21 @@ def cursor_pos():
 def encode(img, quality_key):
     """Ridimensiona e comprime. Restituisce (jpeg, impronta) per non rimandare fotogrammi uguali."""
     from PIL import Image
-    width, q = QUALITY.get(quality_key, QUALITY['balanced'])
+    width, q, sub = QUALITY.get(quality_key, QUALITY['balanced'])
     if img.width > width:
-        img = img.resize((width, max(1, round(img.height * width / img.width))), Image.BILINEAR)
-    mark = hashlib.blake2b(img.tobytes(), digest_size=12).digest()
-    buf = io.BytesIO(); img.save(buf, 'JPEG', quality=q)
-    return buf.getvalue(), mark, img.size
+        f = img.width / width
+        # riduzione intera (2560 → 1280) molto più veloce; altrimenti filtro con antialiasing
+        img = img.reduce(int(f)) if f == int(f) else img.resize((width, max(1, round(img.height * width / img.width))), Image.BILINEAR)
+    buf = io.BytesIO(); img.save(buf, 'JPEG', quality=q, subsampling=sub)
+    jpg = buf.getvalue()
+    # lo stesso schermo dà sempre lo stesso JPEG: l'impronta del file (piccolo) basta e costa poco
+    return jpg, hashlib.blake2b(jpg, digest_size=12).digest(), img.size
+
+
+def pack(meta: dict, jpg: bytes | None = None) -> bytes:
+    """Un messaggio del flusso continuo: lunghezze (meta, immagine), meta JSON, JPEG."""
+    m = json.dumps(meta, separators=(',', ':')).encode()
+    return struct.pack('>II', len(m), len(jpg or b'')) + m + (jpg or b'')
 
 
 # ---------- Windows: mouse e tastiera ----------
@@ -404,7 +418,7 @@ class Remote:
         token = secrets.token_urlsafe(32)
         with self.cond:
             self.session = {'token': token, 'who': who, 'started': now, 'last_input': now, 'last_poll': now,
-                            'mon': 0, 'quality': 'balanced', 'fps': 10, 'mons': mons, 'rect': area(0, mons)}
+                            'mon': 0, 'quality': 'balanced', 'fps': FPS_DEFAULT, 'mons': mons, 'rect': area(0, mons)}
             self.frame, self.state = None, 'ok'
             self.version += 1
         self.thread = threading.Thread(target=self._capture_loop, args=(token,), daemon=True, name='remote-capture'); self.thread.start()
@@ -450,26 +464,40 @@ class Remote:
 
     # fotogrammi
     def _capture_loop(self, token):
-        last_mark, last_cur = None, None
+        # Cattura e compressione in parallelo: mentre si fotografa lo schermo, il fotogramma precedente
+        # viene compresso in un altro thread (PIL e GDI lasciano libero il GIL). Quasi il doppio dei fps.
+        pool = ThreadPoolExecutor(1, thread_name_prefix='remote-encode')
+        try: self._capture(token, pool)
+        finally: pool.shutdown(wait=False)
+
+    def _capture(self, token, pool):
+        last_mark, last_cur, job, warm = None, None, None, None
         while True:
             s = self.session
             if not s or s['token'] != token: return
             if self.clock() - s['last_input'] > self.cfg()['idle_minutes'] * 60:
                 self.end(token, 'nessun comando per troppo tempo'); return
-            if self.clock() - s['last_poll'] > POLL_IDLE: time.sleep(0.3); continue
+            if self.clock() - s['last_poll'] > POLL_IDLE: job = None; time.sleep(0.3); continue
             t0 = time.monotonic()
             rect, quality = s['rect'], s['quality']
+            key = (s['mon'], quality)
             try:
                 img = self._grab(rect)
                 state = 'ok'
             except OSError:
                 img, state = None, 'locked'
+            done = (key, job[1].result()) if job and job[0] == key else None
+            if img is None: job = None
+            elif warm != key:
+                # primo fotogramma (o schermo/qualità appena cambiati): subito, senza aspettare il giro dopo
+                done, job, warm = (key, encode(img, quality)), None, key
+            else: job = (key, pool.submit(encode, img, quality))
             changed = False
             with self.cond:
                 if self.session is not s: return
                 if state != self.state: self.state, changed = state, True
-                if img is not None:
-                    jpg, mark, size = encode(img, quality)
+                if done and done[0] == key:          # scartato se nel frattempo è cambiato schermo o qualità
+                    jpg, mark, size = done[1]
                     if mark != last_mark or self.frame is None:
                         last_mark = mark
                         self.seq += 1; self.frame = (self.seq, jpg, size); changed = True
@@ -494,6 +522,18 @@ class Remote:
                 meta.update(seq=f[0], w=f[2][0], h=f[2][1])
                 return meta, f[1]
             return meta, None
+
+    def stream(self, token):
+        """Flusso continuo per la dashboard: un messaggio appena cambia qualcosa, senza una richiesta per fotogramma.
+        Se il telefono è lento i fotogrammi intermedi si saltano da soli: si manda sempre l'ultimo."""
+        have_v, have_seq = 0, 0
+        while True:
+            try: meta, jpg = self.next(token, have_v, have_seq)
+            except PermissionError as ex:
+                yield pack({'end': str(ex)}); return
+            have_v = meta['v']
+            if jpg is not None: have_seq = meta['seq']
+            yield pack(meta, jpg)
 
     # comandi
     def input(self, token, events):

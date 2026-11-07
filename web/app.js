@@ -2134,7 +2134,7 @@ function rcOpen(s){
  RC.pts.clear();RC.g=null;RC.latch.clear();
  const sel=$('rc-mon');sel.replaceChildren(...RC.mons.map(m=>{const o=el('option','',m.name);o.value=m.id;return o;}));
  if(RC.mons.length>1){const o=el('option','','Tutti gli schermi');o.value='all';sel.append(o);}$('rc-mon-g').hidden=RC.mons.length<2;
- $('rc-q').value='balanced';$('rc-fps').value='10';let saved='';try{saved=localStorage.getItem('nexar.rcMode')||'';}catch(e){}rcMode(saved==='pad'?'pad':'touch');
+ $('rc-q').value='balanced';$('rc-fps').value='20';let saved='';try{saved=localStorage.getItem('nexar.rcMode')||'';}catch(e){}rcMode(saved==='pad'?'pad':'touch');
  $('rc-keys').hidden=true;$('rc-kb').hidden=true;$('rc').classList.remove('bar-off');$('rc-show').hidden=true;
  rcSetPanel(false);rcChips();rcRight(false);$('rc-load').hidden=false;$('rc-fit').hidden=true;$('rc-conn').classList.remove('bad');$('rc-sig').dataset.l='0';
  rcMsg('');$('rc').showModal();rcLayout();rcLoop();rcIdleWatch();
@@ -2145,7 +2145,7 @@ function rcOpen(s){
  if(scrLiveOn)scrLive(false);if(rcInfo){rcInfo.active=true;renderRemote();}
 }
 async function rcClose(reason){
- if(!RC.on)return;RC.on=false;clearTimeout(RC.idleT);
+ if(!RC.on)return;RC.on=false;clearTimeout(RC.idleT);try{RC.abort?.abort();}catch(e){}
  const tok=RC.token;RC.token='';
  if(tok&&!demo){try{await fetch('/api/remote/end',{method:'POST',headers:{...(tgInit?{'X-TG-Init-Data':tgInit}:{'X-PC-ECO-Key':key}),'Content-Type':'application/json'},body:'{}'});}catch(e){}}
  if($('rc').open)$('rc').close();
@@ -2183,30 +2183,74 @@ function rcDrawCursor(){
  c.style.transform=`translate(${RC.cur.x*RC.base.w}px,${RC.cur.y*RC.base.h}px) scale(${1/RC.z.s})`;c.style.transformOrigin='2px 2px';
 }
 
-// fotogrammi: il PC risponde appena lo schermo cambia
-async function rcLoop(){
- let fails=0;
+// fotogrammi: flusso continuo (un messaggio appena lo schermo cambia); se la rete non lo regge, una richiesta per volta
+async function rcFrame(meta,blob){
+ if(blob){
+  const u=URL.createObjectURL(blob);const im=$('rc-img');
+  await new Promise(res=>{im.onload=im.onerror=res;im.src=u;});
+  if(RC.url.startsWith('blob:'))URL.revokeObjectURL(RC.url);RC.url=u;RC.seq=meta.seq;$('rc-load').hidden=true;
+  if(meta.w!==RC.w||meta.h!==RC.h){RC.w=meta.w;RC.h=meta.h;rcLayout();}
+  const now=performance.now();RC.frames.push(now);RC.bytes.push([now,blob.size]);
+ }
+ RC.lastMsg=performance.now();if(typeof meta.v==='number')RC.v=meta.v;
+ if(meta.cursor&&RC.mode==='touch'||meta.cursor&&!RC.cur){RC.cur={x:meta.cursor[0],y:meta.cursor[1]};rcDrawCursor();}
+ if(meta.state==='locked')rcMsg('<b>Il PC è bloccato</b>Da qui non si può sbloccare: serve il PIN di Windows sul PC. Lo schermo torna appena viene sbloccato.');
+ else if(!$('rc-msg').dataset.keep)rcMsg('');
+ rcStats();
+}
+async function rcStream(){
+ let fails=0,everGot=false;const dec=new TextDecoder();
  while(RC.on){
-  if(demo){await new Promise(r=>setTimeout(r,800));if(!RC.on)break;if(!RC.seq){const u=demoShot();RC.w=1600;RC.h=900;RC.seq=1;$('rc-img').src=u;$('rc-load').hidden=true;$('rc-sig').dataset.l='4';rcLayout();RC.cur=RC.cur||{x:.42,y:.4};rcDrawCursor();$('rc-stat').textContent='Anteprima';}continue;}
+  const ctl=new AbortController();RC.abort=ctl;let got=false;RC.lastMsg=performance.now();
+  // niente in 6 s all'inizio (o 8 s dopo): il flusso non passa o si è fermato
+  const wd=setInterval(()=>{if(performance.now()-RC.lastMsg>(got?8000:6000))ctl.abort();},1000);
   try{
-   const t0=performance.now();
+   const r=await fetch('/api/remote/stream',{headers:rcHead(),cache:'no-store',signal:ctl.signal});
+   if(r.status===403||r.status===401){const o=await r.json().catch(()=>({}));clearInterval(wd);rcClose(o.detail||'Sessione terminata');return true;}
+   if(!r.ok||!r.body)throw new Error('HTTP '+r.status);
+   const rd=r.body.getReader();let buf=new Uint8Array(0);
+   for(;;){
+    const {value,done}=await rd.read();if(done||!RC.on)break;
+    const nb=new Uint8Array(buf.length+value.length);nb.set(buf);nb.set(value,buf.length);buf=nb;
+    // tutti i messaggi completi arrivati: si mostra solo l'ultima immagine, gli altri danno puntatore e stato
+    let last=null;const metas=[];
+    while(buf.length>=8){
+     const dv=new DataView(buf.buffer,buf.byteOffset,8),ml=dv.getUint32(0),jl=dv.getUint32(4);
+     if(buf.length<8+ml+jl)break;
+     const meta=JSON.parse(dec.decode(buf.subarray(8,8+ml)));
+     if(jl)last={meta,jpg:buf.slice(8+ml,8+ml+jl)};else metas.push(meta);
+     buf=buf.slice(8+ml+jl);
+    }
+    if(last||metas.length){got=everGot=true;fails=0;$('rc-conn').classList.remove('bad');}
+    for(const m of metas){if(m.end){rcClose(m.end);return true;}await rcFrame(m,null);}
+    if(last)await rcFrame(last.meta,new Blob([last.jpg],{type:'image/jpeg'}));
+   }
+  }catch(ex){}
+  clearInterval(wd);
+  if(!RC.on)return true;
+  if(!everGot)return false;                 // mai arrivato niente: si passa alle richieste singole
+  fails++;$('rc-stat').textContent='Riconnessione…';$('rc-conn').classList.add('bad');$('rc-sig').dataset.l='0';
+  await new Promise(r=>setTimeout(r,Math.min(3000,300*fails)));
+ }
+ return true;
+}
+async function rcLoop(){
+ if(demo){
+  let i=0;
+  while(RC.on){await new Promise(r=>setTimeout(r,800));if(!RC.on)break;if(!RC.seq){const u=demoShot();RC.w=1600;RC.h=900;RC.seq=1;$('rc-img').src=u;$('rc-load').hidden=true;$('rc-sig').dataset.l='4';rcLayout();RC.cur=RC.cur||{x:.42,y:.4};rcDrawCursor();$('rc-stat').textContent='Anteprima · 20 fps';}i++;}
+  return;
+ }
+ if(window.ReadableStream&&await rcStream())return;
+ if(!RC.on)return;
+ RC.polling=true;let fails=0;
+ while(RC.on){
+  try{
    const r=await fetch(`/api/remote/frame?v=${RC.v}&seq=${RC.seq}`,{headers:rcHead(),cache:'no-store'});
    if(r.status===403||r.status===401){const o=await r.json().catch(()=>({}));rcClose(o.detail||'Sessione terminata');return;}
    if(!r.ok)throw new Error('HTTP '+r.status);
-   let meta;
-   if((r.headers.get('content-type')||'').startsWith('image/')){
-    meta=JSON.parse(r.headers.get('x-remote-meta')||'{}');const blob=await r.blob();
-    const u=URL.createObjectURL(blob);const im=$('rc-img');
-    await new Promise(res=>{im.onload=im.onerror=res;im.src=u;});
-    if(RC.url.startsWith('blob:'))URL.revokeObjectURL(RC.url);RC.url=u;RC.seq=meta.seq;$('rc-load').hidden=true;
-    if(meta.w!==RC.w||meta.h!==RC.h){RC.w=meta.w;RC.h=meta.h;rcLayout();}
-    const now=performance.now();RC.frames.push(now);RC.bytes.push([now,blob.size]);
-   }else meta=await r.json();
-   RC.v=meta.v;fails=0;
-   if(meta.cursor&&RC.mode==='touch'||meta.cursor&&!RC.cur){RC.cur={x:meta.cursor[0],y:meta.cursor[1]};rcDrawCursor();}
-   if(meta.state==='locked')rcMsg('<b>Il PC è bloccato</b>Da qui non si può sbloccare: serve il PIN di Windows sul PC. Lo schermo torna appena viene sbloccato.');
-   else if(!$('rc-msg').dataset.keep)rcMsg('');
-   rcStats();
+   if((r.headers.get('content-type')||'').startsWith('image/'))await rcFrame(JSON.parse(r.headers.get('x-remote-meta')||'{}'),await r.blob());
+   else await rcFrame(await r.json(),null);
+   fails=0;
   }catch(ex){
    fails++;$('rc-stat').textContent='Connessione persa, riprovo…';$('rc-conn').classList.add('bad');$('rc-sig').dataset.l='0';
    await new Promise(r=>setTimeout(r,Math.min(4000,400*fails)));
@@ -2218,13 +2262,16 @@ function rcStats(){
  const fps=RC.frames.length/3,kbs=RC.bytes.reduce((a,b)=>a+b[1],0)/3/1024;
  $('rc-stat').textContent=`${fps.toFixed(fps<10?1:0)} fps · ${kbs<1000?Math.round(kbs)+' KB/s':(kbs/1024).toFixed(1)+' MB/s'}`;
  // segnale: fotogrammi arrivati rispetto a quelli chiesti (lo schermo fermo ne manda pochi, ma il collegamento è buono)
- const want=+$('rc-fps').value||10,r=fps/want,fresh=RC.frames.length?now-RC.frames[RC.frames.length-1]<6000:false;
- $('rc-sig').dataset.l=String(r>.75||fresh&&r>.2?4:r>.5?3:r>.2?2:1);$('rc-conn').classList.remove('bad');
+ // schermo fermo = pochi fotogrammi ma collegamento buono: conta anche quanto è recente l'ultimo messaggio
+ const want=+$('rc-fps').value||20,r=fps/want,alive=now-(RC.lastMsg||0)<4000;
+ $('rc-sig').dataset.l=String(!alive?1:r>.6||!RC.frames.length?4:r>.3?3:2);
 }
 // comandi: in fila, uno alla volta (i movimenti si accorpano)
 function rcSend(ev){
  if(!RC.on)return;RC.lastIn=Date.now();
- const last=RC.q[RC.q.length-1];if(ev.t==='move'&&last&&last.t==='move')RC.q[RC.q.length-1]=ev;else RC.q.push(ev);
+ const last=RC.q[RC.q.length-1];if(ev.t==='move'&&last&&last.t==='move')RC.q[RC.q.length-1]=ev;
+ else if(ev.t==='wheel'&&last&&last.t==='wheel'&&Math.abs((last.dy||0)+(ev.dy||0))<2400){last.dy=(last.dy||0)+(ev.dy||0);last.dx=(last.dx||0)+(ev.dx||0);}
+ else RC.q.push(ev);
  rcFlush();
 }
 async function rcFlush(){
@@ -2332,6 +2379,18 @@ function rcPadMove(dx,dy){
   if(cr.top<st.top+m)RC.z.y+=st.top+m-cr.top;else if(cr.bottom>st.bottom-m)RC.z.y-=cr.bottom-st.bottom+m;rcApplyZoom();}
 }
 const BTN=['left','middle','right'];
+// scorrimento a due dita: 6 px = una tacca leggera; dopo il rilascio continua e rallenta
+let rcScrollAcc=0,rcMom=0;
+function rcScrollBy(px,mx,my){rcScrollAcc+=px;const step=Math.trunc(rcScrollAcc/6);if(step){rcScrollAcc-=step*6;const n=RC.cur||rcNorm(mx,my);rcSend({t:'wheel',x:n.x,y:n.y,dy:step*40});}}
+function rcMomentum(v,mx,my){
+ cancelAnimationFrame(rcMom);let last=performance.now();const t0=last;
+ const tick=t=>{const dt=t-last;last=t;v*=Math.pow(.94,dt/16);if(!RC.on||Math.abs(v)<.05||t-t0>1400)return;rcScrollBy(v*dt,mx,my);rcMom=requestAnimationFrame(tick);};
+ rcMom=requestAnimationFrame(tick);
+}
+stage.addEventListener('pointerdown',()=>{cancelAnimationFrame(rcMom);rcScrollAcc=0;},true);
+// la pagina sotto non deve muoversi: tocchi e rotellina restano nel controllo remoto (tranne i pannelli che scorrono)
+$('rc').addEventListener('touchmove',e=>{if(!e.target.closest('.rc-keys,.rc-set'))e.preventDefault();},{passive:false});
+$('rc').addEventListener('wheel',e=>{if(!e.target.closest('.rc-keys,.rc-set,#rc-stage'))e.preventDefault();},{passive:false});
 stage.addEventListener('pointerdown',e=>{
  if(!RC.on||e.target.closest('.rc-msg'))return;stage.setPointerCapture(e.pointerId);
  if(e.pointerType==='mouse'){const n=rcNorm(e.clientX,e.clientY);RC.cur=n;rcDrawCursor();rcSend({t:'down',b:BTN[e.button]||'left',x:n.x,y:n.y});return;}
@@ -2361,7 +2420,7 @@ stage.addEventListener('pointermove',e=>{
   if(!g.mode){if(Math.abs(d-g.d0)>28)g.mode='zoom';else if(Math.hypot(mx-g.mx,my-g.my)>10)g.mode=RC.z.s>1?'pan':'scroll';}
   if(g.mode==='zoom'){rcZoomAt(mx,my,g.s0*d/g.d0);RC.z.x+=mx-g.mx;RC.z.y+=my-g.my;rcApplyZoom();}
   else if(g.mode==='pan'){RC.z.x+=mx-g.mx;RC.z.y+=my-g.my;rcApplyZoom();}
-  else if(g.mode==='scroll'){g.acc+=my-g.my;const step=Math.trunc(g.acc/6);if(step){g.acc-=step*6;const n=RC.cur||rcNorm(mx,my);rcSend({t:'wheel',x:n.x,y:n.y,dy:step*40});}}
+  else if(g.mode==='scroll'){const t=performance.now(),dt=Math.max(1,t-(g.tl||t-16));g.vel=.7*(g.vel||0)+.3*((my-g.my)/dt);g.tl=t;rcScrollBy(my-g.my,mx,my);}
   g.mx=mx;g.my=my;
  }
 });
@@ -2380,6 +2439,7 @@ function rcPointerEnd(e){
   RC.g=null;
  }else if(g.kind==='two'){
   if(!g.mode&&performance.now()-g.t0<300&&RC.mode==='pad'){rcSend({t:'click',b:'right',x:RC.cur?.x??.5,y:RC.cur?.y??.5});rcHint('Tasto destro');}
+  if(g.mode==='scroll'&&Math.abs(g.vel||0)>.15&&performance.now()-(g.tl||0)<80)rcMomentum(g.vel,g.mx,g.my);   // scorrimento con slancio, come sul telefono
   if(RC.pts.size===0)RC.g=null;else RC.g={kind:'rest'};   // un dito rimasto: non diventa un clic
  }else if(RC.pts.size===0)RC.g=null;
 }
