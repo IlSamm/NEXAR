@@ -27,6 +27,7 @@ import screen_remote
 import ai_watch
 import remote_control
 import gateway
+import control_plus
 
 FROZEN = getattr(sys, 'frozen', False)
 INSTALL_DIR = Path(sys.executable).resolve().parent if FROZEN else Path(__file__).resolve().parent
@@ -218,6 +219,7 @@ class Control:
         self.remote = remote_control.Remote(lambda: self.config.get('remote_control') or {},
                                             notify=lambda m: self.notify(m), log=lambda m: self.log_event(m))
         self.devices = gateway.Devices(self.config, save=lambda: self._save_config())
+        self.history = control_plus.History(self.telemetry)   # grafici già pieni quando si apre l'app
         self.gaming_owned = False      # Gaming acceso da NEXAR perché è partito un gioco
         self.gaming_prev = 'normal'
         self.gaming_declined = False   # l'utente è uscito da Gaming a gioco aperto: non riattivarlo
@@ -1468,6 +1470,7 @@ class Control:
             'fans_custom':dict(self.state.get('fans_custom') or {}),
             'fans_profiles_outdated':self.fans_profiles_outdated() if self.config.get('fans',{}).get('enabled') else False,
             'pc':self.pc_info(),
+            'live':self.history.latest(),
         })
         return t
 

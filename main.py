@@ -25,6 +25,7 @@ from telegram_bot import TelegramBot
 from tunnel import TUNNEL_PORT, Tunnel
 import gateway
 import beacon as beacon_mod
+import control_plus
 from updater import Updater
 from version import VERSION
 
@@ -63,6 +64,7 @@ async def lifespan(app: FastAPI):
         bot.set_webapp(url); beacon.kick.set()
     tunnel.on_url = on_url
     threading.Thread(target=beacon.run,args=(stop,),daemon=True,name='mac-beacon').start()
+    threading.Thread(target=controller.history.run,args=(stop,),daemon=True,name='history').start()
     threading.Thread(target=tunnel.run,args=(stop,),daemon=True,name='tunnel').start()
     bridge = gateway.Bridge(lambda: controller.config.get('gateway'), app)
     threading.Thread(target=bridge.run,args=(stop,),daemon=True,name='umbrel-bridge-loop').start()
@@ -396,6 +398,63 @@ def device_remove(data: DeviceId):
     except ValueError as ex: raise HTTPException(404,str(ex))
     controller.log_event('🔗 Dispositivo scollegato')
     return {'ok':True,'message':'Dispositivo scollegato','devices':controller.devices.list()}
+
+# ---------- più controllo: storico, media, appunti e cartella condivisa ----------
+@app.get('/api/history',dependencies=[Depends(authorized)])
+def live_history():
+    return {'samples':controller.history.data(),'every':control_plus.SAMPLE_EVERY,'disks':control_plus.disks()}
+
+class MediaAction(BaseModel):
+    action: str
+@app.post('/api/media',dependencies=[Depends(authorized)])
+def media_action(data: MediaAction):
+    try: return {'ok':True,'message':control_plus.media(data.action)}
+    except (ValueError,OSError) as ex: raise HTTPException(400,str(ex))
+
+@app.get('/api/clipboard',dependencies=[Depends(authorized)])
+def clipboard_read():
+    try: return {'text':control_plus.clipboard_get()}
+    except OSError as ex: raise HTTPException(409,str(ex))
+class ClipText(BaseModel):
+    text: str
+@app.post('/api/clipboard',dependencies=[Depends(authorized)])
+def clipboard_write(data: ClipText, request: Request):
+    try: msg = control_plus.clipboard_set(data.text)
+    except (ValueError,OSError) as ex: raise HTTPException(400,str(ex))
+    if is_remote(request): controller.log_event('📋 Appunti del PC aggiornati da remoto')
+    return {'ok':True,'message':msg}
+
+@app.get('/api/files',dependencies=[Depends(authorized)])
+def shared_files(request: Request):
+    return {'files':control_plus.list_files(),'folder':'Download\\NEXAR' if is_remote(request) else str(control_plus.share_dir()),
+            'max_remote':100*1024**2}
+@app.post('/api/files/upload',dependencies=[Depends(authorized)])
+async def shared_upload(request: Request, name: str):
+    try: clean = control_plus.safe_name(name)
+    except ValueError as ex: raise HTTPException(400,str(ex))
+    if int(request.headers.get('content-length') or 0) > control_plus.UPLOAD_MAX: raise HTTPException(413,'File troppo grande (max 2 GB)')
+    folder = control_plus.share_dir(); part = folder / (clean + f'.{os.getpid()}.{time.time_ns()}.part'); size = 0
+    try:
+        with open(part,'wb') as f:
+            async for chunk in request.stream():
+                size += len(chunk)
+                if size > control_plus.UPLOAD_MAX: raise HTTPException(413,'File troppo grande (max 2 GB)')
+                f.write(chunk)
+        target = control_plus.free_path(folder, clean); part.replace(target)
+    except BaseException:
+        part.unlink(missing_ok=True); raise
+    controller.log_event(f'📥 File ricevuto: {target.name}')
+    if is_remote(request): controller.notify(f'📥 File ricevuto su NEXAR: {target.name} (Download\\NEXAR)')
+    return {'ok':True,'message':f'{target.name} salvato in Download\\NEXAR','name':target.name}
+@app.get('/api/files/get',dependencies=[Depends(authorized)])
+def shared_get(name: str):
+    try: f = control_plus.shared_file(name)
+    except (ValueError,FileNotFoundError) as ex: raise HTTPException(404,str(ex))
+    return FileResponse(f, filename=f.name, headers={'Cache-Control':'no-store'})
+@app.post('/api/files/open',dependencies=[Depends(authorized),Depends(local_only)])
+def shared_open():
+    os.startfile(str(control_plus.share_dir()))
+    return {'ok':True,'message':'Cartella aperta'}
 
 @app.post('/api/power/wol',dependencies=[Depends(authorized),Depends(local_only)])
 def power_wol():

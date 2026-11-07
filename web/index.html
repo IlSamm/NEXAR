@@ -49,7 +49,7 @@
  <symbol id="i-game" viewBox="0 0 24 24"><path d="M7.5 7h9a5 5 0 0 1 4.9 6l-.8 3.7a2.4 2.4 0 0 1-4.2 1L14.6 16H9.4l-1.8 1.7a2.4 2.4 0 0 1-4.2-1L2.6 13a5 5 0 0 1 4.9-6z"/><path d="M7.5 10v3M6 11.5h3"/><circle cx="15.5" cy="11" r=".9"/><circle cx="17.5" cy="13" r=".9"/></symbol>
  <symbol id="i-max" viewBox="0 0 24 24"><path d="M5 18 12 6l7 12M8.5 13h7"/></symbol>
  <symbol id="i-clean" viewBox="0 0 24 24"><path d="m14.5 3.5 6 6M17.5 6.5 11 13"/><path d="M11 13c-3 0-6.5 1.5-7.5 7.5 6-1 7.5-4.5 7.5-7.5z"/><path d="M5 9.5l1-2 1 2 2 1-2 1-1 2-1-2-2-1zM15 17l.7-1.3L17 15l-1.3-.7L15 13l-.7 1.3L13 15l1.3.7z"/></symbol>
- <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4.5v15l12.5-7.5z"/></symbol>
+ <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4.5v15l12.5-7.5z"/></symbol><symbol id="i-prev" viewBox="0 0 24 24"><path d="M18 6v12l-9-6 9-6Z"/><path d="M6 6v12"/></symbol><symbol id="i-next" viewBox="0 0 24 24"><path d="M6 6v12l9-6-9-6Z"/><path d="M18 6v12"/></symbol><symbol id="i-playpause" viewBox="0 0 24 24"><path d="M4 6v12l8-6-8-6Z"/><path d="M15.5 6v12M20 6v12"/></symbol><symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 15.5V4.5m-4.5 4.5L12 4.5 16.5 9M5 19.5h14"/></symbol>
  <symbol id="i-eye-off" viewBox="0 0 24 24"><path d="M3 3l18 18M10.6 5.1A10 10 0 0 1 12 5c5.5 0 9 5 9.5 7a13 13 0 0 1-2.9 4.1M6.6 6.6C4.4 8 3 10.2 2.5 12c.5 2 4 7 9.5 7 1.9 0 3.6-.6 5-1.5M9.9 9.9a3 3 0 0 0 4.2 4.2"/></symbol>
  <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2.5 12C3 10 6.5 5 12 5s9 5 9.5 7c-.5 2-4 7-9.5 7S3 14 2.5 12z"/><circle cx="12" cy="12" r="3"/></symbol>
  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></symbol>
@@ -150,13 +150,17 @@
      </button>
     </section>
 
+    <div class="home-tools">
+     <div class="home-edit-bar" id="home-edit-bar" hidden><span>Trascina le schede o usa le frecce; l'occhio le nasconde. Resta salvato su questo dispositivo.</span><button class="btn small ghost" type="button" id="home-reset">Ripristina</button></div>
+     <button class="btn small ghost" type="button" id="home-edit" aria-pressed="false"><svg class="i"><use href="#i-grid"/></svg><span>Personalizza</span></button>
+    </div>
     <div class="bento">
-     <article class="tile b-cpu"><div class="tile-head"><span class="tile-ico c-cpu"><svg class="i"><use href="#i-cpu"/></svg></span><div><b>Processore</b><small id="cpu-name">—</small></div><span class="temp" id="cpu-temp">—</span></div><strong class="tile-val" id="cpu-val">—</strong><div class="bar"><span id="cpu-bar"></span></div><small class="tile-sub" id="cpu-sub">—</small></article>
-     <article class="tile b-gpu"><div class="tile-head"><span class="tile-ico c-gpu"><svg class="i"><use href="#i-gpu"/></svg></span><div><b>Scheda video</b><small id="gpu-name">—</small></div><span class="temp" id="gpu-temp">—</span></div><strong class="tile-val" id="gpu-val">—</strong><div class="bar"><span id="gpu-bar"></span></div><small class="tile-sub" id="gpu-sub">—</small></article>
-     <article class="tile b-ram"><div class="tile-head"><span class="tile-ico c-ram"><svg class="i"><use href="#i-ram"/></svg></span><div><b>Memoria</b><small id="ram-detail">—</small></div></div><strong class="tile-val" id="ram-val">—</strong><div class="bar"><span id="ram-bar"></span></div><small class="tile-sub" id="ram-sub">—</small></article>
-     <article class="tile b-fan"><div class="tile-head"><span class="tile-ico c-fan"><svg class="i fan-spin" id="fan-spin"><use href="#i-fan"/></svg></span><div><b>Ventole</b><small id="fan-profile">—</small></div></div><strong class="tile-val" id="fan-val">—</strong><div class="bar"><span id="fan-bar"></span></div><small class="tile-sub">giri medi del case</small></article>
+     <article class="tile b-cpu" data-tile="cpu"><div class="tile-head"><span class="tile-ico c-cpu"><svg class="i"><use href="#i-cpu"/></svg></span><div><b>Processore</b><small id="cpu-name">—</small></div><span class="temp" id="cpu-temp">—</span></div><strong class="tile-val" id="cpu-val">—</strong><div class="bar"><span id="cpu-bar"></span></div><small class="tile-sub" id="cpu-sub">—</small></article>
+     <article class="tile b-gpu" data-tile="gpu"><div class="tile-head"><span class="tile-ico c-gpu"><svg class="i"><use href="#i-gpu"/></svg></span><div><b>Scheda video</b><small id="gpu-name">—</small></div><span class="temp" id="gpu-temp">—</span></div><strong class="tile-val" id="gpu-val">—</strong><div class="bar"><span id="gpu-bar"></span></div><small class="tile-sub" id="gpu-sub">—</small></article>
+     <article class="tile b-ram" data-tile="ram"><div class="tile-head"><span class="tile-ico c-ram"><svg class="i"><use href="#i-ram"/></svg></span><div><b>Memoria</b><small id="ram-detail">—</small></div></div><strong class="tile-val" id="ram-val">—</strong><div class="bar"><span id="ram-bar"></span></div><small class="tile-sub" id="ram-sub">—</small></article>
+     <article class="tile b-fan" data-tile="fan"><div class="tile-head"><span class="tile-ico c-fan"><svg class="i fan-spin" id="fan-spin"><use href="#i-fan"/></svg></span><div><b>Ventole</b><small id="fan-profile">—</small></div></div><strong class="tile-val" id="fan-val">—</strong><div class="bar"><span id="fan-bar"></span></div><small class="tile-sub">giri medi del case</small></article>
 
-     <button class="card b-energy" type="button" data-view="energy">
+     <button class="card b-energy" type="button" data-view="energy" data-tile="energy">
       <div class="be-head"><span class="eyebrow">Energia</span><span class="be-link">Consumi <svg class="i"><use href="#i-chev"/></svg></span></div>
       <div class="be-nums">
        <div><small>Oggi</small><b id="h-today">—</b><span id="h-today-cost">—</span></div>
@@ -166,7 +170,7 @@
       <div class="be-week" id="hm-week" aria-label="Ultimi 7 giorni"></div>
      </button>
 
-     <article class="zone-card zc-gaming b-game" id="zc-gaming" data-view="gaming" tabindex="0">
+     <article class="zone-card zc-gaming b-game" data-tile="game" id="zc-gaming" data-view="gaming" tabindex="0">
       <div class="zc-art" id="zc-gaming-art"></div>
       <div class="zc-body">
        <span class="zone-tag"><i></i>GAMING</span>
@@ -175,7 +179,7 @@
       </div>
       <button class="btn primary small" type="button" id="zc-gaming-btn"><svg class="i"><use href="#i-play"/></svg><span>Apri</span></button>
      </article>
-     <article class="zone-card zc-opt b-opt" id="zc-opt" data-view="optimize" tabindex="0">
+     <article class="zone-card zc-opt b-opt" data-tile="opt" id="zc-opt" data-view="optimize" tabindex="0">
       <div class="zc-ring"><svg viewBox="0 0 120 120" aria-hidden="true"><circle class="h-track" cx="60" cy="60" r="50" pathLength="100"/><circle class="h-fill" id="zc-opt-ring" cx="60" cy="60" r="50" pathLength="100"/></svg><b id="zc-opt-score">—</b></div>
       <div class="zc-body">
        <span class="zone-tag"><i></i>OTTIMIZZA</span>
@@ -185,7 +189,7 @@
       <button class="btn primary small" type="button" id="zc-opt-btn"><svg class="i"><use href="#i-clean"/></svg><span>Ottimizza</span></button>
      </article>
 
-     <section class="card b-ai">
+     <section class="card b-ai" data-tile="ai">
       <div class="be-head"><span class="eyebrow">Agenti AI</span></div>
       <div class="ai-list">
        <div class="agent"><span class="agent-ico codex">⌘</span><div><b>Codex</b><small id="codex-state">—</small></div><i class="dot off" id="codex-dot"></i></div>
@@ -194,7 +198,7 @@
       <div class="ai-auto"><div><b>AI ECO automatica</b><small id="auto-note">—</small></div><button class="toggle" id="auto-toggle" role="switch" aria-checked="false" aria-label="Automazione AI ECO"><span></span></button></div>
      </section>
 
-     <section class="card b-quick">
+     <section class="card b-quick" data-tile="quick">
       <div class="be-head"><span class="eyebrow">Azioni rapide</span></div>
       <div class="qgrid">
        <button class="qb" data-action="screen"><span><svg class="i"><use href="#i-monitor"/></svg></span>Monitor off</button>
@@ -206,9 +210,61 @@
       </div>
      </section>
 
-     <section class="card b-chart">
+     <section class="card b-chart" data-tile="chart">
       <div class="card-head"><div><h3>Carico</h3><p>Processore e scheda video, ultimi minuti</p></div><div class="legend-mini"><span class="c-cpu">CPU</span><span class="c-gpu">GPU</span></div></div>
       <div class="chart" id="chart-load"></div>
+     </section>
+
+     <section class="card b-temps" data-tile="temps">
+      <div class="card-head"><div><h3>Temperature</h3><p>Processore e scheda video, ultimi 15 minuti</p></div><div class="legend-mini"><span class="c-cpu">CPU <b id="tc-now">—</b></span><span class="c-gpu">GPU <b id="tg-now">—</b></span></div></div>
+      <div class="chart" id="chart-temps"></div>
+     </section>
+
+     <section class="card b-net" data-tile="net">
+      <div class="be-head"><span class="eyebrow">Rete</span><small class="muted" id="net-peak">—</small></div>
+      <div class="net-nums"><div><small>↓ Scarica</small><b id="net-down">—</b></div><div><small>↑ Invia</small><b id="net-up">—</b></div></div>
+      <div class="net-spark" id="net-spark" aria-hidden="true"></div>
+     </section>
+
+     <section class="card b-disks" data-tile="disks">
+      <div class="be-head"><span class="eyebrow">Dischi</span><small class="muted" id="disk-free">—</small></div>
+      <div class="disk-list" id="disk-list"></div>
+     </section>
+
+     <section class="card b-procs" data-tile="procs">
+      <div class="card-head"><div><h3>Programmi più pesanti</h3><p>Processore e memoria, adesso</p></div><button class="btn small ghost" type="button" data-view="optimize">Tutti</button></div>
+      <div class="hp-list" id="home-procs"><p class="muted">—</p></div>
+     </section>
+
+     <section class="card b-media" data-tile="media">
+      <div class="be-head"><span class="eyebrow">Musica e volume</span><small class="muted">controlla quello che suona sul PC</small></div>
+      <div class="media-wrap">
+      <div class="media-row">
+       <button class="mb" type="button" data-media="prev" aria-label="Brano precedente"><svg class="i"><use href="#i-prev"/></svg></button>
+       <button class="mb big" type="button" data-media="play" aria-label="Play o pausa"><svg class="i"><use href="#i-playpause"/></svg></button>
+       <button class="mb" type="button" data-media="next" aria-label="Brano successivo"><svg class="i"><use href="#i-next"/></svg></button>
+      </div>
+      <div class="media-row vol">
+       <button class="mb" type="button" data-vol="down" aria-label="Volume giù"><svg class="i"><use href="#i-vol-down"/></svg></button>
+       <button class="mb" type="button" data-vol="mute" aria-label="Muto"><svg class="i"><use href="#i-vol-x"/></svg></button>
+       <button class="mb" type="button" data-vol="up" aria-label="Volume su"><svg class="i"><use href="#i-vol"/></svg></button>
+      </div>
+      </div>
+     </section>
+
+     <section class="card b-share" data-tile="share">
+      <div class="card-head"><div><h3>Appunti e file</h3><p>Testo e file tra questo dispositivo e il PC</p></div></div>
+      <div class="share-grid">
+       <div class="share-clip">
+        <textarea id="clip-text" rows="3" placeholder="Scrivi o incolla un testo…" aria-label="Testo per gli appunti"></textarea>
+        <div class="gw-row"><button class="btn small primary" type="button" id="clip-send"><svg class="i"><use href="#i-send"/></svg>Copia sul PC</button><button class="btn small" type="button" id="clip-get"><svg class="i"><use href="#i-copy"/></svg>Prendi dal PC</button></div>
+       </div>
+       <div class="share-files" id="share-drop">
+        <div class="gw-row"><label class="btn small primary" for="file-up"><svg class="i"><use href="#i-upload"/></svg>Manda file al PC</label><input type="file" id="file-up" multiple hidden><button class="btn small ghost local-only" type="button" id="file-open">Apri cartella</button></div>
+        <small class="muted" id="file-status">Trascina qui i file o premi il pulsante: arrivano in Download\NEXAR.</small>
+        <div class="file-list" id="file-list"></div>
+       </div>
+      </div>
      </section>
     </div>
    </section>

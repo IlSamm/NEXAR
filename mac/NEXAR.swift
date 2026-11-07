@@ -10,6 +10,7 @@ import Darwin
 import Foundation
 import Security
 import SwiftUI
+import UserNotifications
 import WebKit
 
 let ntfyBase = "https://ntfy.sh"
@@ -178,13 +179,75 @@ final class Model: ObservableObject {
     var token: String { saved?.token ?? "" }
     var bot: String { saved?.bot ?? "" }
 
+    private var started = false
+
     func start() {
+        if started { return }
+        started = true
         if saved == nil { screen = .pair } else { Task { await connect() } }
+        Task { await pollLoop() }
         Task {
             while !Task.isCancelled {
                 await checkUpdate()
                 try? await Task.sleep(nanoseconds: 6 * 3600 * 1_000_000_000)
             }
+        }
+    }
+
+    // MARK: stato per la barra dei menu e le notifiche
+
+    @Published var live: Live?
+    @Published var pcOn: Bool?
+    private var misses = 0
+    private var hotAt = Date.distantPast
+
+    func pollLoop() async {
+        Notify.ask()
+        while !Task.isCancelled {
+            await poll()
+            try? await Task.sleep(nanoseconds: 10_000_000_000)
+        }
+    }
+
+    func poll() async {
+        guard let s = saved, !s.url.isEmpty, let url = URL(string: s.url + "/api/status") else { live = nil; return }
+        var req = URLRequest(url: url, timeoutInterval: 8)
+        req.setValue(token, forHTTPHeaderField: "X-PC-ECO-Key")
+        if let got = try? await URLSession.shared.data(for: req), (got.1 as? HTTPURLResponse)?.statusCode == 200,
+           let o = (try? JSONSerialization.jsonObject(with: got.0)) as? [String: Any] {
+            func num(_ v: Any?) -> Double? { (v as? NSNumber)?.doubleValue }
+            let l = Live(cpu: num(o["cpu"]), gpu: num(o["gpu"]), cpuTemp: num(o["cpu_temp"]), gpuTemp: num(o["gpu_temp"]),
+                         watts: num((o["power"] as? [String: Any])?["total"]), mode: o["mode"] as? String ?? "normal")
+            if pcOn == false { Notify.send("PC acceso", "NEXAR è di nuovo raggiungibile.") }
+            pcOn = true; misses = 0; live = l
+            let hot = (l.cpuTemp ?? 0) >= 85 || (l.gpuTemp ?? 0) >= 83
+            if hot && Date().timeIntervalSince(hotAt) > 900 {
+                hotAt = Date()
+                Notify.send("Temperatura alta", "CPU \(fmt(l.cpuTemp, " °C")) · GPU \(fmt(l.gpuTemp, " °C"))")
+            }
+        } else {
+            misses += 1
+            if misses >= 2 {
+                if pcOn == true { Notify.send("PC non raggiungibile", "Il PC è spento oppure NEXAR è stato chiuso.") }
+                pcOn = false; live = nil
+                // l'indirizzo cambia quando il PC si riaccende: cerca quello nuovo
+                if let f = await Model.latest(s.beacon), f.url != s.url, var cur = saved {
+                    cur.url = f.url; saved = cur; Store.save(cur)
+                }
+            }
+        }
+    }
+
+    func command(_ path: String, _ body: [String: String]) {
+        Task {
+            guard let s = saved, let url = URL(string: s.url + path) else { return }
+            var req = URLRequest(url: url, timeoutInterval: 10)
+            req.httpMethod = "POST"
+            req.setValue(token, forHTTPHeaderField: "X-PC-ECO-Key")
+            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            req.httpBody = try? JSONSerialization.data(withJSONObject: body)
+            _ = try? await URLSession.shared.data(for: req)
+            await poll()
         }
     }
 
@@ -497,11 +560,12 @@ struct WebView: NSViewRepresentable {
         else if c.reloads != reloadToken { c.reloads = reloadToken; web.reload() }
     }
 
-    final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
+    final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler, WKDownloadDelegate {
         let model: Model
         weak var web: WKWebView?
         var loaded: URL?
         var reloads = 0
+        var downloads: [ObjectIdentifier: URL] = [:]
 
         init(_ model: Model) { self.model = model }
 
@@ -517,6 +581,7 @@ struct WebView: NSViewRepresentable {
         }
 
         func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+            if action.shouldPerformDownload { return decisionHandler(.download) }
             guard let url = action.request.url else { return decisionHandler(.cancel) }
             let sameHost = url.host == loaded?.host
             if action.targetFrame?.isMainFrame != false && !sameHost && ["http", "https", "tg", "mailto"].contains(url.scheme ?? "") {
@@ -541,6 +606,43 @@ struct WebView: NSViewRepresentable {
         }
 
         func webViewWebContentProcessDidTerminate(_ webView: WKWebView) { webView.reload() }
+
+        // File scaricati dal PC (cartella condivisa): finiscono in Download sul Mac.
+        func webView(_ webView: WKWebView, navigationAction: WKNavigationAction, didBecome download: WKDownload) { download.delegate = self }
+        func webView(_ webView: WKWebView, navigationResponse: WKNavigationResponse, didBecome download: WKDownload) { download.delegate = self }
+
+        func download(_ download: WKDownload, decideDestinationUsing response: URLResponse, suggestedFilename: String, completionHandler: @escaping (URL?) -> Void) {
+            let dir = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask)[0]
+            let clean = suggestedFilename.replacingOccurrences(of: "/", with: "_")
+            var target = dir.appendingPathComponent(clean)
+            let base = target.deletingPathExtension().lastPathComponent, ext = target.pathExtension
+            var i = 2
+            while FileManager.default.fileExists(atPath: target.path) {
+                target = dir.appendingPathComponent(ext.isEmpty ? "\(base) (\(i))" : "\(base) (\(i)).\(ext)"); i += 1
+            }
+            downloads[ObjectIdentifier(download)] = target
+            completionHandler(target)
+        }
+
+        func downloadDidFinish(_ download: WKDownload) {
+            if let url = downloads.removeValue(forKey: ObjectIdentifier(download)) {
+                Notify.send("File scaricato", url.lastPathComponent)
+                NSWorkspace.shared.activateFileViewerSelecting([url])
+            }
+        }
+
+        func download(_ download: WKDownload, didFailWithError error: Error, resumeData: Data?) {
+            downloads.removeValue(forKey: ObjectIdentifier(download))
+        }
+
+        // "Manda file al PC": scelta dei file dal Mac.
+        func webView(_ webView: WKWebView, runOpenPanelWith parameters: WKOpenPanelParameters, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping ([URL]?) -> Void) {
+            let panel = NSOpenPanel()
+            panel.allowsMultipleSelection = parameters.allowsMultipleSelection
+            panel.canChooseDirectories = false
+            panel.canChooseFiles = true
+            completionHandler(panel.runModal() == .OK ? panel.urls : nil)
+        }
 
         // Link che aprono una nuova finestra: nel browser.
         func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for action: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
@@ -729,10 +831,80 @@ struct RootView: View {
     }
 }
 
+// MARK: - Barra dei menu e notifiche
+
+struct Live: Equatable {
+    var cpu: Double?
+    var gpu: Double?
+    var cpuTemp: Double?
+    var gpuTemp: Double?
+    var watts: Double?
+    var mode: String
+}
+
+enum Notify {
+    static func ask() {
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
+    }
+
+    static func send(_ title: String, _ body: String) {
+        let c = UNMutableNotificationContent()
+        c.title = title; c.body = body; c.sound = .default
+        UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: UUID().uuidString, content: c, trigger: nil))
+    }
+}
+
+func fmt(_ v: Double?, _ unit: String) -> String {
+    guard let v else { return "—" }
+    return "\(Int(v.rounded()))\(unit)"
+}
+
+struct MenuContent: View {
+    @EnvironmentObject var model: Model
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        if model.saved == nil {
+            Text("Mac non collegato al PC")
+        } else if let l = model.live {
+            Text("🟢 PC acceso · \(["eco": "AI ECO", "gaming": "Gaming"][l.mode] ?? "Normale")")
+            Text("CPU \(fmt(l.cpu, "%")) · \(fmt(l.cpuTemp, " °C"))    GPU \(fmt(l.gpu, "%")) · \(fmt(l.gpuTemp, " °C"))")
+            Text("Consumo \(fmt(l.watts, " W"))")
+        } else {
+            Text(model.pcOn == false ? "🔴 PC spento o NEXAR chiuso" : "Cerco il PC…")
+        }
+        Divider()
+        Button("Apri NEXAR") { openWindow(id: "main"); NSApp.activate(ignoringOtherApps: true) }
+        if model.live != nil {
+            Menu("Modalità") {
+                Button("AI ECO") { model.command("/api/mode", ["mode": "eco"]) }
+                Button("Normale") { model.command("/api/mode", ["mode": "normal"]) }
+                Button("Gaming") { model.command("/api/mode", ["mode": "gaming"]) }
+            }
+            Menu("Musica e volume") {
+                Button("Play / pausa") { model.command("/api/media", ["action": "play"]) }
+                Button("Brano successivo") { model.command("/api/media", ["action": "next"]) }
+                Button("Brano precedente") { model.command("/api/media", ["action": "prev"]) }
+                Divider()
+                Button("Volume su") { model.command("/api/screen/action", ["action": "up"]) }
+                Button("Volume giù") { model.command("/api/screen/action", ["action": "down"]) }
+                Button("Muto") { model.command("/api/screen/action", ["action": "mute"]) }
+            }
+            Button("Spegni il monitor") { model.command("/api/screen/action", ["action": "monitor_off"]) }
+            Button("Blocca il PC") { model.command("/api/screen/action", ["action": "lock"]) }
+        } else if model.saved != nil {
+            Button("⏻ Accendi il PC") { Task { await model.wake() } }
+        }
+        Divider()
+        Button("Esci da NEXAR") { NSApp.terminate(nil) }.keyboardShortcut("q")
+    }
+}
+
 // MARK: - App
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+    // Chiudendo la finestra NEXAR resta nella barra dei menu (icona in alto a destra).
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 }
 
 struct NexarApp: App {
@@ -740,6 +912,11 @@ struct NexarApp: App {
     @StateObject private var model = Model()
 
     var body: some Scene {
+        MenuBarExtra {
+            MenuContent().environmentObject(model)
+        } label: {
+            Image(systemName: model.pcOn == true ? "desktopcomputer" : "desktopcomputer.trianglebadge.exclamationmark")
+        }
         Window("NEXAR", id: "main") {
             RootView().environmentObject(model)
         }
