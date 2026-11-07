@@ -37,10 +37,11 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>LSApplicationCategoryType</key><string>public.app-category.utilities</string>
   <key>NSHighResolutionCapable</key><true/>
   <key>NSHumanReadableCopyright</key><string>NEXAR</string>
+  <key>NSLocalNetworkUsageDescription</key><string>Serve per accendere il PC quando il Mac è nella stessa rete di casa.</string>
 </dict></plist>
 PLIST
 
 codesign --force --deep --sign - "$APP"
 "$APP/Contents/MacOS/NEXAR" --selftest
-(cd "$OUT" && ditto -c -k --keepParent NEXAR.app NEXAR-Mac.zip)
+(cd "$OUT" && ditto -c -k --keepParent NEXAR.app NEXAR-Mac.zip && shasum -a 256 NEXAR-Mac.zip > NEXAR-Mac.zip.sha256)
 echo "Pronto: $OUT/NEXAR-Mac.zip"

@@ -54,7 +54,10 @@ async def lifespan(app: FastAPI):
     bot.updater = updater
     # App per Mac: il PC pubblica (cifrato) l'indirizzo del tunnel, che cambia a ogni avvio.
     beacon = beacon_mod.Beacon(controller.config, save=controller._save_config, get_url=lambda: tunnel.url,
-                               info=lambda: {'bot': (getattr(controller, 'telegram_bot', None) or {}).get('username', ''), 'v': VERSION})
+                               info=lambda: {'bot': (getattr(controller, 'telegram_bot', None) or {}).get('username', ''), 'v': VERSION,
+                                             # in casa l'app per Mac accende il PC da sola (Wake-on-LAN)
+                                             'mac': (controller.state.get('inventory', {}).get('net') or {}).get('mac', ''),
+                                             'bc': (controller.state.get('inventory', {}).get('net') or {}).get('broadcast', '')})
     controller.beacon = beacon
     def on_url(url):
         bot.set_webapp(url); beacon.kick.set()

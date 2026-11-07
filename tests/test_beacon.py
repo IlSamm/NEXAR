@@ -73,3 +73,22 @@ def test_pair_returns_beacon_secret_and_code_reports_online(monkeypatch):
     assert r['online'] is False and b.wanted()
     out = pc.post('/api/devices/pair', json={'code': r['code'], 'name': 'MacBook'}).json()
     assert out['beacon'] == 'fisso' and len(out['token']) > 40
+
+
+def test_umbrel_relay_understands_mac_wake(monkeypatch):
+    import pc_power
+    monkeypatch.setenv('BOT_TOKEN', '1:A'); monkeypatch.setenv('USER_ID', '4'); monkeypatch.setenv('PC_MAC', '34:5A:60:77:D4:8D')
+    monkeypatch.setenv('PC_IP', '192.168.0.128'); monkeypatch.setenv('WAKE_SECRET', '')
+    code = pc_power.RELAY.split('\noffset = None')[0]          # tutto tranne il ciclo infinito
+    ns = {}
+    exec(compile(code, 'relay', 'exec'), ns)
+    sec = 'wake:fisso'
+    assert ns['_topic'](sec) == beacon.topic(sec)
+    msg = beacon.seal(sec, {'wake': 1000})
+    p = ns['unseal'](sec, msg)
+    assert p == {'wake': 1000} and ns['unseal']('wake:altro', msg) is None
+    assert ns['fresh'](p, 0, 1050) and not ns['fresh'](p, 1000, 1050) and not ns['fresh'](p, 0, 2000)
+    assert beacon.unseal('ack:fisso', ns['seal']('ack:fisso', {'ack': 1})) == {'ack': 1}
+    text = pc_power.relay_compose('1:A', 4, '34:5A:60:77:D4:8D', '192.168.0.128', '192.168.0.255', wake_secret='s3')
+    env = json.loads(text.split('\n', 1)[1])['services']['nexar-accensione']['environment']
+    assert env['WAKE_SECRET'] == 's3'

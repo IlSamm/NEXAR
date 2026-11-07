@@ -94,6 +94,46 @@ def wake():
         time.sleep(0.3)
     s.close()
 KB = {"inline_keyboard": [[{"text": "⏻ Accendi il PC", "callback_data": "wake"}]]}
+# App NEXAR per Mac: chiede l'accensione su un canale ntfy cifrato (stesso formato di beacon.py).
+import base64, hashlib, hmac, threading
+WS = os.environ.get("WAKE_SECRET", ""); NTFY = "https://ntfy.sh"
+def _d(s, l): return hmac.new(s.encode(), l.encode(), hashlib.sha256).digest()
+def _topic(s): return "nexar-" + _d(s, "topic").hex()[:32]
+def _ks(k, n, size): return b"".join(hmac.new(k, n + i.to_bytes(4, "big"), hashlib.sha256).digest() for i in range((size + 31) // 32))
+def seal(s, o):
+    d = json.dumps(o, separators=(",", ":")).encode(); n = os.urandom(16)
+    c = bytes(a ^ b for a, b in zip(d, _ks(_d(s, "enc"), n, len(d))))
+    return base64.urlsafe_b64encode(n + c + hmac.new(_d(s, "mac"), n + c, hashlib.sha256).digest()[:16]).decode().rstrip("=")
+def unseal(s, t):
+    try: raw = base64.urlsafe_b64decode(t + "=" * (-len(t) % 4))
+    except Exception: return None
+    if len(raw) < 33: return None
+    n, c, tag = raw[:16], raw[16:-16], raw[-16:]
+    if not hmac.compare_digest(tag, hmac.new(_d(s, "mac"), n + c, hashlib.sha256).digest()[:16]): return None
+    try: return json.loads(bytes(a ^ b for a, b in zip(c, _ks(_d(s, "enc"), n, len(c)))))
+    except Exception: return None
+def fresh(p, last, now):
+    t = p.get("wake", 0) if isinstance(p, dict) else 0
+    return isinstance(t, (int, float)) and t > last and abs(now - t) < 180
+def mac_wake():
+    sec, last = "wake:" + WS, time.time() - 60
+    while True:
+        try:
+            req = urllib.request.Request(NTFY + "/" + _topic(sec) + "/json", headers={"User-Agent": "NEXAR-Umbrel"})
+            with urllib.request.urlopen(req, timeout=120) as r:
+                for line in r:
+                    ev = json.loads(line)
+                    p = unseal(sec, ev.get("message", "")) if ev.get("event") == "message" else None
+                    if not fresh(p, last, time.time()): continue
+                    last = p["wake"]; on = alive()
+                    if not on: wake()
+                    ack = urllib.request.Request(NTFY + "/" + _topic("ack:" + WS), data=seal("ack:" + WS, {"ack": last, "on": on}).encode(), headers={"User-Agent": "NEXAR-Umbrel", "Firebase": "no"})
+                    urllib.request.urlopen(ack, timeout=10).read()
+                    try: api("sendMessage", chat_id=U, text="⏻ Accensione chiesta dall'app NEXAR per Mac." if not on else "💻 L'app per Mac ha chiesto l'accensione, ma il PC è già acceso.")
+                    except Exception: pass
+        except Exception:
+            time.sleep(10)
+if WS: threading.Thread(target=mac_wake, daemon=True).start()
 offset = None
 while True:
     try:
@@ -215,7 +255,7 @@ if __name__ == "__main__":
     srv.serve_forever()
 '''
 
-def relay_compose(token, user_id, mac, ip, broadcast, bridge=None):
+def relay_compose(token, user_id, mac, ip, broadcast, bridge=None, wake_secret=''):
     """Stack per Umbrel: accensione da Telegram (se c'è il bot) e, se chiesto, il ponte per il Mac.
     bridge = {'pc_port': 8767, 'port': 8790}."""
     services = {}
@@ -225,7 +265,8 @@ def relay_compose(token, user_id, mac, ip, broadcast, bridge=None):
             'image': 'python:3.12-alpine', 'container_name': 'nexar-accensione', 'restart': 'unless-stopped',
             # La rete dell'host serve per il broadcast Wake-on-LAN nella rete di casa.
             'network_mode': 'host',
-            'environment': {'BOT_TOKEN': token, 'USER_ID': str(user_id), 'PC_MAC': mac, 'PC_IP': ip, 'BROADCAST': broadcast},
+            'environment': {'BOT_TOKEN': token, 'USER_ID': str(user_id), 'PC_MAC': mac, 'PC_IP': ip, 'BROADCAST': broadcast,
+                            **({'WAKE_SECRET': wake_secret} if wake_secret else {})},
             'command': ['python', '-u', '-c', RELAY.strip()],
         }
     if bridge is not None:

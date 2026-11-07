@@ -594,12 +594,14 @@ class Control:
     def relay_compose(self, bridge=False):
         net = self.state.get('inventory', {}).get('net') or {}
         tg = self.config.get('telegram', {})
+        # Il relay ascolta anche le richieste di accensione dell'app per Mac (canale cifrato).
+        wake = self.beacon.secret() if getattr(self, 'beacon', None) else ''
         if bridge:
             return pc_power.relay_compose(tg.get('token') if net.get('mac') else None, tg.get('allowed_user_id'), net.get('mac', ''),
                                           net.get('ip', ''), net.get('broadcast', '255.255.255.255'),
-                                          bridge={'pc_port': gateway.GATEWAY_PORT, 'port': gateway.UMBREL_PORT})
+                                          bridge={'pc_port': gateway.GATEWAY_PORT, 'port': gateway.UMBREL_PORT}, wake_secret=wake)
         if not net.get('mac'): raise RuntimeError('Scheda di rete via cavo non trovata: premi "Cerca di nuovo" in Collegamenti')
-        return pc_power.relay_compose(tg.get('token'), tg.get('allowed_user_id'), net['mac'], net.get('ip', ''), net.get('broadcast', '255.255.255.255'))
+        return pc_power.relay_compose(tg.get('token'), tg.get('allowed_user_id'), net['mac'], net.get('ip', ''), net.get('broadcast', '255.255.255.255'), wake_secret=wake)
 
     def ai_names(self):
         return {str(n).lower() for n in self.config.get('auto_detect', {}).get('process_names') or ['codex.exe', 'claude.exe']}

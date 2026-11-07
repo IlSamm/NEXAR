@@ -1,10 +1,14 @@
 // NEXAR per Mac: una finestra con la dashboard del PC, ovunque tu sia.
 // Il PC pubblica il suo indirizzo (tunnel Cloudflare, cambia a ogni avvio) cifrato su ntfy.sh: qui lo si legge,
 // lo si decifra e si apre NEXAR con il token di questo Mac. Il primo collegamento usa il codice generato sul PC.
+// Accensione: Wake-on-LAN diretto in casa, e da fuori una richiesta cifrata che il relay su Umbrel ascolta.
+// Aggiornamenti: controlla le release su GitHub e si sostituisce da sola con un clic (zip verificato con SHA-256).
 // Stesso formato di beacon.py (vettore di prova in selfTest e in tests/test_beacon.py).
 import AppKit
 import CryptoKit
+import Darwin
 import Foundation
+import Security
 import SwiftUI
 import WebKit
 
@@ -35,16 +39,71 @@ enum Seal {
         let tag = Data(bytes[(bytes.count - 16)...])
         let mac = Data(HMAC<SHA256>.authenticationCode(for: nonce + ct, using: SymmetricKey(data: derive(secret, "mac")))).prefix(16)
         guard Data(mac) == tag else { return nil }
+        let plain = Data(zip(ct, stream(secret, nonce, ct.count)).map { $0 ^ $1 })
+        return (try? JSONSerialization.jsonObject(with: plain)) as? [String: Any]
+    }
+
+    static func stream(_ secret: String, _ nonce: Data, _ size: Int) -> Data {
         let ek = SymmetricKey(data: derive(secret, "enc"))
-        var stream = Data()
+        var out = Data()
         var i: UInt32 = 0
-        while stream.count < ct.count {
+        while out.count < size {
             let counter = Data([UInt8(i >> 24 & 0xff), UInt8(i >> 16 & 0xff), UInt8(i >> 8 & 0xff), UInt8(i & 0xff)])
-            stream += Data(HMAC<SHA256>.authenticationCode(for: nonce + counter, using: ek))
+            out += Data(HMAC<SHA256>.authenticationCode(for: nonce + counter, using: ek))
             i += 1
         }
-        let plain = Data(zip(ct, stream).map { $0 ^ $1 })
-        return (try? JSONSerialization.jsonObject(with: plain)) as? [String: Any]
+        return out
+    }
+
+    static func seal(_ secret: String, _ obj: [String: Any]) -> String? {
+        guard let data = try? JSONSerialization.data(withJSONObject: obj) else { return nil }
+        var nb = [UInt8](repeating: 0, count: 16)
+        guard SecRandomCopyBytes(kSecRandomDefault, nb.count, &nb) == errSecSuccess else { return nil }
+        let nonce = Data(nb)
+        let ct = Data(zip(data, stream(secret, nonce, data.count)).map { $0 ^ $1 })
+        let tag = Data(HMAC<SHA256>.authenticationCode(for: nonce + ct, using: SymmetricKey(data: derive(secret, "mac")))).prefix(16)
+        return (nonce + ct + Data(tag)).base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "=", with: "")
+    }
+}
+
+// MARK: - Wake-on-LAN (in casa)
+
+enum WOL {
+    static func send(mac: String, broadcast: String) -> Bool {
+        let hex = Array(mac.filter { $0.isHexDigit })
+        guard hex.count == 12 else { return false }
+        var macBytes: [UInt8] = []
+        for i in stride(from: 0, to: 12, by: 2) {
+            guard let b = UInt8(String(hex[i...i + 1]), radix: 16) else { return false }
+            macBytes.append(b)
+        }
+        var packet = [UInt8](repeating: 0xff, count: 6)
+        for _ in 0..<16 { packet += macBytes }
+        let fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)
+        guard fd >= 0 else { return false }
+        defer { close(fd) }
+        var on: Int32 = 1
+        setsockopt(fd, SOL_SOCKET, SO_BROADCAST, &on, socklen_t(MemoryLayout<Int32>.size))
+        var sent = false
+        for dst in Set([broadcast, "255.255.255.255"]) where !dst.isEmpty {
+            var addr = sockaddr_in()
+            addr.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+            addr.sin_family = sa_family_t(AF_INET)
+            addr.sin_port = in_port_t(9).bigEndian
+            guard inet_pton(AF_INET, dst, &addr.sin_addr) == 1 else { continue }
+            for _ in 0..<3 {
+                let r = packet.withUnsafeBytes { buf in
+                    withUnsafePointer(to: &addr) { ptr in
+                        ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                            sendto(fd, buf.baseAddress, buf.count, 0, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
+                        }
+                    }
+                }
+                if r > 0 { sent = true }
+            }
+        }
+        return sent
     }
 }
 
@@ -55,6 +114,9 @@ func selfTest() -> Bool {
     guard let p = Seal.unseal(secret, sealed), p["url"] as? String == "https://example.trycloudflare.com",
           p["bot"] as? String == "nexar_bot", (p["t"] as? NSNumber)?.intValue == 1700000000 else { print("decifratura sbagliata"); return false }
     guard Seal.unseal("pair:ABCDEFGX", sealed) == nil else { print("chiave sbagliata accettata"); return false }
+    guard let again = Seal.seal("wake:x", ["wake": 5]), (Seal.unseal("wake:x", again)?["wake"] as? NSNumber)?.intValue == 5 else { print("cifratura sbagliata"); return false }
+    guard Model.isNewer("1.0.41", than: "1.0.40"), !Model.isNewer("1.0.40", than: "1.0.40"), Model.isNewer("1.0.10", than: "1.0.9"),
+          !Model.isNewer("2.0.0", than: "dev") else { print("confronto versioni sbagliato"); return false }
     print("selftest ok")
     return true
 }
@@ -67,7 +129,11 @@ struct Saved: Codable {
     var url: String
     var name: String
     var bot: String
+    var mac: String?
+    var bc: String?
 }
+
+enum UpdateError: Error { case download, checksum, archive }
 
 enum Store {
     static var file: URL {
@@ -88,7 +154,9 @@ enum Store {
     }
 }
 
-struct Found { let url: String; let bot: String; let t: Double }
+struct Found { let url: String; let bot: String; let t: Double; let mac: String; let bc: String }
+
+struct Update { let version: String; let zip: URL; let sha: URL?; let page: URL }
 
 // MARK: - Logica
 
@@ -100,6 +168,10 @@ final class Model: ObservableObject {
     @Published var busy = false
     @Published var error = ""
     @Published var reloadToken = 0
+    @Published var wakeStatus = ""
+    @Published var waking = false
+    @Published var update: Update?
+    @Published var updating = ""
     var saved: Saved? = Store.load()
     private var retry: Task<Void, Never>?
 
@@ -108,6 +180,163 @@ final class Model: ObservableObject {
 
     func start() {
         if saved == nil { screen = .pair } else { Task { await connect() } }
+        Task {
+            while !Task.isCancelled {
+                await checkUpdate()
+                try? await Task.sleep(nanoseconds: 6 * 3600 * 1_000_000_000)
+            }
+        }
+    }
+
+    // MARK: accensione
+
+    func wake() async {
+        guard let s = saved, !waking else { return }
+        waking = true; wakeStatus = "Invio il segnale di accensione…"
+        defer { waking = false }
+        let local = WOL.send(mac: s.mac ?? "", broadcast: s.bc ?? "")
+        let t = Int(Date().timeIntervalSince1970)
+        var ack: [String: Any]?
+        if let body = Seal.seal("wake:" + s.beacon, ["wake": t]), let url = URL(string: "\(ntfyBase)/\(Seal.topic("wake:" + s.beacon))") {
+            var req = URLRequest(url: url, timeoutInterval: 12)
+            req.httpMethod = "POST"
+            req.httpBody = Data(body.utf8)
+            req.setValue("no", forHTTPHeaderField: "Firebase")
+            req.setValue("NEXAR-Mac/\(appVersion)", forHTTPHeaderField: "User-Agent")
+            if (try? await URLSession.shared.data(for: req)) != nil {
+                for _ in 0..<8 {
+                    try? await Task.sleep(nanoseconds: 2_500_000_000)
+                    ack = await Model.ack(s.beacon, t)
+                    if ack != nil { break }
+                }
+            }
+        }
+        if let a = ack {
+            wakeStatus = (a["on"] as? Bool) == true ? "Umbrel vede il PC già acceso: aspetto che NEXAR risponda…"
+                                                     : "Segnale inviato da Umbrel ✓ Il PC si sta accendendo: NEXAR si apre qui da sola."
+        } else if local {
+            wakeStatus = "Segnale inviato nella rete di casa. Da fuori casa serve il relay su Umbrel aggiornato (NEXAR sul PC → Accensione → Copia configurazione)."
+        } else {
+            wakeStatus = "Non sono riuscito a inviare il segnale: prova dal bot Telegram."
+        }
+        retry?.cancel()
+        retry = Task { [weak self] in
+            for _ in 0..<12 {
+                try? await Task.sleep(nanoseconds: 10_000_000_000)
+                if Task.isCancelled { return }
+                guard let self, self.screen == .off else { return }
+                await self.connect()
+            }
+        }
+    }
+
+    static func ack(_ secret: String, _ t: Int) async -> [String: Any]? {
+        guard let url = URL(string: "\(ntfyBase)/\(Seal.topic("ack:" + secret))/json?poll=1&since=5m") else { return nil }
+        var req = URLRequest(url: url, timeoutInterval: 10)
+        req.setValue("NEXAR-Mac/\(appVersion)", forHTTPHeaderField: "User-Agent")
+        guard let got = try? await URLSession.shared.data(for: req), let text = String(data: got.0, encoding: .utf8) else { return nil }
+        for line in text.split(separator: "\n") {
+            guard let o = (try? JSONSerialization.jsonObject(with: Data(line.utf8))) as? [String: Any], let msg = o["message"] as? String,
+                  let p = Seal.unseal("ack:" + secret, msg), (p["ack"] as? NSNumber)?.intValue == t else { continue }
+            return p
+        }
+        return nil
+    }
+
+    // MARK: aggiornamenti
+
+    nonisolated static func isNewer(_ a: String, than b: String) -> Bool {
+        let pa = a.split(separator: ".").compactMap { Int($0) }, pb = b.split(separator: ".").compactMap { Int($0) }
+        guard pa.count == 3, pb.count == 3 else { return false }
+        return pb.lexicographicallyPrecedes(pa)
+    }
+
+    func checkUpdate(manual: Bool = false) async {
+        guard let url = URL(string: "https://api.github.com/repos/IlSamm/NEXAR/releases/latest") else { return }
+        var req = URLRequest(url: url, timeoutInterval: 15)
+        req.setValue("NEXAR-Mac/\(appVersion)", forHTTPHeaderField: "User-Agent")
+        req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+        guard let got = try? await URLSession.shared.data(for: req), (got.1 as? HTTPURLResponse)?.statusCode == 200,
+              let o = (try? JSONSerialization.jsonObject(with: got.0)) as? [String: Any], let tag = o["tag_name"] as? String,
+              let assets = o["assets"] as? [[String: Any]] else {
+            if manual { updating = "Non riesco a controllare gli aggiornamenti adesso." }
+            return
+        }
+        let v = tag.hasPrefix("v") ? String(tag.dropFirst()) : tag
+        func asset(_ n: String) -> URL? {
+            (assets.first { $0["name"] as? String == n }?["browser_download_url"] as? String).flatMap { URL(string: $0) }
+        }
+        guard Model.isNewer(v, than: appVersion), let zip = asset("NEXAR-Mac.zip") else {
+            update = nil
+            if manual { updating = "Hai già l'ultima versione (\(appVersion))." }
+            return
+        }
+        update = Update(version: v, zip: zip, sha: asset("NEXAR-Mac.zip.sha256"),
+                        page: URL(string: o["html_url"] as? String ?? "") ?? URL(string: "https://github.com/IlSamm/NEXAR/releases/latest")!)
+        if manual { updating = "" }
+    }
+
+    func installUpdate() async {
+        guard let u = update else { return }
+        let bundle = URL(fileURLWithPath: Bundle.main.bundlePath)
+        let parent = bundle.deletingLastPathComponent()
+        guard bundle.pathExtension == "app", FileManager.default.isWritableFile(atPath: parent.path) else {
+            NSWorkspace.shared.open(u.page)
+            updating = "Sposta NEXAR in Applicazioni per aggiornarla da sola. Intanto ti ho aperto la pagina di download."
+            return
+        }
+        updating = "Scarico NEXAR \(u.version)…"
+        do {
+            let (file, resp) = try await URLSession.shared.download(from: u.zip)
+            guard (resp as? HTTPURLResponse)?.statusCode == 200 else { throw UpdateError.download }
+            let data = try Data(contentsOf: file)
+            if let shaURL = u.sha {
+                let (shaData, _) = try await URLSession.shared.data(from: shaURL)
+                let expected = String(decoding: shaData, as: UTF8.self)
+                    .split(whereSeparator: { $0 == " " || $0 == "\n" }).first.map { $0.lowercased() } ?? ""
+                let actual = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+                guard expected == actual else { throw UpdateError.checksum }
+            }
+            updating = "Installo NEXAR \(u.version)…"
+            let work = FileManager.default.temporaryDirectory.appendingPathComponent("nexar-update-\(UUID().uuidString)", isDirectory: true)
+            try FileManager.default.createDirectory(at: work, withIntermediateDirectories: true)
+            let zipPath = work.appendingPathComponent("NEXAR-Mac.zip")
+            try data.write(to: zipPath)
+            let unzip = Process()
+            unzip.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
+            unzip.arguments = ["-x", "-k", zipPath.path, work.path]
+            try unzip.run()
+            unzip.waitUntilExit()
+            let fresh = work.appendingPathComponent("NEXAR.app")
+            guard unzip.terminationStatus == 0,
+                  FileManager.default.isExecutableFile(atPath: fresh.appendingPathComponent("Contents/MacOS/NEXAR").path) else { throw UpdateError.archive }
+            func q(_ s: String) -> String { "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'" }
+            let old = bundle.path
+            let pid = ProcessInfo.processInfo.processIdentifier
+            // Aspetta che questa app si chiuda, sostituisce il pacchetto (senza mai restare senza app) e la riapre.
+            let script = [
+                "while kill -0 \(pid) 2>/dev/null; do sleep 0.3; done",
+                "rm -rf \(q(old + ".new")) \(q(old + ".old"))",
+                "if mv \(q(fresh.path)) \(q(old + ".new")); then",
+                "  if mv \(q(old)) \(q(old + ".old")); then",
+                "    if mv \(q(old + ".new")) \(q(old)); then rm -rf \(q(old + ".old")); else mv \(q(old + ".old")) \(q(old)); fi",
+                "  fi",
+                "fi",
+                "xattr -dr com.apple.quarantine \(q(old)) 2>/dev/null",
+                "open \(q(old))",
+                "rm -rf \(q(work.path))",
+            ].joined(separator: "\n") + "\n"
+            let scriptPath = work.appendingPathComponent("update.sh")
+            try script.write(to: scriptPath, atomically: true, encoding: .utf8)
+            let runner = Process()
+            runner.executableURL = URL(fileURLWithPath: "/bin/sh")
+            runner.arguments = ["-c", "nohup /bin/sh \(q(scriptPath.path)) >/dev/null 2>&1 &"]
+            try runner.run()
+            runner.waitUntilExit()
+            NSApp.terminate(nil)
+        } catch {
+            updating = "Aggiornamento non riuscito (\(error)). Riprova, oppure scaricala dalla pagina delle release."
+        }
     }
 
     static func latest(_ secret: String) async -> Found? {
@@ -122,7 +351,9 @@ final class Model: ObservableObject {
                   o["event"] as? String == "message", let msg = o["message"] as? String,
                   let p = Seal.unseal(secret, msg), let u = p["url"] as? String, u.hasPrefix("https://") else { continue }
             let t = (p["t"] as? NSNumber)?.doubleValue ?? 0
-            if best == nil || t >= best!.t { best = Found(url: u, bot: p["bot"] as? String ?? "", t: t) }
+            if best == nil || t >= best!.t {
+                best = Found(url: u, bot: p["bot"] as? String ?? "", t: t, mac: p["mac"] as? String ?? "", bc: p["bc"] as? String ?? "")
+            }
         }
         return best
     }
@@ -142,11 +373,12 @@ final class Model: ObservableObject {
     func connect() async {
         retry?.cancel()
         guard var s = saved else { screen = .pair; return }
-        if case .web = screen {} else { screen = .searching }
+        if screen == .pair { screen = .searching }
         var candidates: [String] = []
         if let f = await Model.latest(s.beacon) {
             candidates.append(f.url)
             if !f.bot.isEmpty { s.bot = f.bot }
+            if !f.mac.isEmpty { s.mac = f.mac; s.bc = f.bc }
         }
         if !s.url.isEmpty && !candidates.contains(s.url) { candidates.append(s.url) }
         for u in candidates {
@@ -428,12 +660,52 @@ struct OffView: View {
             Text("Il PC è spento o NEXAR non è aperto").font(.title3.weight(.semibold)).foregroundColor(.white).multilineTextAlignment(.center)
             Text("Riprovo da solo ogni 15 secondi. Appena il PC si accende NEXAR si apre qui.")
                 .multilineTextAlignment(.center).foregroundColor(.gray).fixedSize(horizontal: false, vertical: true)
-            if !model.bot.isEmpty {
-                Button("⏻  Accendi il PC da Telegram") { model.openTelegram() }
-                    .buttonStyle(PrimaryButton(color: Color(red: 0.13, green: 0.77, blue: 0.37)))
+            Button(action: { Task { await model.wake() } }) {
+                if model.waking { ProgressView().controlSize(.small) } else { Text("⏻  Accendi il PC") }
             }
-            Button("Riprova adesso") { Task { await model.connect() } }
-                .buttonStyle(.link)
+            .buttonStyle(PrimaryButton(color: Color(red: 0.13, green: 0.77, blue: 0.37)))
+            .disabled(model.waking)
+            if !model.wakeStatus.isEmpty {
+                Text(model.wakeStatus).font(.callout).foregroundColor(.white.opacity(0.85))
+                    .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
+            }
+            HStack(spacing: 18) {
+                Button("Riprova adesso") { Task { await model.connect() } }.buttonStyle(.link)
+                if !model.bot.isEmpty { Button("Apri il bot Telegram") { model.openTelegram() }.buttonStyle(.link) }
+            }
+        }
+    }
+}
+
+struct UpdateBanner: View {
+    @EnvironmentObject var model: Model
+    @State private var hidden = ""
+
+    var body: some View {
+        if let u = model.update, hidden != u.version {
+            HStack(spacing: 12) {
+                Image(systemName: "arrow.down.circle.fill").font(.title2).foregroundColor(accent)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("NEXAR \(u.version) per Mac").font(.headline).foregroundColor(.white)
+                    Text(model.updating.isEmpty ? "Nuova versione pronta" : model.updating).font(.caption).foregroundColor(.gray)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxWidth: 260, alignment: .leading)
+                Button("Aggiorna") { Task { await model.installUpdate() } }
+                    .buttonStyle(PrimaryButton())
+                    .frame(width: 100)
+                    .disabled(model.updating.hasPrefix("Scarico") || model.updating.hasPrefix("Installo"))
+                Button(action: { hidden = u.version }) { Image(systemName: "xmark").foregroundColor(.gray) }
+                    .buttonStyle(.plain)
+            }
+            .padding(14)
+            .background(RoundedRectangle(cornerRadius: 16).fill(Color(red: 0.08, green: 0.09, blue: 0.12)))
+            .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.white.opacity(0.1)))
+            .shadow(radius: 18)
+        } else if model.update == nil && !model.updating.isEmpty {
+            Text(model.updating).font(.caption).foregroundColor(.white).padding(10)
+                .background(Capsule().fill(Color(red: 0.08, green: 0.09, blue: 0.12)))
+                .onAppear { DispatchQueue.main.asyncAfter(deadline: .now() + 5) { model.updating = "" } }
         }
     }
 }
@@ -450,6 +722,7 @@ struct RootView: View {
             case .web(let url): WebView(url: url, token: model.token, reloadToken: model.reloadToken, model: model).id(model.token)
             }
         }
+        .overlay(alignment: .bottomTrailing) { UpdateBanner().padding(16) }
         .frame(minWidth: 440, minHeight: 620)
         .preferredColorScheme(.dark)
         .onAppear { model.start() }
@@ -473,8 +746,12 @@ struct NexarApp: App {
         .defaultSize(width: 1180, height: 820)
         .commands {
             CommandGroup(replacing: .newItem) {}
+            CommandGroup(after: .appInfo) {
+                Button("Controlla aggiornamenti…") { Task { await model.checkUpdate(manual: true) } }
+            }
             CommandMenu("PC") {
                 Button("Ricarica") { Task { await model.connect() } }.keyboardShortcut("r")
+                Button("Accendi il PC") { Task { await model.wake() } }.disabled(model.saved == nil)
                 Button("Accendi da Telegram") { model.openTelegram() }.disabled(model.bot.isEmpty)
                 Divider()
                 Button("Scollega questo Mac…") {
