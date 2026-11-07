@@ -28,6 +28,7 @@ import ai_watch
 import remote_control
 import gateway
 import control_plus
+import planner
 
 FROZEN = getattr(sys, 'frozen', False)
 INSTALL_DIR = Path(sys.executable).resolve().parent if FROZEN else Path(__file__).resolve().parent
@@ -219,7 +220,10 @@ class Control:
         self.remote = remote_control.Remote(lambda: self.config.get('remote_control') or {},
                                             notify=lambda m: self.notify(m), log=lambda m: self.log_event(m))
         self.devices = gateway.Devices(self.config, save=lambda: self._save_config())
-        self.history = control_plus.History(self.telemetry)   # grafici già pieni quando si apre l'app
+        # Grafici già pieni quando si apre l'app; medie orarie degli ultimi 30 giorni salvate nello stato.
+        self.history = control_plus.History(self.telemetry, trend=self.state.setdefault('trend', []), save=self.save_state)
+        self.planner = planner.Planner(lambda: self.config.get('schedules') or [], self.state.setdefault('schedule_runs', {}),
+                                       self.save_state, self.run_scheduled, lock=self.lock)
         self.gaming_owned = False      # Gaming acceso da NEXAR perché è partito un gioco
         self.gaming_prev = 'normal'
         self.gaming_declined = False   # l'utente è uscito da Gaming a gioco aperto: non riattivarlo
@@ -1315,6 +1319,38 @@ class Control:
                 logging.exception('Spegnimento programmato')
                 with self.lock: self.power_plan = None
                 self.notify('⚠️ Spegnimento programmato non eseguito: ' + str(ex)[:200])
+
+    # ---------- azioni programmate ----------
+    def schedules(self):
+        return {'rules': self.planner.view(), 'actions': planner.ACTIONS}
+
+    def set_schedules(self, rules):
+        clean = planner.clean_rules(rules)
+        with self.lock:
+            self.config['schedules'] = clean
+            runs = self.state.setdefault('schedule_runs', {})
+            for k in [k for k in runs if k not in {r['id'] for r in clean}]: runs.pop(k, None)
+        self._save_config(); self.save_state()
+        self.log_event(f'⏰ Azioni programmate: {sum(r["enabled"] for r in clean)} attive')
+        return self.schedules()
+
+    def run_scheduled(self, rule, left):
+        a = rule['action']
+        try:
+            if a in planner.POWER:
+                minutes = max(1, round(left / 60))
+                msg = self.power_action(a, minutes)
+                self.notify(f'⏰ {planner.describe(rule)}\n{msg}. Scrivi /annulla per fermarlo.')
+                return
+            if a in MODES: msg = self.set_mode(a, manual=True)
+            elif a == 'monitor_off': msg = screen_remote.monitor_off()
+            elif a == 'lock': msg = self.power_action('lock')
+            else: msg = self.rgb_profile(a == 'leds_off')
+            self.log_event('⏰ ' + planner.ACTIONS[a] + ' (programmata)')
+            self.notify(f'⏰ {planner.describe(rule)}\n{str(msg)[:250]}')
+        except Exception as ex:
+            logging.exception('Azione programmata')
+            self.notify(f'⚠️ Azione programmata non eseguita ({planner.ACTIONS[a]}): {str(ex)[:200]}')
 
     def pc_info(self):
         with self.lock: plan = dict(self.power_plan) if self.power_plan else None

@@ -57,7 +57,7 @@ const statusDemo={connected:true,version:'1.0.0',update:new URLSearchParams(loca
   dc:90.3,total:103,loss:12.7,efficiency:.877,psu_load:12,psu_watts:750,psu_class:'gold',amps:.5,va:116,pf:.89,voltage:230,low:93,high:113,margin:10,monitor_on:false,monitor_watts:0},
  energy:{today_kwh:1.42,month_kwh:12.3,price_eur_kwh:.3,today_cost:.43,month_cost:3.69,forecast_kwh:74,forecast_cost:22.2},
  pc:{uptime_s:11200,pending:null,hibernate:false,net:{name:'Ethernet 2',desc:'Realtek PCIe 5GbE',mac:'34:5A:60:77:D4:8D',ip:'192.168.0.128',broadcast:'192.168.0.255',wol_magic:true,wol_shutdown:true}},
- live:{t:9999,down:6.4e5,up:7.2e4},
+ live:{t:0,down:6.4e5,up:7.2e4},
  integrations:[{key:'rgb',name:'OpenRGB',level:'ok',detail:'ECO spegne tutti i LED'},{key:'fans',name:'Fan Control',level:'ok',detail:'Profili NEXAR'}],jobs:{}};
 
 /* ---------- utilità ---------- */
@@ -177,7 +177,7 @@ function navigate(view){
  if(view==='optimize')loadOptimize();
  if(view==='gaming')loadGaming(false,true);
  if(view==='energy')loadStats();
- if(view==='power')loadApps();
+ if(view==='power'){loadApps();loadSchedules();}
  if(view==='screen'){loadScreen();loadRemote();}
  if(view==='links')loadGateway();
  if(view!=='screen'&&scrLiveOn)scrLive(false);
@@ -199,15 +199,76 @@ function ringSvg(cls){
  return s;
 }
 document.querySelectorAll('.gstat').forEach(g=>{const ico=g.querySelector('.tile-ico');const w=el('span','gring');w.append(ringSvg('gr'),...ico.childNodes);ico.replaceWith(w);});
-function chart(id,series,max,unit){
- const W=760,H=150,box=$(id);
- const all=series.flatMap(s=>s.data);
- const top=max||Math.max(10,...all)*1.15;
- const path=data=>(data.length>1?data:[0,0]).map((v,i,a)=>[i*W/(a.length-1),H-4-Math.min(1,Math.max(0,v/top))*(H-10)]).map((p,i)=>(i?'L':'M')+p[0].toFixed(1)+','+p[1].toFixed(1)).join(' ');
- const body=series.map((s,i)=>{const d=path(s.data);return `<linearGradient id="g-${id}-${i}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${s.color}" stop-opacity="${i?0:.25}"/><stop offset="1" stop-color="${s.color}" stop-opacity="0"/></linearGradient>
-  <path d="${d} L${W},${H} L0,${H} Z" fill="url(#g-${id}-${i})"/><path d="${d}" stroke="${s.color}" stroke-width="2.4" fill="none" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>`;}).join('');
- box.innerHTML=`<div class="chart-scale"><span>${Math.round(top)}${unit}</span><span>${Math.round(top/2)}${unit}</span><span>0${unit}</span></div>
- <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"><g class="gridlines"><line x1="0" y1="2" x2="${W}" y2="2"/><line x1="0" y1="${H/2}" x2="${W}" y2="${H/2}"/><line x1="0" y1="${H-2}" x2="${W}" y2="${H-2}"/></g>${body}</svg>`;
+function smoothPath(P,H){
+ // Curva morbida tra i punti (Catmull-Rom), senza uscire dal riquadro.
+ if(P.length===1)return `M${P[0][0].toFixed(1)},${P[0][1].toFixed(1)} h0.1`;
+ const cy=y=>Math.max(1,Math.min(H-1,y)).toFixed(1);
+ let d=`M${P[0][0].toFixed(1)},${P[0][1].toFixed(1)}`;
+ for(let i=0;i<P.length-1;i++){const p0=P[i-1]||P[i],p1=P[i],p2=P[i+1],p3=P[i+2]||p2;
+  d+=` C${(p1[0]+(p2[0]-p0[0])/6).toFixed(1)},${cy(p1[1]+(p2[1]-p0[1])/6)} ${(p2[0]-(p3[0]-p1[0])/6).toFixed(1)},${cy(p2[1]-(p3[1]-p1[1])/6)} ${p2[0].toFixed(1)},${p2[1].toFixed(1)}`;}
+ return d;
+}
+const niceTop=v=>{const s=v<=10?2:v<=50?10:v<=200?20:v<=1000?100:500;return Math.ceil(v/s)*s;};
+function chartWhen(t,o){
+ if(typeof t!=='number')return '';
+ if(o.rel){const s=Math.max(0,o.now-t);return s<8?'adesso':s<60?Math.round(s)+' s fa':Math.round(s/60)+' min fa';}
+ const d=new Date(t*1000),hm=d.toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'});
+ return o.span>86400*1.5?d.toLocaleDateString('it-IT',{weekday:'short',day:'numeric'})+(o.tip?' · '+hm:''):hm;
+}
+function chart(id,series,max,unit,o={}){
+ // Grafico a linee morbide: punto "dal vivo" sull'ultimo valore, orari sotto, valori al passaggio del mouse (o del dito).
+ const W=760,H=150,box=$(id);if(!box)return;
+ const n=Math.max(0,...series.map(s=>s.data.length));
+ const T=o.times&&o.times.length===n&&n>1?o.times:null;
+ const all=series.flatMap(s=>s.data).filter(v=>typeof v==='number');
+ const top=max||niceTop(Math.max(10,...all)*1.15);
+ const t0=T?T[0]:0,span=T?Math.max(1,T[n-1]-t0):0;
+ const X=i=>T?(T[i]-t0)/span*W:(n>1?i*W/(n-1):W);
+ const Y=v=>H-4-Math.min(1,Math.max(0,v/top))*(H-10);
+ const gap=o.step?o.step*2.5:Infinity;
+ let body='',dots='';
+ series.forEach((s,k)=>{
+  const segs=[];let cur=[];
+  for(let i=0;i<n;i++){const v=s.data[i];
+   if(typeof v!=='number'){if(cur.length)segs.push(cur);cur=[];continue;}
+   if(cur.length&&T&&T[i]-T[cur[cur.length-1].i]>gap){segs.push(cur);cur=[];}   // PC spento: la linea si interrompe
+   cur.push({i,x:X(i),y:Y(v)});}
+  if(cur.length)segs.push(cur);
+  const g=`g-${id}-${k}`;
+  body+=`<linearGradient id="${g}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${s.color}" stop-opacity="${k?.12:.3}"/><stop offset="1" stop-color="${s.color}" stop-opacity="0"/></linearGradient>`;
+  segs.forEach(seg=>{const P=seg.map(p=>[p.x,p.y]),d=smoothPath(P,H);
+   body+=`<path d="${d} L${P[P.length-1][0].toFixed(1)},${H} L${P[0][0].toFixed(1)},${H} Z" fill="url(#${g})"/><path class="cl" d="${d}" stroke="${s.color}" stroke-width="2.2" fill="none" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>`;});
+  const last=segs.length?segs[segs.length-1][segs[segs.length-1].length-1]:null;
+  if(last&&!o.noDot)dots+=`<i class="c-dot" style="left:${(last.x/W*100).toFixed(2)}%;top:${(last.y/H*100).toFixed(2)}%;--c:${s.color}"></i>`;
+ });
+ const oo={...o,now:T?T[n-1]:0,span};
+ const lab=T?[0,.5,1].map(f=>chartWhen(t0+span*f,oo)):[];
+ if(T&&o.rel)lab[0]='−'+Math.max(1,Math.round(span/60))+' min',lab[1]='−'+Math.max(1,Math.round(span/120))+' min',lab[2]='adesso';
+ box.innerHTML=`<div class="chart-scale"><span>${Math.round(top)}${unit}</span><span>${Math.round(top/2)}${unit}</span><span>0${unit}</span></div>`+
+  `<div class="chart-plot"><svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"><g class="gridlines"><line x1="0" y1="2" x2="${W}" y2="2"/><line x1="0" y1="${H/2}" x2="${W}" y2="${H/2}"/><line x1="0" y1="${H-2}" x2="${W}" y2="${H-2}"/></g>${body}</svg>${dots}`+
+  `<i class="c-cross" hidden></i><div class="c-tip" hidden></div>${lab.length?`<div class="chart-x"><span>${lab[0]}</span><span>${lab[1]}</span><span>${lab[2]}</span></div>`:''}</div>`;
+ box.classList.toggle('has-x',!!lab.length);
+ box._c={series,T,n,X,Y,W,H,unit,o:{...oo,tip:true}};
+ if(!box._move){
+  box._move=e=>{const c=box._c,plot=box.querySelector('.chart-plot');if(!c||!c.n||!plot)return;box._pe=e;
+   const r=plot.getBoundingClientRect(),fx=Math.max(0,Math.min(1,(e.clientX-r.left)/r.width));
+   let best=0,bd=Infinity;for(let i=0;i<c.n;i++){const d=Math.abs(c.X(i)/c.W-fx);if(d<bd){bd=d;best=i;}}
+   const x=c.X(best)/c.W*100,cross=plot.querySelector('.c-cross'),tip=plot.querySelector('.c-tip');
+   cross.hidden=false;cross.style.left=x+'%';
+   plot.querySelectorAll('.c-hdot').forEach(d=>d.remove());
+   const dec=v=>c.unit==='%'&&v<10?1:0;
+   const rows=c.series.map(s=>{const v=s.data[best];if(typeof v!=='number')return '';
+    const d=el('i','c-hdot');d.style.cssText=`left:${x}%;top:${(c.Y(v)/c.H*100).toFixed(2)}%;--c:${s.color}`;plot.append(d);
+    return `<div><i style="background:${s.color}"></i>${s.name||''}<b>${nf(v,dec(v))}${c.unit}</b></div>`;}).join('');
+   if(!rows){tip.hidden=true;return;}
+   const when=c.T?chartWhen(c.T[best],c.o):'';
+   tip.innerHTML=(when?`<small>${when}${c.o.avg?' · media':''}</small>`:'')+rows;tip.hidden=false;
+   tip.classList.toggle('left',x>58);tip.style.left=x+'%';};
+  box.addEventListener('pointermove',box._move);box.addEventListener('pointerdown',box._move);
+  box.addEventListener('pointerleave',()=>{box._pe=null;const p=box.querySelector('.chart-plot');if(!p)return;
+   p.querySelector('.c-cross').hidden=true;p.querySelector('.c-tip').hidden=true;p.querySelectorAll('.c-hdot').forEach(d=>d.remove());});
+ }
+ if(box._pe&&box.matches(':hover'))box._move(box._pe);   // il grafico si aggiorna: il valore resta sotto il cursore
 }
 function areaBg(id,data){
  // Curva morbida dei watt sul fondo delle schede grandi (colore preso dalla scheda: currentColor).
@@ -286,9 +347,8 @@ function render(s){
  renderPc(s.pc||{});
  push(hist.cpu,s.cpu);push(hist.gpu,s.gpu);push(hist.power,s.power?.total);push(hist.ram,s.ram);push(hist.fan,avg??0);
  spark('cpu-val',hist.cpu,100,COMP.cpu);spark('gpu-val',hist.gpu,100,COMP.gpu);spark('ram-val',hist.ram,100,COMP.ram);spark('fan-val',hist.fan,1800,COMP.cooling);setZone();
- chart('chart-load',[{data:hist.cpu,color:COMP.cpu},{data:hist.gpu,color:COMP.gpu}],100,'%');
  renderLive(s);
- chart('chart-power',[{data:hist.power,color:'#34d399'}],0,' W');
+ chart('chart-power',[{data:hist.power,color:'#34d399',name:'Consumo'}],0,' W');
  areaBg('hm-chart',hist.power);areaBg('e-chart',hist.power);
  renderLinks(s.integrations||[],s.jobs||{});
  renderUpdate(s.version,s.update||{},s.jobs?.update);
@@ -2474,33 +2534,44 @@ document.querySelectorAll('[data-view]').forEach(b=>b.addEventListener('click',(
 document.querySelectorAll('[data-action]').forEach(b=>b.addEventListener('click',()=>action(b.dataset.action,b)));
 
 /* ---------- Home: temperature, rete, dischi, programmi, musica, appunti e file ---------- */
-const live={ct:[],gt:[],down:[],up:[],lastT:0};
+const chartRange=(()=>{const d={load:'15m',temps:'15m'};try{const s=JSON.parse(localStorage.getItem('nexar.ranges')||'{}');
+ ['load','temps'].forEach(k=>{if(['15m','24h','7d','30d'].includes(s[k]))d[k]=s[k];});}catch(e){}return d;})();
+const live={t:[],cpu:[],gpu:[],ct:[],gt:[],down:[],up:[],lastT:0};
 const LIVE_MAX=180;
 function livePush(s){
  if(!s||!s.t||s.t<=live.lastT)return;live.lastT=s.t;
- [['ct',s.ct],['gt',s.gt],['down',s.down],['up',s.up]].forEach(([k,v])=>{if(typeof v==='number'){live[k].push(v);if(live[k].length>LIVE_MAX)live[k].shift();}});
+ ['t','cpu','gpu','ct','gt','down','up'].forEach(k=>{live[k].push(typeof s[k]==='number'?s[k]:null);if(live[k].length>LIVE_MAX)live[k].shift();});
 }
 const rate=b=>{if(typeof b!=='number')return '—';const bits=b*8;return bits>=1e9?nf(bits/1e9,1)+' Gb/s':bits>=1e6?nf(bits/1e6,bits>=1e8?0:1)+' Mb/s':nf(bits/1e3,0)+' kb/s';};
 function renderLive(s){
  livePush(s?.live);
  $('tc-now').textContent=deg(s?.cpu_temp);$('tg-now').textContent=deg(s?.gpu_temp);
- const top=Math.max(90,...live.ct,...live.gt);
- chart('chart-temps',[{data:live.ct,color:COMP.cpu},{data:live.gt,color:COMP.gpu}],Math.ceil(top/10)*10,'°');
+ const o={times:live.t,rel:true,step:5};
+ if(chartRange.load==='15m'){
+  if(live.t.length>1)chart('chart-load',[{data:live.cpu,color:COMP.cpu,name:'CPU'},{data:live.gpu,color:COMP.gpu,name:'GPU'}],100,'%',o);
+  else chart('chart-load',[{data:hist.cpu,color:COMP.cpu,name:'CPU'},{data:hist.gpu,color:COMP.gpu,name:'GPU'}],100,'%');
+ }
+ if(chartRange.temps==='15m'){
+  const top=Math.max(90,...live.ct,...live.gt);
+  chart('chart-temps',[{data:live.ct,color:COMP.cpu,name:'CPU'},{data:live.gt,color:COMP.gpu,name:'GPU'}],Math.ceil(top/10)*10,'°',o);
+ }
  const L=s?.live||{};$('net-down').textContent=rate(L.down);$('net-up').textContent=rate(L.up);
  const peak=Math.max(0,...live.down);$('net-peak').textContent=peak?'picco '+rate(peak):'—';
  const box=$('net-spark');const W=300,H=60,top2=Math.max(125000,...live.down,...live.up)*1.15;
- const line=d=>(d.length>1?d:[0,0]).map((v,i,a)=>[i*W/(a.length-1),H-2-Math.min(1,v/top2)*(H-6)]).map((p,i)=>(i?'L':'M')+p[0].toFixed(1)+','+p[1].toFixed(1)).join(' ');
- box.innerHTML=`<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"><path d="${line(live.down)} L${W},${H} L0,${H} Z" fill="rgba(56,189,248,.16)"/><path d="${line(live.down)}" stroke="#38bdf8" stroke-width="2" fill="none" vector-effect="non-scaling-stroke"/><path d="${line(live.up)}" stroke="#f472b6" stroke-width="1.6" fill="none" stroke-dasharray="4 3" vector-effect="non-scaling-stroke"/></svg>`;
+ const pts=d=>(d.length>1?d:[0,0]).map((v,i,a)=>[i*W/(a.length-1),H-2-Math.min(1,(v||0)/top2)*(H-6)]);
+ const dn=smoothPath(pts(live.down),H),up=smoothPath(pts(live.up),H);
+ box.innerHTML=`<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"><defs><linearGradient id="net-g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#38bdf8" stop-opacity=".35"/><stop offset="1" stop-color="#38bdf8" stop-opacity="0"/></linearGradient></defs><path d="${dn} L${W},${H} L0,${H} Z" fill="url(#net-g)"/><path d="${dn}" stroke="#38bdf8" stroke-width="2" fill="none" vector-effect="non-scaling-stroke"/><path d="${up}" stroke="#f472b6" stroke-width="1.6" fill="none" stroke-dasharray="4 3" vector-effect="non-scaling-stroke"/></svg>`;
 }
 async function loadLiveHistory(){
  try{
-  const h=demo?{samples:Array.from({length:120},(_,i)=>({t:i+1,cpu:12+8*Math.sin(i/9),gpu:6+5*Math.sin(i/7),ram:34,ct:46+6*Math.sin(i/11),gt:38+4*Math.sin(i/13),w:100+20*Math.sin(i/8),down:4e5+3e5*Math.sin(i/5)**2,up:6e4})),
+  const now=Math.floor(Date.now()/1000);
+  const h=demo?{samples:Array.from({length:150},(_,i)=>({t:now-(149-i)*5,cpu:12+8*Math.sin(i/9),gpu:6+5*Math.sin(i/7),ram:34,ct:46+6*Math.sin(i/11),gt:38+4*Math.sin(i/13),w:100+20*Math.sin(i/8),down:4e5+3e5*Math.sin(i/5)**2,up:6e4+2e4*Math.cos(i/6)})),
    disks:[{name:'C:',total:1e12,used:6.1e11,free:3.9e11,percent:61},{name:'D:',total:2e12,used:1.5e12,free:5e11,percent:75}]}:await req('/api/history');
   const S=h.samples||[];
   if(S.length){
    ['cpu','gpu','ram'].forEach(k=>{const v=S.map(x=>x[k]).filter(x=>typeof x==='number');if(v.length>hist[k].length)hist[k].splice(0,hist[k].length,...v.slice(-60));});
    const w=S.map(x=>x.w).filter(x=>typeof x==='number');if(w.length>hist.power.length)hist.power.splice(0,hist.power.length,...w.slice(-60));
-   live.ct=[];live.gt=[];live.down=[];live.up=[];live.lastT=0;S.forEach(livePush);
+   Object.keys(live).forEach(k=>{if(Array.isArray(live[k]))live[k]=[];});live.lastT=0;S.forEach(livePush);
   }
   renderHomeDisks(h.disks||[]);if(current)renderLive(current);
  }catch(e){}
@@ -2535,7 +2606,7 @@ setInterval(()=>{if(!document.hidden&&curView==='home')loadLiveHistory();},60000
 
 document.querySelectorAll('[data-media]').forEach(b=>b.addEventListener('click',()=>mediaCmd(b.dataset.media)));
 document.querySelectorAll('[data-vol]').forEach(b=>b.addEventListener('click',()=>volCmd(b.dataset.vol)));
-async function mediaCmd(a){if(demo){notify('Anteprima: comando non attivo.');return;}try{const r=await req('/api/media','POST',{action:a});notify('♪ '+r.message);}catch(ex){notify('⚠ '+ex.message,true);}}
+async function mediaCmd(a){if(demo){notify('Anteprima: comando non attivo.');return;}try{const r=await req('/api/media','POST',{action:a});notify('♪ '+r.message);setTimeout(loadNowPlaying,900);}catch(ex){notify('⚠ '+ex.message,true);}}
 async function volCmd(a){if(demo){notify('Anteprima: comando non attivo.');return;}try{const r=await req('/api/screen/action','POST',{action:a});notify('✓ '+r.message);}catch(ex){notify('⚠ '+ex.message,true);}}
 
 $('clip-send').addEventListener('click',async()=>{
@@ -2632,6 +2703,137 @@ $('home-reset').addEventListener('click',()=>{try{localStorage.removeItem(LAYOUT
  const box=document.querySelector('#page-home .bento');HOME_DEFAULT.forEach(id=>{const t=bentoTiles().find(x=>x.dataset.tile===id);if(t)box.append(t);});layoutApply();layoutEdit(true);});
 const HOME_DEFAULT=currentOrder();
 layoutApply();loadLiveHistory();loadFiles();loadHomeProcs();
+
+/* ---------- Grafici lunghi: 24 ore, 7 giorni, 30 giorni (medie salvate sul PC) ---------- */
+const RANGE_SUB={'15m':'ultimi 15 minuti','24h':'ultime 24 ore · media di ogni ora','7d':'ultimi 7 giorni · media di ogni ora','30d':'ultimi 30 giorni · media ogni 6 ore'};
+const trendCache={};
+async function trendGet(r){
+ const c=trendCache[r];if(c&&Date.now()-c.at<60000)return c.d;
+ const d=demo?demoTrend(r):await req('/api/history?range='+r);trendCache[r]={at:Date.now(),d};return d;
+}
+function demoTrend(r){
+ const step=r==='30d'?21600:3600,n=r==='24h'?24:r==='7d'?168:120,now=Math.floor(Date.now()/1000/step)*step;
+ return {range:r,step,points:Array.from({length:n},(_,i)=>{const t=now-(n-1-i)*step,h=new Date(t*1000).getHours(),on=h>=9&&h<=23?1:.25;
+  if(r!=='24h'&&h>=2&&h<8)return null;   // di notte il PC è spento
+  const wave=.5+.5*Math.sin((h-9)/14*Math.PI)*on,game=h>=20&&h<=23?1:0;
+  return {t,cpu:+(6+18*wave+6*Math.sin(i/2.3)**2).toFixed(1),gpu:+(3+8*wave+38*game*(.7+.3*Math.sin(i))).toFixed(1),ct:+(41+9*wave+12*game).toFixed(1),gt:+(35+6*wave+22*game).toFixed(1),w:Math.round(70+60*wave+180*game)};}).filter(Boolean)};
+}
+async function drawRange(which){
+ const r=chartRange[which],id=which==='load'?'chart-load':'chart-temps';
+ $(id+'-sub').textContent='Processore e scheda video, '+RANGE_SUB[r];
+ document.querySelectorAll(`.rchips[data-chart="${which}"] button`).forEach(b=>b.classList.toggle('on',b.dataset.r===r));
+ if(r==='15m'){if(current)renderLive(current);return;}
+ try{
+  const d=await trendGet(r);if(chartRange[which]!==r)return;
+  const P=d.points||[];
+  if(P.length<2){$(id).classList.remove('has-x');$(id)._c=null;
+   $(id).innerHTML='<div class="chart-empty"><svg class="i"><use href="#i-clock"/></svg><b>Storico in preparazione</b><small>NEXAR salva una media ogni ora: fra qualche ora qui vedi l\'andamento.</small></div>';return;}
+  const o={times:P.map(p=>p.t),step:d.step,avg:true,noDot:true};
+  const S=k=>P.map(p=>typeof p[k]==='number'?p[k]:null);
+  if(which==='load')chart(id,[{data:S('cpu'),color:COMP.cpu,name:'CPU'},{data:S('gpu'),color:COMP.gpu,name:'GPU'}],100,'%',o);
+  else{const top=Math.max(90,...P.map(p=>Math.max(p.ct||0,p.gt||0)));
+   chart(id,[{data:S('ct'),color:COMP.cpu,name:'CPU'},{data:S('gt'),color:COMP.gpu,name:'GPU'}],Math.ceil(top/10)*10,'°',o);}
+ }catch(ex){notify('⚠ '+ex.message,true);}
+}
+document.querySelectorAll('.rchips button').forEach(b=>b.addEventListener('click',()=>{
+ const w=b.closest('.rchips').dataset.chart;chartRange[w]=b.dataset.r;
+ try{localStorage.setItem('nexar.ranges',JSON.stringify(chartRange));}catch(e){}
+ drawRange(w);}));
+['load','temps'].forEach(drawRange);
+setInterval(()=>{if(!document.hidden&&curView==='home')['load','temps'].forEach(w=>{if(chartRange[w]!=='15m')drawRange(w);});},120000);
+
+/* ---------- Musica: cosa suona sul PC ---------- */
+function showPlaying(p){
+ $('media-now').classList.toggle('on',!!p);
+ $('media-app').textContent=p?'In riproduzione · '+p.app:'Niente in riproduzione';
+ $('media-title').textContent=p?p.title:'Avvia Spotify o YouTube sul PC';
+ $('media-artist').textContent=p?.artist||'';
+ let h=200;for(const ch of (p?.title||''))h=(h*31+ch.charCodeAt(0))%360;
+ $('media-cover').style.setProperty('--h',h);
+}
+async function loadNowPlaying(){
+ if(document.hidden||curView!=='home'||!isTileShown('media'))return;
+ try{const r=demo?{playing:{app:'Spotify',title:'Midnight City',artist:'M83'}}:await req('/api/media');showPlaying(r.playing);}catch(e){}
+}
+setInterval(loadNowPlaying,8000);setTimeout(loadNowPlaying,600);
+
+/* ---------- Azioni programmate (pagina Accensione) ---------- */
+const SCH_ICON={shutdown:'power',sleep:'moon',eco:'leaf',normal:'bolt',gaming:'game',monitor_off:'monitor',lock:'lock',leds_off:'bulb',leds_on:'palette'};
+const SCH_LABEL={shutdown:'Spegni il PC',sleep:'Sospendi il PC',eco:'AI ECO',normal:'Profilo normale',gaming:'Gaming',monitor_off:'Spegni il monitor',lock:'Blocca il PC',leds_off:'Spegni i LED',leds_on:'Accendi i LED'};
+const SCH_DAYS=['L','M','M','G','V','S','D'],ALL_DAYS=[0,1,2,3,4,5,6];
+const SCH_PRESETS=[{time:'23:00',days:ALL_DAYS,action:'shutdown',t:'Spegni ogni sera alle 23'},{time:'01:00',days:ALL_DAYS,action:'eco',t:'AI ECO di notte'},
+ {time:'00:30',days:ALL_DAYS,action:'leds_off',t:'LED spenti a mezzanotte e mezza'},{time:'08:00',days:[0,1,2,3,4],action:'normal',t:'Normale alle 8, lun–ven'}];
+let schRules=[],schEdit=null;
+function schNext(r){
+ const now=new Date(),[h,m]=r.time.split(':').map(Number);
+ for(let k=0;k<8;k++){const d=new Date(now.getFullYear(),now.getMonth(),now.getDate()+k,h,m);if(r.days.includes((d.getDay()+6)%7)&&d>now)return d;}
+ return null;
+}
+function schWhen(d){
+ const now=new Date(),dd=Math.round((new Date(d.getFullYear(),d.getMonth(),d.getDate())-new Date(now.getFullYear(),now.getMonth(),now.getDate()))/864e5);
+ const hm=d.toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'});
+ return dd===0?(d.getHours()>=18?'stasera':'oggi')+' alle '+hm:dd===1?(d.getHours()<6?'stanotte':'domani')+' alle '+hm:d.toLocaleDateString('it-IT',{weekday:'long'})+' alle '+hm;
+}
+async function loadSchedules(){
+ try{const r=demo?{rules:schRules.length?schRules:[{id:'a1b2c3d4',time:'23:30',days:ALL_DAYS,action:'shutdown',enabled:true},{id:'b2c3d4e5',time:'01:00',days:ALL_DAYS,action:'eco',enabled:true},{id:'c3d4e5f6',time:'08:00',days:[0,1,2,3,4],action:'normal',enabled:false}]}:await req('/api/schedules');
+  schRules=r.rules||[];renderSchedules();}catch(e){}
+}
+function renderSchedules(){
+ const box=$('sch-list');box.replaceChildren();
+ $('sch-empty').hidden=!!schRules.length||!$('sch-form').hidden;
+ const on=schRules.filter(r=>r.enabled).length;$('sch-count').textContent=schRules.length?on+' attiv'+(on===1?'a':'e'):'';$('sch-count').hidden=!schRules.length;
+ const order=schRules.map((r,i)=>[r,i]).sort((a,b)=>((a[0].enabled?schNext(a[0]):null)?.getTime()??9e15)-((b[0].enabled?schNext(b[0]):null)?.getTime()??9e15));
+ order.forEach(([r,idx],pos)=>{
+  const nx=r.enabled?schNext(r):null;
+  const row=el('div','sch-row'+(r.enabled?'':' off')+(pos===0&&nx?' first':''));row.style.setProperty('--d',pos*40+'ms');
+  const ic=el('span','sch-ico a-'+r.action);ic.append(icon(SCH_ICON[r.action]||'clock'));
+  const tl=el('div','sch-tl');tl.append(el('b','sch-time',r.time),el('small','sch-next',nx?schWhen(nx):'in pausa'));
+  const mid=el('div','sch-mid');mid.append(el('b','',SCH_LABEL[r.action]||r.action));
+  const days=el('div','sch-days');SCH_DAYS.forEach((d,i)=>days.append(el('i',r.days.includes(i)?'on':'',d)));mid.append(days);
+  const tg=el('button','toggle');tg.type='button';tg.setAttribute('role','switch');tg.setAttribute('aria-checked',r.enabled?'true':'false');tg.setAttribute('aria-label','Attiva '+(SCH_LABEL[r.action]||''));tg.append(el('span'));
+  tg.addEventListener('click',()=>{r.enabled=!r.enabled;saveSchedules();});
+  const ed=el('button','btn small ghost sch-ib');ed.type='button';ed.append(icon('sliders'));ed.setAttribute('aria-label','Modifica');ed.addEventListener('click',()=>schOpen(idx));
+  const del=el('button','btn small ghost sch-ib');del.type='button';del.append(icon('x'));del.setAttribute('aria-label','Elimina');
+  del.addEventListener('click',()=>{if(!confirm(`Eliminare «${SCH_LABEL[r.action]} alle ${r.time}»?`))return;schRules.splice(idx,1);saveSchedules();});
+  row.append(ic,tl,mid,tg,ed,del);box.append(row);});
+ const pre=$('sch-presets');pre.replaceChildren();
+ SCH_PRESETS.forEach(p=>{const b=el('button','sch-preset');b.type='button';b.append(icon(SCH_ICON[p.action]),el('span','',p.t));
+  b.addEventListener('click',()=>{schRules.push({time:p.time,days:[...p.days],action:p.action,enabled:true});saveSchedules(true);});pre.append(b);});
+}
+function schHint(){const a=document.querySelector('#sch-acts button.selected')?.dataset.a;
+ $('sch-hint').textContent=a==='shutdown'||a==='sleep'?'Ti avviso su Telegram 5 minuti prima: con /annulla il PC resta acceso. Se a quell\'ora il PC è già spento, non succede nulla.':'Parte all\'orario scelto, anche se non sei al PC. Ti arriva un avviso su Telegram.';}
+function schOpen(idx){
+ schEdit=idx;const r=idx==null?{time:'23:00',days:ALL_DAYS,action:'shutdown'}:schRules[idx];
+ $('sch-time').value=r.time;
+ document.querySelectorAll('#sch-days button').forEach(b=>b.classList.toggle('on',r.days.includes(+b.dataset.d)));
+ document.querySelectorAll('#sch-acts button').forEach(b=>b.classList.toggle('selected',b.dataset.a===r.action));
+ $('sch-form-title').textContent=idx==null?'Nuova azione programmata':'Modifica azione';
+ $('sch-form').hidden=false;$('sch-add').hidden=true;$('sch-empty').hidden=true;schHint();
+ $('sch-form').scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+function schClose(){$('sch-form').hidden=true;$('sch-add').hidden=false;schEdit=null;renderSchedules();}
+async function saveSchedules(msg){
+ if(demo){schRules.forEach(r=>{r.id=r.id||Math.random().toString(16).slice(2,10);});renderSchedules();if(msg)notify('⏰ Salvata (anteprima)');return;}
+ try{const r=await req('/api/schedules','POST',{rules:schRules.map(({id,time,days,action,enabled})=>({id,time,days,action,enabled}))});
+  schRules=r.rules||[];renderSchedules();if(msg)notify('⏰ Azione programmata salvata');}
+ catch(ex){notify('⚠ '+ex.message,true);loadSchedules();}
+}
+$('sch-add').addEventListener('click',()=>schOpen(null));
+$('sch-cancel').addEventListener('click',schClose);
+document.querySelectorAll('#sch-days button').forEach(b=>b.addEventListener('click',()=>b.classList.toggle('on')));
+document.querySelectorAll('#sch-dq button').forEach(b=>b.addEventListener('click',()=>{const set=b.dataset.q==='work'?[0,1,2,3,4]:b.dataset.q==='end'?[5,6]:ALL_DAYS;
+ document.querySelectorAll('#sch-days button').forEach(x=>x.classList.toggle('on',set.includes(+x.dataset.d)));}));
+document.querySelectorAll('#sch-acts button').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('#sch-acts button').forEach(x=>x.classList.toggle('selected',x===b));schHint();}));
+$('sch-form').addEventListener('submit',e=>{
+ e.preventDefault();
+ const days=[...document.querySelectorAll('#sch-days button.on')].map(b=>+b.dataset.d),time=$('sch-time').value;
+ if(!days.length){notify('Scegli almeno un giorno.',true);return;}
+ if(!/^\d\d:\d\d$/.test(time)){notify('Scegli un orario.',true);return;}
+ const r={...(schEdit!=null?schRules[schEdit]:{enabled:true}),time,days,action:document.querySelector('#sch-acts button.selected')?.dataset.a||'shutdown'};
+ if(schEdit!=null)schRules[schEdit]=r;else schRules.push(r);
+ $('sch-form').hidden=true;$('sch-add').hidden=false;schEdit=null;saveSchedules(true);
+});
+setInterval(()=>{if(curView==='power'&&!document.hidden&&$('sch-form').hidden)renderSchedules();},60000);   // "stasera" → "domani"
 
 if(demo){$('demo-strip').hidden=false;loginScreen(false);[7,9,8,12,11,17,14,13,15,12,18,15,12,10,9,11,13].forEach((v,i)=>{hist.cpu.push(v);hist.gpu.push(4+i%5);hist.power.push(98+v*1.4);});render(statusDemo);}
 else if(key||tgInit){loginScreen(false);refresh();}else loginScreen(true);

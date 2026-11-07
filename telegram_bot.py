@@ -10,7 +10,8 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 # Il bot non è un telecomando a pulsanti: manda gli avvisi e apre la dashboard (Mini App), dove c'è tutto.
-COMMANDS = [('start', 'Apri NEXAR'), ('stato', 'Il PC in breve'), ('schermo', 'Foto dello schermo del PC')]
+COMMANDS = [('start', 'Apri NEXAR'), ('stato', 'Il PC in breve'), ('schermo', 'Foto dello schermo del PC'),
+            ('annulla', 'Ferma uno spegnimento programmato')]
 SCREEN_BTN = {'text': '🖥 Vedi schermo', 'callback_data': 'schermo'}
 KEEP_BUTTONS = 25   # ultimi messaggi con il pulsante della dashboard: si aggiornano quando cambia il collegamento
 
@@ -212,6 +213,9 @@ class TelegramBot:
         """Qualsiasi messaggio (o pulsante di vecchi messaggi): riepilogo e pulsante della dashboard."""
         a = action.lstrip('/')
         if a in ('schermo', 'screen'): return self.send_screen(chat)
+        if a in ('annulla', 'cancel'):
+            try: return self.send(chat, '⏻ ' + self.ctrl.cancel_power(), self.menu())
+            except Exception as ex: return self.send(chat, '⚠️ ' + str(ex)[:200], self.menu())
         if a in ('accendi', 'wake'):
             text = '🟢 Il PC è già acceso.\n<i>Quando è spento, /accendi lo riceve il relay su Umbrel.</i>'
         else: text = self.home_text()

@@ -65,6 +65,7 @@ async def lifespan(app: FastAPI):
     tunnel.on_url = on_url
     threading.Thread(target=beacon.run,args=(stop,),daemon=True,name='mac-beacon').start()
     threading.Thread(target=controller.history.run,args=(stop,),daemon=True,name='history').start()
+    threading.Thread(target=controller.planner.run,args=(stop,),daemon=True,name='schedules').start()
     threading.Thread(target=tunnel.run,args=(stop,),daemon=True,name='tunnel').start()
     bridge = gateway.Bridge(lambda: controller.config.get('gateway'), app)
     threading.Thread(target=bridge.run,args=(stop,),daemon=True,name='umbrel-bridge-loop').start()
@@ -401,8 +402,14 @@ def device_remove(data: DeviceId):
 
 # ---------- più controllo: storico, media, appunti e cartella condivisa ----------
 @app.get('/api/history',dependencies=[Depends(authorized)])
-def live_history():
-    return {'samples':controller.history.data(),'every':control_plus.SAMPLE_EVERY,'disks':control_plus.disks()}
+def live_history(range: str = '15m'):
+    if range == '15m': return {'samples':controller.history.data(),'every':control_plus.SAMPLE_EVERY,'disks':control_plus.disks()}
+    if range not in control_plus.RANGES: raise HTTPException(400,'Intervallo non previsto')
+    return {'range':range,'step':control_plus.RANGES[range][1],'points':controller.history.range(range)}
+
+@app.get('/api/media',dependencies=[Depends(authorized)])
+def media_now():
+    return {'playing':control_plus.now_playing()}
 
 class MediaAction(BaseModel):
     action: str
@@ -410,6 +417,16 @@ class MediaAction(BaseModel):
 def media_action(data: MediaAction):
     try: return {'ok':True,'message':control_plus.media(data.action)}
     except (ValueError,OSError) as ex: raise HTTPException(400,str(ex))
+
+class Schedules(BaseModel):
+    rules: list
+@app.get('/api/schedules',dependencies=[Depends(authorized)])
+def schedules_get():
+    return controller.schedules()
+@app.post('/api/schedules',dependencies=[Depends(authorized)])
+def schedules_set(data: Schedules):
+    try: return {'ok':True,**controller.set_schedules(data.rules)}
+    except ValueError as ex: raise HTTPException(400,str(ex))
 
 @app.get('/api/clipboard',dependencies=[Depends(authorized)])
 def clipboard_read():

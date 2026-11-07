@@ -49,7 +49,7 @@
  <symbol id="i-game" viewBox="0 0 24 24"><path d="M7.5 7h9a5 5 0 0 1 4.9 6l-.8 3.7a2.4 2.4 0 0 1-4.2 1L14.6 16H9.4l-1.8 1.7a2.4 2.4 0 0 1-4.2-1L2.6 13a5 5 0 0 1 4.9-6z"/><path d="M7.5 10v3M6 11.5h3"/><circle cx="15.5" cy="11" r=".9"/><circle cx="17.5" cy="13" r=".9"/></symbol>
  <symbol id="i-max" viewBox="0 0 24 24"><path d="M5 18 12 6l7 12M8.5 13h7"/></symbol>
  <symbol id="i-clean" viewBox="0 0 24 24"><path d="m14.5 3.5 6 6M17.5 6.5 11 13"/><path d="M11 13c-3 0-6.5 1.5-7.5 7.5 6-1 7.5-4.5 7.5-7.5z"/><path d="M5 9.5l1-2 1 2 2 1-2 1-1 2-1-2-2-1zM15 17l.7-1.3L17 15l-1.3-.7L15 13l-.7 1.3L13 15l1.3.7z"/></symbol>
- <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4.5v15l12.5-7.5z"/></symbol><symbol id="i-prev" viewBox="0 0 24 24"><path d="M18 6v12l-9-6 9-6Z"/><path d="M6 6v12"/></symbol><symbol id="i-next" viewBox="0 0 24 24"><path d="M6 6v12l9-6-9-6Z"/><path d="M18 6v12"/></symbol><symbol id="i-playpause" viewBox="0 0 24 24"><path d="M4 6v12l8-6-8-6Z"/><path d="M15.5 6v12M20 6v12"/></symbol><symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 15.5V4.5m-4.5 4.5L12 4.5 16.5 9M5 19.5h14"/></symbol>
+ <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4.5v15l12.5-7.5z"/></symbol><symbol id="i-prev" viewBox="0 0 24 24"><path d="M18 6v12l-9-6 9-6Z"/><path d="M6 6v12"/></symbol><symbol id="i-next" viewBox="0 0 24 24"><path d="M6 6v12l9-6-9-6Z"/><path d="M18 6v12"/></symbol><symbol id="i-playpause" viewBox="0 0 24 24"><path d="M4 6v12l8-6-8-6Z"/><path d="M15.5 6v12M20 6v12"/></symbol><symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 15.5V4.5m-4.5 4.5L12 4.5 16.5 9M5 19.5h14"/></symbol><symbol id="i-music" viewBox="0 0 24 24"><path d="M9 18V5.5l11-2V16"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></symbol>
  <symbol id="i-eye-off" viewBox="0 0 24 24"><path d="M3 3l18 18M10.6 5.1A10 10 0 0 1 12 5c5.5 0 9 5 9.5 7a13 13 0 0 1-2.9 4.1M6.6 6.6C4.4 8 3 10.2 2.5 12c.5 2 4 7 9.5 7 1.9 0 3.6-.6 5-1.5M9.9 9.9a3 3 0 0 0 4.2 4.2"/></symbol>
  <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2.5 12C3 10 6.5 5 12 5s9 5 9.5 7c-.5 2-4 7-9.5 7S3 14 2.5 12z"/><circle cx="12" cy="12" r="3"/></symbol>
  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></symbol>
@@ -211,12 +211,14 @@
      </section>
 
      <section class="card b-chart" data-tile="chart">
-      <div class="card-head"><div><h3>Carico</h3><p>Processore e scheda video, ultimi minuti</p></div><div class="legend-mini"><span class="c-cpu">CPU</span><span class="c-gpu">GPU</span></div></div>
+      <div class="card-head"><div><h3>Carico</h3><p id="chart-load-sub">Processore e scheda video, ultimi 15 minuti</p></div><div class="legend-mini"><span class="c-cpu">CPU</span><span class="c-gpu">GPU</span></div></div>
+      <div class="rchips" data-chart="load" role="group" aria-label="Periodo del grafico"><button type="button" data-r="15m" class="on">15 min</button><button type="button" data-r="24h">24 ore</button><button type="button" data-r="7d">7 giorni</button><button type="button" data-r="30d">30 giorni</button></div>
       <div class="chart" id="chart-load"></div>
      </section>
 
      <section class="card b-temps" data-tile="temps">
-      <div class="card-head"><div><h3>Temperature</h3><p>Processore e scheda video, ultimi 15 minuti</p></div><div class="legend-mini"><span class="c-cpu">CPU <b id="tc-now">—</b></span><span class="c-gpu">GPU <b id="tg-now">—</b></span></div></div>
+      <div class="card-head"><div><h3>Temperature</h3><p id="chart-temps-sub">Processore e scheda video, ultimi 15 minuti</p></div><div class="legend-mini"><span class="c-cpu">CPU <b id="tc-now">—</b></span><span class="c-gpu">GPU <b id="tg-now">—</b></span></div></div>
+      <div class="rchips" data-chart="temps" role="group" aria-label="Periodo del grafico"><button type="button" data-r="15m" class="on">15 min</button><button type="button" data-r="24h">24 ore</button><button type="button" data-r="7d">7 giorni</button><button type="button" data-r="30d">30 giorni</button></div>
       <div class="chart" id="chart-temps"></div>
      </section>
 
@@ -238,6 +240,10 @@
 
      <section class="card b-media" data-tile="media">
       <div class="be-head"><span class="eyebrow">Musica e volume</span><small class="muted">controlla quello che suona sul PC</small></div>
+      <div class="media-now" id="media-now">
+       <div class="cover" id="media-cover"><svg class="i"><use href="#i-music"/></svg><span class="eq" aria-hidden="true"><i></i><i></i><i></i><i></i></span></div>
+       <div class="mn-text"><small id="media-app">Niente in riproduzione</small><b id="media-title">Avvia Spotify o YouTube sul PC</b><span id="media-artist"></span></div>
+      </div>
       <div class="media-wrap">
       <div class="media-row">
        <button class="mb" type="button" data-media="prev" aria-label="Brano precedente"><svg class="i"><use href="#i-prev"/></svg></button>
@@ -512,7 +518,7 @@
     </section>
     <div class="two-col pw-cols">
     <section class="card">
-     <div class="card-head"><div><h3>Programma</h3><p>Il PC si spegne da solo, anche se chiudi l'app</p></div></div>
+     <div class="card-head"><div><h3>Timer</h3><p>Il PC si spegne da solo fra un po', anche se chiudi l'app</p></div></div>
      <div class="seg-ink kind-seg" id="sched-kind"><i class="si-ink" aria-hidden="true"></i><button data-kind="shutdown" class="selected"><svg class="i"><use href="#i-power"/></svg><span>Spegni</span></button><button data-kind="sleep"><svg class="i"><use href="#i-moon"/></svg><span>Sospendi</span></button></div>
      <div class="tchips" id="sched-chips">
       <button data-minutes="15"><b>15</b>min</button><button data-minutes="30"><b>30</b>min</button><button data-minutes="60"><b>1</b>ora</button><button data-minutes="120"><b>2</b>ore</button><button data-minutes="180"><b>3</b>ore</button>
@@ -531,6 +537,22 @@
      <p class="fineprint" id="wol-phone">—</p>
     </section>
     </div>
+    <section class="card sch-card" id="sch-card">
+     <div class="card-head"><div><h3>Azioni programmate <span class="tag" id="sch-count" hidden></span></h3><p>Ogni giorno alla stessa ora: spegnimento, modalità, monitor e LED</p></div><button class="btn small primary" type="button" id="sch-add"><svg class="i"><use href="#i-clock"/></svg>Nuova</button></div>
+     <form class="sch-form" id="sch-form" hidden>
+      <b class="sch-form-title" id="sch-form-title">Nuova azione programmata</b>
+      <div class="sch-grid">
+       <label class="sch-field"><span>Orario</span><input type="time" id="sch-time" value="23:00" required></label>
+       <div class="sch-field"><span>Giorni</span><div class="sch-dpick" id="sch-days"><button type="button" data-d="0" aria-label="lunedì">L</button><button type="button" data-d="1" aria-label="martedì">M</button><button type="button" data-d="2" aria-label="mercoledì">M</button><button type="button" data-d="3" aria-label="giovedì">G</button><button type="button" data-d="4" aria-label="venerdì">V</button><button type="button" data-d="5" aria-label="sabato">S</button><button type="button" data-d="6" aria-label="domenica">D</button></div>
+        <div class="sch-dq" id="sch-dq"><button type="button" data-q="all">Ogni giorno</button><button type="button" data-q="work">Lun–ven</button><button type="button" data-q="end">Weekend</button></div></div>
+      </div>
+      <div class="sch-field"><span>Cosa fare</span><div class="sch-acts" id="sch-acts"><button type="button" data-a="shutdown"><svg class="i"><use href="#i-power"/></svg>Spegni il PC</button><button type="button" data-a="sleep"><svg class="i"><use href="#i-moon"/></svg>Sospendi</button><button type="button" data-a="eco"><svg class="i"><use href="#i-leaf"/></svg>AI ECO</button><button type="button" data-a="normal"><svg class="i"><use href="#i-bolt"/></svg>Normale</button><button type="button" data-a="gaming"><svg class="i"><use href="#i-game"/></svg>Gaming</button><button type="button" data-a="monitor_off"><svg class="i"><use href="#i-monitor"/></svg>Monitor off</button><button type="button" data-a="lock"><svg class="i"><use href="#i-lock"/></svg>Blocca</button><button type="button" data-a="leds_off"><svg class="i"><use href="#i-bulb"/></svg>LED spenti</button><button type="button" data-a="leds_on"><svg class="i"><use href="#i-palette"/></svg>LED accesi</button></div></div>
+      <p class="fineprint" id="sch-hint"></p>
+      <div class="gw-row"><button class="btn small primary" type="submit"><svg class="i"><use href="#i-check"/></svg>Salva</button><button class="btn small ghost" type="button" id="sch-cancel">Annulla</button></div>
+     </form>
+     <div class="sch-list" id="sch-list"></div>
+     <div class="sch-empty" id="sch-empty"><div class="sch-art" aria-hidden="true"><svg class="i"><use href="#i-clock"/></svg></div><b>Nessuna azione programmata</b><small>Parti da un'idea, poi cambi orario e giorni quando vuoi:</small><div class="sch-presets" id="sch-presets"></div></div>
+    </section>
    </section>
 
    <!-- OTTIMIZZA -->

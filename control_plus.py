@@ -1,6 +1,7 @@
 """Più controllo sul PC: storico dal vivo per i grafici, rete, dischi, tasti multimediali, appunti e file condivisi.
 
-- Storico: un campione ogni 5 secondi (15 minuti in memoria), così i grafici sono già pieni quando apri l'app.
+- Storico: un campione ogni 5 secondi (15 minuti in memoria), così i grafici sono già pieni quando apri l'app,
+  più le medie di ogni ora degli ultimi 30 giorni (salvate) per i grafici 24 ore / 7 giorni / 30 giorni.
 - Appunti: testo dal telefono/Mac al PC e ritorno (solo testo, max 100.000 caratteri).
 - File: una sola cartella, Download\\NEXAR. Da lontano si mandano file lì e si scaricano solo quelli che ci sono:
   nessun percorso arbitrario, niente sovrascritture, nulla viene aperto o eseguito.
@@ -18,6 +19,9 @@ import psutil
 
 SAMPLE_EVERY = 5
 HISTORY = 180                       # 15 minuti
+TREND_KEEP = 30 * 24                # medie orarie: 30 giorni
+TREND_AVG = ('cpu', 'gpu', 'ram', 'ct', 'gt', 'w')
+RANGES = {'24h': (86400, 3600), '7d': (7 * 86400, 3600), '30d': (30 * 86400, 6 * 3600)}
 MEDIA_KEYS = {'play': 0xB3, 'next': 0xB0, 'prev': 0xB1, 'stop': 0xB2}
 MEDIA_TEXT = {'play': 'Play / pausa', 'next': 'Brano successivo', 'prev': 'Brano precedente', 'stop': 'Riproduzione fermata'}
 CLIP_MAX = 100_000
@@ -28,15 +32,19 @@ RESERVED = {'con', 'prn', 'aux', 'nul', *(f'com{i}' for i in range(1, 10)), *(f'
 
 # ---------- storico, rete e dischi ----------
 class History:
-    def __init__(self, telemetry, clock=time.time, counters=psutil.net_io_counters):
+    def __init__(self, telemetry, clock=time.time, counters=psutil.net_io_counters, trend=None, save=lambda: None):
         self.telemetry, self.clock, self.counters = telemetry, clock, counters
         self.samples = deque(maxlen=HISTORY)
         self.last_net = None
         self.lock = threading.Lock()
+        self.trend = trend if trend is not None else []     # lista dello stato: si salva da sola
+        self.save = save
+        self.acc = None
 
     def net_rate(self):
         try: c = self.counters()
         except Exception: return None, None
+        if c is None: return None, None      # nessuna scheda di rete
         now = self.clock()
         prev, self.last_net = self.last_net, (now, c.bytes_recv, c.bytes_sent)
         if not prev or now - prev[0] <= 0: return None, None
@@ -48,8 +56,61 @@ class History:
         down, up = self.net_rate()
         s = {'t': int(self.clock()), 'cpu': t.get('cpu'), 'gpu': t.get('gpu'), 'ram': t.get('ram'),
              'ct': t.get('cpu_temp'), 'gt': t.get('gpu_temp'), 'w': (t.get('power') or {}).get('total'), 'down': down, 'up': up}
-        with self.lock: self.samples.append(s)
+        with self.lock:
+            self.samples.append(s)
+            flushed = self._add_hour(s)
+        if flushed: self.save()
         return s
+
+    # ---------- medie orarie (24 ore, 7 e 30 giorni) ----------
+    def _add_hour(self, s):
+        h = s['t'] // 3600 * 3600
+        flushed = False
+        if self.acc and self.acc['h'] != h:
+            self.trend.append(self._close(self.acc))
+            del self.trend[:-TREND_KEEP]
+            self.acc, flushed = None, True
+        a = self.acc = self.acc or {'h': h, 'n': 0, 'sum': {}, 'cnt': {}, 'ctx': None, 'gtx': None}
+        a['n'] += 1
+        for k in TREND_AVG:
+            v = s.get(k)
+            if isinstance(v, (int, float)):
+                a['sum'][k] = a['sum'].get(k, 0.0) + v; a['cnt'][k] = a['cnt'].get(k, 0) + 1
+        for k, m in (('ct', 'ctx'), ('gt', 'gtx')):
+            v = s.get(k)
+            if isinstance(v, (int, float)): a[m] = v if a[m] is None else max(a[m], v)
+        return flushed
+
+    @staticmethod
+    def _close(a):
+        row = {'t': a['h'], 'n': a['n']}
+        for k in TREND_AVG:
+            if a['cnt'].get(k): row[k] = round(a['sum'][k] / a['cnt'][k], 1)
+        for m in ('ctx', 'gtx'):
+            if a[m] is not None: row[m] = round(a[m], 1)
+        return row
+
+    def range(self, name):
+        """Punti per il grafico: media per ora (per 6 ore nei 30 giorni), con l'ora in corso."""
+        span, step = RANGES[name]
+        with self.lock:
+            rows = list(self.trend) + ([self._close(self.acc)] if self.acc else [])
+        since = self.clock() - span
+        rows = [r for r in rows if r['t'] + 3600 > since]
+        if step == 3600: return rows
+        out, cur = [], None
+        for r in rows:
+            b = r['t'] // step * step
+            if not cur or cur['t'] != b:
+                cur = {'t': b, 'n': 0, '_w': {}}; out.append(cur)
+            n = r.get('n', 1); cur['n'] += n
+            for k in TREND_AVG:
+                if k in r: cur['_w'].setdefault(k, [0.0, 0]); cur['_w'][k][0] += r[k] * n; cur['_w'][k][1] += n
+            for m in ('ctx', 'gtx'):
+                if m in r: cur[m] = max(cur.get(m, r[m]), r[m])
+        for c in out:
+            for k, (tot, n) in c.pop('_w').items(): c[k] = round(tot / n, 1)
+        return out
 
     def latest(self):
         with self.lock: return dict(self.samples[-1]) if self.samples else {}
@@ -74,7 +135,29 @@ def disks():
     return out
 
 
-# ---------- tasti multimediali ----------
+# ---------- tasti multimediali e brano in riproduzione ----------
+BROWSERS = {'chrome.exe', 'msedge.exe', 'firefox.exe', 'brave.exe', 'opera.exe', 'opera_gx.exe'}
+
+
+def now_playing(listing=None):
+    """Cosa suona sul PC, dal titolo della finestra di Spotify o di una scheda YouTube (nessun permesso extra)."""
+    if listing is None:
+        import screen_remote
+        try: listing = screen_remote.windows()
+        except Exception: listing = []
+    tube = None
+    for w in listing:
+        exe, title = (w.get('exe') or '').lower(), (w.get('title') or '').strip()
+        if exe == 'spotify.exe' and ' - ' in title and not title.lower().startswith('spotify'):
+            artist, _, song = title.partition(' - ')
+            return {'app': 'Spotify', 'title': song.strip(), 'artist': artist.strip()}
+        if exe in BROWSERS and ' - YouTube' in title and not tube:
+            song = title.split(' - YouTube')[0].strip()
+            song = song[song.index(') ') + 2:] if song.startswith('(') and ') ' in song else song   # "(3) Brano"
+            if song: tube = {'app': 'YouTube', 'title': song, 'artist': ''}
+    return tube
+
+
 def media(action: str, press=None) -> str:
     if action not in MEDIA_KEYS: raise ValueError('Comando multimediale non previsto')
     if press is None:
