@@ -76,21 +76,39 @@ rem NEXAR {version}: attende la chiusura dell'app, sostituisce il programma e la
 rem Pause con ping: "timeout" si rifiuta di partire senza console (stdin rediretto) e non aspetterebbe.
 rem Le redirezioni >> stanno davanti: "...=8>>file" verrebbe letto come handle 8 e la riga andrebbe persa.
 >>"{log}" echo %date% %time% aggiornamento {version}
+rem Comandi di Windows con il percorso completo: un altro "find" o "ping" nel PATH (Git, strumenti vari)
+rem faceva credere che NEXAR fosse già chiusa.
+set W=%SystemRoot%\System32
 set /a n=0
 :wait
-tasklist /FI "PID eq {pid}" 2>nul | find "{pid}" >nul || goto copy
+"%W%\tasklist.exe" /FI "PID eq {pid}" 2>nul | "%W%\find.exe" "{pid}" >nul || goto copy
 set /a n+=1
 if %n% geq 90 goto copy
-ping -n 2 127.0.0.1 >nul
+"%W%\ping.exe" -n 2 127.0.0.1 >nul
 goto wait
 :copy
 rem Altre copie di NEXAR rimaste aperte (una seconda finestra, o l'app bloccata in chiusura)
 rem terrebbero bloccati i file e l'aggiornamento resterebbe a metà: si chiudono.
-taskkill /F /IM {exe} >nul 2>&1
-ping -n 3 127.0.0.1 >nul
+"%W%\taskkill.exe" /F /IM {exe} >nul 2>&1
+"%W%\ping.exe" -n 2 127.0.0.1 >nul
+rem Scambio istantaneo: la nuova _internal è già estratta sullo stesso disco, basta rinominare le cartelle.
+rem Copiare migliaia di file (con l'antivirus che li controlla uno per uno) teneva NEXAR chiusa per minuti.
+set mode=scambio
+set rc=0
+if exist "{dst}\_internal.old" rd /s /q "{dst}\_internal.old"
+if exist "{dst}\_internal.old" goto mirror
+if exist "{dst}\_internal" move "{dst}\_internal" "{dst}\_internal.old" >nul 2>&1
+if exist "{dst}\_internal" goto mirror
+move "{src}\_internal" "{dst}\_internal" >nul 2>&1
+if exist "{dst}\_internal" goto program
+rem Lo scambio non è riuscito: si rimette la cartella di prima e si copia file per file.
+move "{dst}\_internal.old" "{dst}\_internal" >nul 2>&1
+:mirror
+set mode=copia
 rem Solo il programma: _internal viene rispecchiata, l'exe sostituito. Nient'altro nella cartella viene cancellato.
-robocopy "{src}\_internal" "{dst}\_internal" /MIR /R:5 /W:2 /NFL /NDL /NJH /NJS >nul
+"%W%\robocopy.exe" "{src}\_internal" "{dst}\_internal" /MIR /MT:16 /R:3 /W:1 /NFL /NDL /NJH /NJS >nul
 set rc=%errorlevel%
+:program
 set ok=no
 set /a c=0
 :exe
@@ -98,11 +116,13 @@ copy /y "{src}\{exe}" "{dst}\{exe}" >nul 2>&1
 if not errorlevel 1 set ok=si& goto done
 set /a c+=1
 if %c% geq 15 goto done
-ping -n 3 127.0.0.1 >nul
+"%W%\ping.exe" -n 3 127.0.0.1 >nul
 goto exe
 :done
->>"{log}" echo %date% %time% robocopy=%rc% exe=%ok% attesa=%n%s
+>>"{log}" echo %date% %time% %mode% robocopy=%rc% exe=%ok% attesa=%n%s
 start "" /d "{dst}" "{dst}\{exe}"
+rem La versione vecchia non serve più: si toglie dopo la partenza, senza farla aspettare.
+if exist "{dst}\_internal.old" rd /s /q "{dst}\_internal.old"
 '''
 
 class Updater:

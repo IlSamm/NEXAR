@@ -58,10 +58,15 @@ def test_swap_script_is_plain_batch():
     s = updater.SWAP.format(pid=1234, src=r'C:\T\NEXAR', dst=r'C:\P\NEXAR', log=r'C:\D\update.log', version='v9.9.9', exe='NEXAR.exe')
     low = s.lower()
     assert 'powershell' not in low and 'encodedcommand' not in low and 'bypass' not in low
-    assert r'robocopy "C:\T\NEXAR\_internal" "C:\P\NEXAR\_internal" /MIR' in s and 'PID eq 1234' in s
+    assert r'robocopy.exe" "C:\T\NEXAR\_internal" "C:\P\NEXAR\_internal" /MIR' in s and 'PID eq 1234' in s
+    # comandi di sistema col percorso completo: un "find" di Git nel PATH faceva saltare l'attesa
+    assert r'"%W%\find.exe"' in s and r'"%W%\tasklist.exe"' in s and '| find ' not in s
+    labels = [l for l in s.splitlines() if l.startswith(':')]
+    assert len(labels) == len(set(labels))                                       # etichette doppie = ciclo infinito
+    assert r'move "C:\T\NEXAR\_internal" "C:\P\NEXAR\_internal"' in s          # scambio istantaneo prima della copia
     # le righe di log non devono finire su un handle: "=8>>file" perderebbe la riga
     assert not any(l.startswith('echo') and '>>' in l for l in s.splitlines())
-    assert 'taskkill /F /IM NEXAR.exe' in s and r'copy /y "C:\T\NEXAR\NEXAR.exe" "C:\P\NEXAR\NEXAR.exe"' in s
+    assert 'taskkill.exe" /F /IM NEXAR.exe' in s and r'copy /y "C:\T\NEXAR\NEXAR.exe" "C:\P\NEXAR\NEXAR.exe"' in s
     assert 'timeout /t' not in s  # senza console non aspetta
 
 def test_download_reports_progress(monkeypatch, tmp_path):
