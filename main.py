@@ -347,6 +347,12 @@ def power_relay():
     try: return {'compose':controller.relay_compose(bridge=bool((controller.config.get('gateway') or {}).get('enabled')))}
     except (ValueError,RuntimeError) as ex: raise HTTPException(400,str(ex))
 
+@app.get('/api/power/wake-link',dependencies=[Depends(authorized)])
+def power_wake_link():
+    # Solo accensione: chi comanda già il PC può averlo anche dal telefono.
+    try: return {'url':controller.wake_link()}
+    except RuntimeError as ex: raise HTTPException(400,str(ex))
+
 # ---------- Mac e altri dispositivi tramite Umbrel + Tailscale ----------
 @app.get('/api/gateway',dependencies=[Depends(authorized)])
 def gateway_state(request: Request):

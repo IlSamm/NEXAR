@@ -92,3 +92,38 @@ def test_umbrel_relay_understands_mac_wake(monkeypatch):
     text = pc_power.relay_compose('1:A', 4, '34:5A:60:77:D4:8D', '192.168.0.128', '192.168.0.255', wake_secret='s3')
     env = json.loads(text.split('\n', 1)[1])['services']['nexar-accensione']['environment']
     assert env['WAKE_SECRET'] == 's3'
+
+
+def test_relay_works_without_telegram(monkeypatch):
+    import pc_power
+    for k in ('BOT_TOKEN', 'USER_ID'): monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv('PC_MAC', '34:5A:60:77:D4:8D'); monkeypatch.setenv('PC_IP', '192.168.0.128'); monkeypatch.setenv('WAKE_SECRET', '')
+    ns = {}
+    exec(compile(pc_power.RELAY.split('\noffset = None')[0], 'relay', 'exec'), ns)
+    assert ns['api']('sendMessage', chat_id=0, text='x') is None          # senza bot non chiama Telegram
+    ns['tell']('ciao')
+    assert ns['link_ok']({'time': 1000}, 0, 1050) and not ns['link_ok']({'time': 1000}, 1040, 1050)
+    assert not ns['link_ok']({'time': 500}, 0, 1050) and not ns['link_ok']({}, 0, 1050)
+    text = pc_power.relay_compose(None, None, '34:5A:60:77:D4:8D', '192.168.0.128', '192.168.0.255', wake_secret='s3')
+    head, body = text.split('\n', 1)
+    env = json.loads(body)['services']['nexar-accensione']['environment']
+    assert 'BOT_TOKEN' not in env and env['WAKE_SECRET'] == 's3' and 'Telegram' not in head and 'token' not in head
+    import pytest
+    with pytest.raises(ValueError): pc_power.relay_compose(None, None, '34:5A:60:77:D4:8D', '192.168.0.128', '192.168.0.255')
+
+
+def test_wake_link_matches_relay_topic(monkeypatch):
+    import core, pc_power
+    c = core.Control({})
+    c.beacon = beacon.Beacon({'beacon': {'secret': 'fisso'}}, save=lambda: None, get_url=lambda: '')
+    url = c.wake_link()
+    assert url == 'https://ntfy.sh/' + beacon.topic('link:fisso') + '/trigger'
+    monkeypatch.setenv('BOT_TOKEN', ''); monkeypatch.setenv('PC_MAC', '34:5A:60:77:D4:8D'); monkeypatch.setenv('PC_IP', '1.2.3.4')
+    ns = {}
+    exec(compile(pc_power.RELAY.split('\noffset = None')[0], 'relay', 'exec'), ns)
+    assert url.split('/')[3] == ns['_topic']('link:fisso')
+    import main
+    from fastapi.testclient import TestClient
+    monkeypatch.setattr(main.controller, 'beacon', c.beacon, raising=False)
+    r = TestClient(main.app, client=('127.0.0.1', 1000)).get('/api/power/wake-link', headers={'X-PC-ECO-Key': main.key})
+    assert r.json() == {'url': url}

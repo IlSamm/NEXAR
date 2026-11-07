@@ -72,9 +72,11 @@ def send_magic(mac, broadcast='255.255.255.255'):
 # così non si contendono i messaggi. Solo libreria standard: gira sull'immagine python:alpine.
 RELAY = r'''
 import json, os, socket, subprocess, time, urllib.parse, urllib.request
-T = os.environ["BOT_TOKEN"]; U = int(os.environ["USER_ID"]); MAC = os.environ["PC_MAC"]
+# Telegram è facoltativo: senza bot il relay ascolta solo l'app per Mac e il link del telefono.
+T = os.environ.get("BOT_TOKEN", ""); U = int(os.environ.get("USER_ID") or 0); MAC = os.environ["PC_MAC"]
 IP = os.environ["PC_IP"]; BC = os.environ.get("BROADCAST", "255.255.255.255")
 def api(m, **p):
+    if not T: return None
     d = urllib.parse.urlencode({k: (json.dumps(v) if isinstance(v, (dict, list)) else v) for k, v in p.items()}).encode()
     with urllib.request.urlopen("https://api.telegram.org/bot" + T + "/" + m, d, timeout=40) as r:
         return json.load(r).get("result")
@@ -115,26 +117,42 @@ def unseal(s, t):
 def fresh(p, last, now):
     t = p.get("wake", 0) if isinstance(p, dict) else 0
     return isinstance(t, (int, float)) and t > last and abs(now - t) < 180
+def tell(text):
+    try: api("sendMessage", chat_id=U, text=text)
+    except Exception: pass
+def link_ok(ev, last, now):
+    # Link del telefono: basta aprirlo (ntfy /trigger). Vale solo se appena inviato, al massimo uno ogni 20 s.
+    t = ev.get("time", 0)
+    return isinstance(t, (int, float)) and abs(now - t) < 120 and now - last >= 20
 def mac_wake():
-    sec, last = "wake:" + WS, time.time() - 60
+    sec, link, last, last_link = "wake:" + WS, _topic("link:" + WS), time.time() - 60, 0.0
     while True:
         try:
-            req = urllib.request.Request(NTFY + "/" + _topic(sec) + "/json", headers={"User-Agent": "NEXAR-Umbrel"})
+            req = urllib.request.Request(NTFY + "/" + _topic(sec) + "," + link + "/json", headers={"User-Agent": "NEXAR-Umbrel"})
             with urllib.request.urlopen(req, timeout=120) as r:
                 for line in r:
                     ev = json.loads(line)
-                    p = unseal(sec, ev.get("message", "")) if ev.get("event") == "message" else None
+                    if ev.get("event") != "message": continue
+                    if ev.get("topic") == link:
+                        now = time.time()
+                        if not link_ok(ev, last_link, now): continue
+                        last_link = now; on = alive()
+                        if not on: wake()
+                        tell("⏻ Accensione chiesta dal link del telefono." if not on else "💻 Il link del telefono ha chiesto l'accensione, ma il PC è già acceso.")
+                        continue
+                    p = unseal(sec, ev.get("message", ""))
                     if not fresh(p, last, time.time()): continue
                     last = p["wake"]; on = alive()
                     if not on: wake()
                     ack = urllib.request.Request(NTFY + "/" + _topic("ack:" + WS), data=seal("ack:" + WS, {"ack": last, "on": on}).encode(), headers={"User-Agent": "NEXAR-Umbrel", "Firebase": "no"})
                     urllib.request.urlopen(ack, timeout=10).read()
-                    try: api("sendMessage", chat_id=U, text="⏻ Accensione chiesta dall'app NEXAR per Mac." if not on else "💻 L'app per Mac ha chiesto l'accensione, ma il PC è già acceso.")
-                    except Exception: pass
+                    tell("⏻ Accensione chiesta dall'app NEXAR per Mac." if not on else "💻 L'app per Mac ha chiesto l'accensione, ma il PC è già acceso.")
         except Exception:
             time.sleep(10)
 if WS: threading.Thread(target=mac_wake, daemon=True).start()
 offset = None
+print("NEXAR relay attivo:", "Telegram" if T else "senza Telegram", "+ app per Mac e link del telefono" if WS else "", flush=True)
+while not T: time.sleep(3600)
 while True:
     try:
         if alive():
@@ -256,16 +274,17 @@ if __name__ == "__main__":
 '''
 
 def relay_compose(token, user_id, mac, ip, broadcast, bridge=None, wake_secret=''):
-    """Stack per Umbrel: accensione da Telegram (se c'è il bot) e, se chiesto, il ponte per il Mac.
-    bridge = {'pc_port': 8767, 'port': 8790}."""
+    """Stack per Umbrel: accensione (link del telefono e app per Mac; Telegram solo se c'è il bot)
+    e, se chiesto, il ponte per il Mac. bridge = {'pc_port': 8767, 'port': 8790}."""
     services = {}
-    if token and user_id:
+    tg = bool(token and user_id)
+    if mac and (tg or wake_secret):
         magic_packet(mac)
         services['nexar-accensione'] = {
             'image': 'python:3.12-alpine', 'container_name': 'nexar-accensione', 'restart': 'unless-stopped',
             # La rete dell'host serve per il broadcast Wake-on-LAN nella rete di casa.
             'network_mode': 'host',
-            'environment': {'BOT_TOKEN': token, 'USER_ID': str(user_id), 'PC_MAC': mac, 'PC_IP': ip, 'BROADCAST': broadcast,
+            'environment': {**({'BOT_TOKEN': token, 'USER_ID': str(user_id)} if tg else {}), 'PC_MAC': mac, 'PC_IP': ip, 'BROADCAST': broadcast,
                             **({'WAKE_SECRET': wake_secret} if wake_secret else {})},
             'command': ['python', '-u', '-c', RELAY.strip()],
         }
@@ -280,10 +299,11 @@ def relay_compose(token, user_id, mac, ip, broadcast, bridge=None, wake_secret='
                             'BROADCAST': broadcast, 'GW_PORT': str(bridge.get('port', 8790))},
             'command': ['python', '-u', '-c', BRIDGE.strip()],
         }
-    if not services: raise ValueError('Collega prima Telegram')
+    if not services: raise ValueError('Scheda di rete via cavo del PC non trovata: premi "Cerca di nuovo" in Collegamenti')
     # JSON è YAML valido; "$$" evita che Docker Compose interpreti eventuali "$".
     body = json.dumps({'services': services}, ensure_ascii=False, indent=2).replace('$', '$$')
-    parts = [x for x, on in (('accensione da Telegram', 'nexar-accensione' in services), ('ponte per il Mac', 'nexar-ponte' in services)) if on]
+    acc = 'accensione (' + ', '.join(x for x, on in (('link del telefono', wake_secret), ('app per Mac', wake_secret), ('Telegram', tg)) if on) + ')'
+    parts = [x for x, on in ((acc, 'nexar-accensione' in services), ('ponte per il Mac', 'nexar-ponte' in services)) if on]
     head = '# Stack Portainer/Umbrel per NEXAR: ' + ' + '.join(parts) + '.'
-    if 'nexar-accensione' in services: head += ' Contiene il token del bot: non condividerlo.'
+    if 'nexar-accensione' in services: head += ' Contiene ' + ('il token del bot e ' if tg else '') + 'la chiave di accensione: non condividerlo.'
     return head + '\n' + body

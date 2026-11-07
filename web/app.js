@@ -177,7 +177,7 @@ function navigate(view){
  if(view==='optimize')loadOptimize();
  if(view==='gaming')loadGaming(false,true);
  if(view==='energy')loadStats();
- if(view==='power'){loadApps();loadSchedules();}
+ if(view==='power'){loadApps();loadSchedules();loadWakeLink();}
  if(view==='screen'){loadScreen();loadRemote();}
  if(view==='links')loadGateway();
  if(view!=='screen'&&scrLiveOn)scrLive(false);
@@ -774,8 +774,21 @@ $('sched-ai').addEventListener('click',()=>powerAction(schedKind,0,true));
 $('wol-enable').addEventListener('click',()=>post('/api/power/wol',{}));
 $('relay-show').addEventListener('click',async()=>{
  if(demo){notify('Anteprima: non disponibile.');return;}
- try{const r=await req('/api/power/relay');$('relay-text').textContent=r.compose;$('relay-box').hidden=false;}catch(ex){notify('⚠ '+ex.message,true);}
+ try{const r=await req('/api/power/relay');$('relay-text').textContent=r.compose;
+  $('relay-warn').textContent=r.compose.includes('BOT_TOKEN')?'Contiene il token del bot e la chiave di accensione: incollalo solo nel tuo Umbrel.':'Contiene la chiave di accensione: incollalo solo nel tuo Umbrel.';
+  $('relay-box').hidden=false;}catch(ex){notify('⚠ '+ex.message,true);}
 });
+let wakeLink='';
+async function loadWakeLink(){
+ if(wakeLink)return;
+ try{wakeLink=demo?'https://ntfy.sh/nexar-3f9c0d1e7a2b4c6d8e0f1a2b3c4d5e6f/trigger':(await req('/api/power/wake-link')).url;
+  $('wlink-url').textContent=wakeLink;$('wlink').hidden=false;$('wlink-share').hidden=!navigator.share;}
+ catch(e){$('wlink').hidden=true;}
+}
+$('wlink-copy').addEventListener('click',async()=>{
+ try{await navigator.clipboard.writeText(wakeLink);notify('Link copiato: ora crealo come comando rapido sul telefono.');}catch(e){notify('Seleziona il link e copialo a mano.',true);}
+});
+$('wlink-share').addEventListener('click',()=>{navigator.share({title:'Accendi il PC',url:wakeLink}).catch(()=>{});});
 $('relay-copy').addEventListener('click',async()=>{
  try{await navigator.clipboard.writeText($('relay-text').textContent);notify('Configurazione copiata.');}catch(e){notify('Seleziona il testo e copialo a mano.',true);}
 });

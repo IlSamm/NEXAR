@@ -280,7 +280,7 @@ final class Model: ObservableObject {
         } else if local {
             wakeStatus = "Segnale inviato nella rete di casa. Da fuori casa serve il relay su Umbrel aggiornato (NEXAR sul PC → Accensione → Copia configurazione)."
         } else {
-            wakeStatus = "Non sono riuscito a inviare il segnale: prova dal bot Telegram."
+            wakeStatus = "Non sono riuscito a inviare il segnale: controlla la connessione e che il relay su Umbrel sia acceso."
         }
         retry?.cancel()
         retry = Task { [weak self] in

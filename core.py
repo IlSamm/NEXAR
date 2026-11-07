@@ -609,6 +609,13 @@ class Control:
         if not net.get('mac'): raise RuntimeError('Scheda di rete via cavo non trovata: premi "Cerca di nuovo" in Collegamenti')
         return pc_power.relay_compose(tg.get('token'), tg.get('allowed_user_id'), net['mac'], net.get('ip', ''), net.get('broadcast', '255.255.255.255'), wake_secret=wake)
 
+    def wake_link(self):
+        """Link di accensione per il telefono: aprirlo pubblica un messaggio su ntfy che il relay su Umbrel ascolta."""
+        import beacon as beacon_mod
+        b = getattr(self, 'beacon', None)
+        if not b: raise RuntimeError('Accensione dal telefono non disponibile')
+        return beacon_mod.NTFY + '/' + beacon_mod.topic('link:' + b.secret()) + '/trigger'
+
     def ai_names(self):
         return {str(n).lower() for n in self.config.get('auto_detect', {}).get('process_names') or ['codex.exe', 'claude.exe']}
 

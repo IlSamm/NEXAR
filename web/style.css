@@ -2817,3 +2817,13 @@ kbd{display:inline-block;min-width:18px;padding:1px 6px;border-radius:6px;font:6
 @media (prefers-reduced-motion:reduce){.c-dot::after,.media-now .eq i,.sch-row,.sch-form{animation:none}}
 @media (max-width:420px){.sch-acts{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .sch-mid b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.sch-next{white-space:nowrap}
+
+/* 1.0.44 · link di accensione */
+.wlink{margin-top:12px;padding:14px;border-radius:14px;border:1px solid color-mix(in srgb,var(--green) 35%,var(--line));background:linear-gradient(135deg,color-mix(in srgb,var(--green) 12%,transparent),transparent 70%),var(--bg2)}
+.wlink-head{display:flex;gap:12px;align-items:center}
+.wlink-head>div{display:flex;flex-direction:column;gap:2px;min-width:0}
+.wlink-ico{width:38px;height:38px;flex:none;border-radius:12px;display:grid;place-items:center;background:color-mix(in srgb,var(--green) 22%,transparent);color:var(--green);box-shadow:0 0 18px color-mix(in srgb,var(--green) 30%,transparent)}
+.wlink-ico .i{width:20px;height:20px}
+.wlink-row{display:flex;gap:8px;align-items:center;margin:12px 0 4px}
+.wlink-row code{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:8px 10px;border-radius:10px;background:var(--bg);border:1px solid var(--line);font:12px ui-monospace,Consolas,monospace;color:var(--muted, #9aa4b2);user-select:all}
+@media (max-width:420px){.wlink-row{flex-wrap:wrap}.wlink-row code{flex-basis:100%}}

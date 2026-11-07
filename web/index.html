@@ -526,14 +526,19 @@
      <button class="wide-opt" type="button" id="sched-ai"><svg class="i"><use href="#i-bot"/></svg><div><b>Quando Codex e Claude hanno finito</b><small>2 minuti dopo che l'ultimo si chiude</small></div><svg class="i chev"><use href="#i-chev"/></svg></button>
     </section>
     <section class="card">
-     <div class="card-head"><div><h3>Accensione a distanza</h3><p>Da Telegram anche quando il PC è spento</p></div><span class="tag">WAKE-ON-LAN</span></div>
+     <div class="card-head"><div><h3>Accensione a distanza</h3><p>Dal telefono o dal Mac, anche quando il PC è spento</p></div><span class="tag">WAKE-ON-LAN</span></div>
      <ol class="steps" id="wol-steps">
       <li id="wol-net"><i class="step-dot"></i><div><b>Scheda di rete via cavo</b><small id="wol-net-text">—</small></div></li>
       <li id="wol-win"><i class="step-dot"></i><div><b>Wake-on-LAN in Windows</b><small id="wol-win-text">—</small></div><button class="btn small local-only" type="button" id="wol-enable" hidden>Attiva</button></li>
       <li class="manual"><i class="step-dot"></i><div><b>BIOS MSI (una volta sola)</b><small>Canc all'avvio → Settings → Advanced → Power Management: <em>ErP Ready</em> = Disabled. Poi Wake Up Event Setup: <em>Resume By PCI-E Device</em> = Enabled.</small></div></li>
-      <li class="manual"><i class="step-dot"></i><div><b>Relay su Umbrel</b><small>Riceve /accendi quando il PC è spento e invia il segnale di accensione. Portainer → Stacks → Add stack → incolla → Deploy.</small></div><button class="btn small primary local-only" type="button" id="relay-show">Configurazione</button></li>
+      <li class="manual"><i class="step-dot"></i><div><b>Relay su Umbrel</b><small>Resta acceso in casa e sveglia il PC quando lo chiedi dal link, dall'app per Mac o da Telegram (se lo usi). Portainer → Stacks → Add stack → incolla → Deploy.</small></div><button class="btn small primary local-only" type="button" id="relay-show">Configurazione</button></li>
      </ol>
-     <div class="relay" id="relay-box" hidden><div class="relay-head"><b>docker-compose per Umbrel</b><button class="btn small" type="button" id="relay-copy"><svg class="i"><use href="#i-copy"/></svg>Copia</button></div><pre id="relay-text"></pre><p class="fineprint warn-text">Contiene il token del bot: incollalo solo nel tuo Umbrel.</p></div>
+     <div class="relay" id="relay-box" hidden><div class="relay-head"><b>docker-compose per Umbrel</b><button class="btn small" type="button" id="relay-copy"><svg class="i"><use href="#i-copy"/></svg>Copia</button></div><pre id="relay-text"></pre><p class="fineprint warn-text" id="relay-warn">Contiene la chiave di accensione: incollalo solo nel tuo Umbrel.</p></div>
+     <div class="wlink" id="wlink">
+      <div class="wlink-head"><span class="wlink-ico"><svg class="i"><use href="#i-power"/></svg></span><div><b>Link di accensione</b><small>Un tocco dal telefono e il PC si accende. Niente Telegram, niente app.</small></div></div>
+      <div class="wlink-row"><code id="wlink-url">—</code><button class="btn small" type="button" id="wlink-copy"><svg class="i"><use href="#i-copy"/></svg>Copia</button><button class="btn small" type="button" id="wlink-share" hidden>Condividi</button></div>
+      <p class="fineprint">Sul telefono: Comandi Rapidi → nuovo comando → <em>Apri URL</em> con questo link → Aggiungi alla schermata Home (oppure salvalo nei Preferiti). Funziona con il relay su Umbrel aggiornato a questa versione. Non incollarlo in una chat: l'anteprima del link accenderebbe il PC.</p>
+     </div>
      <p class="fineprint" id="wol-phone">—</p>
     </section>
     </div>
@@ -680,7 +685,7 @@
        <div class="gw-row local-only"><button class="btn small primary" type="button" id="gw-code-btn">Genera codice</button><span class="gw-code" id="gw-code" hidden></span><small class="muted" id="gw-code-left"></small></div></div></li>
      </ol>
      <div class="gw-devs-wrap" id="gw-devs-wrap" hidden><b class="gw-devs-title">Dispositivi collegati</b><div id="gw-devs"></div></div>
-     <p class="fineprint">Per comandare il PC serve sempre questo codice: l'indirizzo viaggia cifrato e da solo non basta. Installazioni, PIN e impostazioni restano possibili solo dal PC. Con il PC spento l'app ti propone di accenderlo dal bot Telegram.</p>
+     <p class="fineprint">Per comandare il PC serve sempre questo codice: l'indirizzo viaggia cifrato e da solo non basta. Installazioni, PIN e impostazioni restano possibili solo dal PC. Con il PC spento l'app per Mac lo accende da sola: in casa direttamente, da fuori tramite il relay su Umbrel.</p>
      <details class="gw-adv">
       <summary>Avanzate: in casa tramite Umbrel e Tailscale</summary>
       <ol class="gw-steps">
