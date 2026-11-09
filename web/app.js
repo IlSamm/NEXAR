@@ -2009,9 +2009,14 @@ $('app-sheet').addEventListener('click',e=>{if(e.target===e.currentTarget)$('app
 
 /* ---------- schermo del PC ---------- */
 var scrInfo=null,scrUrl='',scrBusy=false,scrLiveOn=false;   // var: navigate() li legge anche prima di questa riga
+let scrTag='',scrAgain=false,scrAmbAt=0,scrFrames=[],scrLoop=0;
+function scrPref(k,d){try{return localStorage.getItem('nexar_scr_'+k)??d;}catch(e){return d;}}
+function scrSave(k,v){try{localStorage.setItem('nexar_scr_'+k,v);}catch(e){}}
+let scrMon=scrPref('mon','0');
 const DEMO_SCREEN={settings:{view:true,ai_alert:true},ai_busy:['codex.exe'],windows:[
  {id:1,title:'Codex',exe:'Codex.exe',hung:false},{id:2,title:'NEXAR — app.js — Visual Studio Code',exe:'Code.exe',hung:false},
- {id:3,title:'Claude',exe:'claude.exe',hung:false},{id:4,title:'Spotify Premium',exe:'Spotify.exe',hung:true,min:true}]};
+ {id:3,title:'Claude',exe:'claude.exe',hung:false},{id:4,title:'Spotify Premium',exe:'Spotify.exe',hung:true,min:true}],
+ monitors:[{id:0,w:2560,h:1440,primary:true},{id:1,w:1920,h:1080,primary:false}]};
 function demoShot(){
  const c=document.createElement('canvas');c.width=1600;c.height=900;const g=c.getContext('2d');
  const bg=g.createLinearGradient(0,0,1600,900);bg.addColorStop(0,'#0f2a4a');bg.addColorStop(1,'#3b1d52');g.fillStyle=bg;g.fillRect(0,0,1600,900);
@@ -2024,12 +2029,21 @@ function demoShot(){
 async function loadScreen(take=true){
  if(demo)scrInfo=DEMO_SCREEN;
  else{try{scrInfo=await req('/api/screen');}catch(ex){$('scr-wins').replaceChildren(el('p','muted','Non disponibile: '+ex.message));return;}}
- renderScreen();if(take&&scrInfo.settings.view)shot();
+ renderScreen();if(!scrInfo.settings.view)return;
+ // appena apri la pagina lo schermo è già dal vivo (basta spegnerlo una volta e NEXAR se lo ricorda)
+ if(take){if(scrPref('live','1')==='1'&&!RC.on)setTimeout(()=>{if(curView==='screen'&&!scrLiveOn)scrLive(true);},0);else shot();}
+}
+function renderMons(){
+ const list=scrInfo?.monitors||[],box=$('scr-mons');box.hidden=list.length<2;if(list.length<2){scrMon='0';return;}
+ if(scrMon!=='all'&&!list.some(m=>String(m.id)===scrMon))scrMon='0';
+ box.replaceChildren(...[...list.map(m=>[String(m.id),String(m.id+1),`Schermo ${m.id+1} · ${m.w}×${m.h}`]),['all','Tutti','Tutti gli schermi']].map(([v,t,tip])=>{
+  const b=el('button',v===scrMon?'on':'',t);b.type='button';b.title=tip;b.setAttribute('aria-label',tip);b.setAttribute('aria-pressed',v===scrMon?'true':'false');
+  b.addEventListener('click',()=>{if(scrMon===v)return;scrMon=v;scrSave('mon',v);scrTag='';renderMons();shot();});return b;}));
 }
 function renderScreen(){
  const s=scrInfo?.settings||{},wins=scrInfo?.windows||[];
  $('scr-ai').setAttribute('aria-checked',s.ai_alert?'true':'false');$('scr-allow').setAttribute('aria-checked',s.view?'true':'false');
- $('scr-card').classList.toggle('off',!s.view);
+ $('scr-card').classList.toggle('off',!s.view);renderMons();
  if(!s.view){$('scr-view').classList.remove('has');$('scr-empty').querySelector('b').textContent='Vista da remoto disattivata';}
  const busy=(scrInfo?.ai_busy||[]).map(n=>{n=n.replace(/\.exe$/i,'');return n.charAt(0).toUpperCase()+n.slice(1);});
  $('scr-sub').textContent=busy.length?`${busy.join(' e ')} sta lavorando${s.ai_alert?' · ti avviso quando finisce':''}`:'Guarda cosa succede sul PC, anche da Telegram';
@@ -2044,25 +2058,37 @@ function renderScreen(){
   const b=el('button','btn'+(w.hung?' danger':''),w.hung?'Chiudi programma':'Chiudi');b.type='button';b.addEventListener('click',()=>scrCloseWin(w));
   row.append(ic,t,b);box.append(row);});
 }
+function scrAmbient(im){
+ // bagliore attorno allo schermo, preso dai colori dell'immagine (un disegno minuscolo sfocato: non pesa)
+ const now=performance.now();if(now-scrAmbAt<900)return;scrAmbAt=now;
+ try{const c=$('scr-amb');c.getContext('2d').drawImage(im,0,0,c.width,c.height);c.classList.add('on');}catch(e){}
+}
 async function shot(){
- if(scrBusy)return;scrBusy=true;const v=$('scr-view');v.classList.add('loading');
+ if(scrBusy){scrAgain=true;return;}scrBusy=true;const v=$('scr-view'),live=scrLiveOn;if(!live)v.classList.add('loading');
  try{
-  let u;
-  if(demo){await new Promise(r=>setTimeout(r,500));u=demoShot();}
-  else{const r=await fetch('/api/screen/shot',{headers:tgInit?{'X-TG-Init-Data':tgInit}:{'X-PC-ECO-Key':key},cache:'no-store'});
-   if(!r.ok){const o=await r.json().catch(()=>({}));throw new Error(o.detail||'Schermo non disponibile');}
-   u=URL.createObjectURL(await r.blob());}
-  await new Promise(res=>{const im=$('scr-img');im.onload=im.onerror=res;im.src=u;});
-  if(scrUrl.startsWith('blob:'))URL.revokeObjectURL(scrUrl);scrUrl=u;$('scr-full-img').src=u;
-  v.classList.add('has');$('scr-time').textContent=new Date().toLocaleTimeString('it-IT');
- }catch(ex){v.classList.remove('has');$('scr-empty').querySelector('b').textContent=ex.message;$('scr-time').textContent='';scrLive(false);}
- finally{scrBusy=false;v.classList.remove('loading');}
+  let u='';
+  if(demo){await new Promise(r=>setTimeout(r,live?250:500));if(!v.classList.contains('has')||scrTag!==scrMon){scrTag=scrMon;u=demoShot();}}
+  else{const h=tgInit?{'X-TG-Init-Data':tgInit}:{'X-PC-ECO-Key':key};if(live&&scrTag)h['If-None-Match']=scrTag;
+   const r=await fetch(`/api/screen/shot?mon=${scrMon}&live=${live?1:0}`,{headers:h,cache:'no-store'});
+   if(!r.ok&&r.status!==304){const o=await r.json().catch(()=>({}));throw new Error(o.detail||'Schermo non disponibile');}
+   if(r.status!==304){scrTag=r.headers.get('etag')||'';u=URL.createObjectURL(await r.blob());}}
+  if(u){const im=$('scr-img');
+   await new Promise(res=>{im.onload=im.onerror=res;im.src=u;});
+   if(scrUrl.startsWith('blob:'))URL.revokeObjectURL(scrUrl);scrUrl=u;$('scr-full-img').src=u;
+   if(im.naturalWidth)v.style.setProperty('--ar',im.naturalWidth+'/'+im.naturalHeight);
+   scrAmbient(im);if(live){const n=performance.now();scrFrames=scrFrames.filter(t=>n-t<4000);scrFrames.push(n);}}
+  v.classList.add('has');v.classList.toggle('live',live);$('scr-time').textContent=live?(scrFrames.length>2?`${(scrFrames.length/4).toFixed(1).replace('.',',')} fps`:'Collegato'):new Date().toLocaleTimeString('it-IT');
+ }catch(ex){v.classList.remove('has','live');$('scr-empty').querySelector('b').textContent=ex.message;$('scr-time').textContent='';scrLive(false);}
+ finally{scrBusy=false;v.classList.remove('loading');if(scrAgain){scrAgain=false;shot();}}
 }
 async function scrLive(on){
  scrLiveOn=on;$('scr-live').setAttribute('aria-checked',on?'true':'false');
- while(scrLiveOn){
-  if(curView!=='screen'||document.hidden){scrLive(false);break;}
-  await shot();await new Promise(r=>setTimeout(r,2500));
+ if(!on){$('scr-view').classList.remove('live');return;}
+ const me=++scrLoop;scrTag='';scrFrames=[];   // me: se riparte, il giro vecchio si ferma da solo
+ while(scrLiveOn&&me===scrLoop){
+  if(curView!=='screen'||RC.on){scrLive(false);break;}
+  if(document.hidden){await new Promise(r=>setTimeout(r,1000));continue;}   // in pausa finché la pagina non torna visibile
+  await shot();await new Promise(r=>setTimeout(r,180));
  }
 }
 async function scrAction(action,extra={}){
@@ -2084,7 +2110,7 @@ async function scrSetting(k){
 }
 $('scr-refresh').addEventListener('click',()=>{shot();loadScreen(false);});
 $('scr-view').addEventListener('click',()=>{if(!$('scr-view').classList.contains('has')){shot();return;}$('scr-full').showModal();});
-$('scr-live').addEventListener('click',()=>scrLive(!scrLiveOn));
+$('scr-live').addEventListener('click',()=>{const on=!scrLiveOn;scrSave('live',on?'1':'0');scrLive(on);if(!on)shot();});
 document.querySelectorAll('[data-scr]').forEach(b=>b.addEventListener('click',async()=>{
  if(b.dataset.scr==='lock'&&!await ask('Bloccare il PC?','Va alla schermata di accesso: per sbloccarlo serve il PIN sul PC.',{danger:false,ico:'lock',yes:'Blocca'}))return;
  scrAction(b.dataset.scr);}));
@@ -2195,7 +2221,7 @@ async function rcClose(reason){
  if(RC.url.startsWith('blob:'))URL.revokeObjectURL(RC.url);RC.url='';$('rc-img').removeAttribute('src');
  if(tgApp){try{tgApp.enableVerticalSwipes?.();}catch(e){}try{if(tgApp.isFullscreen)tgApp.exitFullscreen?.();}catch(e){}}
  if(document.fullscreenElement){try{document.exitFullscreen();}catch(e){}}
- if(reason)notify(reason,true);loadRemote();
+ if(reason)notify(reason,true);loadRemote();if(curView==='screen')loadScreen();
 }
 $('rc').addEventListener('cancel',e=>{e.preventDefault();});   // Esc va al PC, non chiude
 $('rc').addEventListener('close',()=>{if(RC.on)rcClose();});

@@ -164,3 +164,37 @@ def test_autostart_falls_back_to_startup_folder(tmp_path, monkeypatch):
     monkeypatch.setattr(discovery, '_startup_link_set', fake_link)
     discovery.autostart_set(True)
     assert made == [True] and discovery.autostart_get()
+
+
+# ---------- anteprima di un solo schermo ----------
+def test_snapshot_grabs_only_that_monitor_and_live_is_lighter():
+    import io
+    from PIL import Image
+    mons = [{'id': 0, 'x': 0, 'y': 0, 'w': 2560, 'h': 1440, 'primary': True}, {'id': 1, 'x': 2560, 'y': 0, 'w': 1920, 'h': 1080, 'primary': False}]
+    asked = []
+    def grab(rect):
+        asked.append(rect)
+        im = Image.effect_noise((rect['w'], rect['h']), 40).convert('RGB')
+        return im
+    live = screen_remote.snapshot(0, True, grab, mons)
+    full = screen_remote.snapshot(0, False, grab, mons)
+    screen_remote.snapshot(1, True, grab, mons)
+    assert Image.open(io.BytesIO(live)).size == (1920, 1080) and Image.open(io.BytesIO(full)).size == (2560, 1440)
+    assert len(live) < len(full) and asked[2]['x'] == 2560
+    with pytest.raises(RuntimeError, match='nero'): screen_remote.snapshot(0, True, lambda r: Image.new('RGB', (10, 10)), mons)
+    def locked(r): raise OSError
+    with pytest.raises(RuntimeError, match='bloccato'): screen_remote.snapshot(0, True, locked, mons)
+
+
+def test_shot_endpoint_uses_monitor_and_skips_unchanged(monkeypatch):
+    from fastapi.testclient import TestClient
+    import main
+    seen = []
+    monkeypatch.setattr(main.controller, 'screen_shot', lambda who='', mon=None, live=False: seen.append((mon, live)) or b'jpg')
+    c = TestClient(main.app, client=('127.0.0.1', 1000)); h = {'X-PC-ECO-Key': main.key}
+    r = c.get('/api/screen/shot?mon=1&live=1', headers=h)
+    assert r.status_code == 200 and r.content == b'jpg' and seen[-1] == (1, True)
+    again = c.get('/api/screen/shot?mon=1&live=1', headers={**h, 'If-None-Match': r.headers['etag']})
+    assert again.status_code == 304 and again.content == b''
+    c.get('/api/screen/shot?mon=all', headers=h); c.get('/api/screen/shot', headers=h)
+    assert seen[-2:] == [('all', False), (None, False)]

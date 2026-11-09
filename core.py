@@ -524,9 +524,10 @@ class Control:
         if ai_alert is False: self.ai_watch.reset()
         return self.screen_settings()
 
-    def screen_shot(self, who='dashboard'):
+    def screen_shot(self, who='dashboard', mon=None, live=False):
+        """mon=None: tutti gli schermi insieme (Telegram); altrimenti uno solo, o 'all', per la dashboard."""
         if not self.screen_settings()['view']: raise PermissionError('Vedere lo schermo da remoto è disattivato (Accensione e app → Schermo)')
-        jpg = screen_remote.capture()
+        jpg = screen_remote.capture() if mon is None else screen_remote.snapshot(mon, live)
         now = time.monotonic()
         if now - getattr(self, 'screen_logged', -1e9) > 300:   # una riga nel registro, non una per ogni aggiornamento
             self.screen_logged = now
@@ -534,7 +535,9 @@ class Control:
         return jpg
 
     def screen_view(self):
-        return {'settings': self.screen_settings(), 'windows': screen_remote.windows(), 'ai_busy': self.ai_watch.busy()}
+        try: mons = [{'id': m['id'], 'w': m['w'], 'h': m['h'], 'primary': m['primary']} for m in remote_control.monitors()]
+        except Exception: mons = []
+        return {'settings': self.screen_settings(), 'windows': screen_remote.windows(), 'ai_busy': self.ai_watch.busy(), 'monitors': mons}
 
     def screen_action(self, action, win_id=None, force=False):
         if action == 'close':

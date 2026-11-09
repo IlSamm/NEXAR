@@ -616,11 +616,15 @@ class ScreenSettings(BaseModel):
     view: bool | None = None
     ai_alert: bool | None = None
 @app.get('/api/screen/shot',dependencies=[Depends(authorized)])
-def screen_shot(request: Request):
-    try: jpg = controller.screen_shot('Telegram' if request.headers.get('x-tg-init-data') else 'dashboard')
+def screen_shot(request: Request, mon: str | None = None, live: int = 0):
+    which = None if mon is None else ('all' if mon == 'all' else int(mon) if mon.isdigit() else 0)
+    try: jpg = controller.screen_shot('Telegram' if request.headers.get('x-tg-init-data') else 'dashboard', which, bool(live))
     except PermissionError as ex: raise HTTPException(403,str(ex))
     except RuntimeError as ex: raise HTTPException(409,str(ex))
-    return Response(jpg, media_type='image/jpeg', headers={'Cache-Control':'no-store'})
+    # Schermo uguale a prima: nessuna immagine da rimandare, l'anteprima dal vivo costa quasi niente.
+    tag = '"' + hashlib.blake2b(jpg, digest_size=10).hexdigest() + '"'
+    if request.headers.get('if-none-match') == tag: return Response(status_code=304, headers={'ETag':tag,'Cache-Control':'no-store'})
+    return Response(jpg, media_type='image/jpeg', headers={'ETag':tag,'Cache-Control':'no-store'})
 @app.get('/api/screen',dependencies=[Depends(authorized)])
 def screen_info():
     return controller.screen_view()

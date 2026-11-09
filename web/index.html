@@ -807,17 +807,23 @@
    <section class="page" id="page-screen">
     <div class="scr-layout scr-card" id="scr-card">
      <section class="card scr-main">
-      <div class="card-head"><div><h3>Schermo del PC</h3><p id="scr-sub">Guarda cosa succede sul PC, anche da Telegram</p></div>
-       <div class="scr-head-act"><button class="scr-live" type="button" id="scr-live" role="switch" aria-checked="false"><i></i>Dal vivo</button>
-       <button class="btn small" type="button" id="scr-refresh"><svg class="i"><use href="#i-refresh"/></svg><span>Aggiorna</span></button></div></div>
-      <div class="scr-monitor">
-       <button class="scr-view" type="button" id="scr-view" aria-label="Schermo del PC a tutto schermo">
-        <img id="scr-img" alt="Schermo del PC"><span class="scr-empty" id="scr-empty"><span class="scr-empty-ico"><svg class="i"><use href="#i-monitor"/></svg></span><b>Tocca per vedere lo schermo</b></span>
-        <span class="scr-stamp" id="scr-time"></span><i class="scr-scan" aria-hidden="true"></i><i class="scr-glare" aria-hidden="true"></i>
-       </button>
-       <button class="scr-cta" type="button" data-rc-take><span class="scr-cta-ico"><svg class="i"><use href="#i-mouse"/></svg></span><span><b>Prendi il controllo</b><small>Mouse e tastiera, con il PIN</small></span></button>
+      <div class="scr-top">
+       <div class="scr-title"><h3>Schermo del PC</h3><p id="scr-sub">Guarda cosa succede sul PC, anche da Telegram</p></div>
+       <div class="scr-head-act"><div class="scr-mons" id="scr-mons" role="group" aria-label="Quale schermo vedere" hidden></div>
+       <button class="scr-live" type="button" id="scr-live" role="switch" aria-checked="false"><i></i>Dal vivo</button>
+       <button class="icon-btn" type="button" id="scr-refresh" aria-label="Aggiorna" title="Aggiorna"><svg class="i"><use href="#i-refresh"/></svg></button></div>
       </div>
-      <div class="scr-stand" aria-hidden="true"><i></i></div>
+      <div class="scr-stage">
+       <canvas class="scr-amb" id="scr-amb" width="48" height="27" aria-hidden="true"></canvas>
+       <div class="scr-monitor">
+        <button class="scr-view" type="button" id="scr-view" aria-label="Schermo del PC a tutto schermo">
+         <img id="scr-img" alt="Schermo del PC"><span class="scr-empty" id="scr-empty"><span class="scr-empty-ico"><svg class="i"><use href="#i-monitor"/></svg></span><b>Tocca per vedere lo schermo</b></span>
+         <span class="scr-hud"><em class="scr-badge">LIVE</em><span class="scr-stamp" id="scr-time"></span></span>
+         <span class="scr-grow" aria-hidden="true"><svg class="i"><use href="#i-expand"/></svg></span><i class="scr-scan" aria-hidden="true"></i>
+        </button>
+        <button class="scr-cta" type="button" data-rc-take><span class="scr-cta-ico"><svg class="i"><use href="#i-mouse"/></svg></span><span><b>Prendi il controllo</b><small>Mouse e tastiera, con il PIN</small></span></button>
+       </div>
+      </div>
       <div class="scr-dock">
        <div class="scr-grp" role="group" aria-label="Volume"><span class="scr-grp-l"><svg class="i"><use href="#i-vol"/></svg>Volume</span>
         <button type="button" data-scr="down" title="Volume −10" aria-label="Volume meno"><svg class="i"><use href="#i-vol-down"/></svg></button>

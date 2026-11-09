@@ -37,6 +37,26 @@ def capture(max_width=MAX_WIDTH, quality=72, grab=None) -> bytes:
     return buf.getvalue()
 
 
+def snapshot(mon=0, live=False, grab=None, mons=None) -> bytes:
+    """Un solo schermo: più nitido e molto più veloce della foto di tutti gli schermi insieme.
+    live: più leggera, per l'anteprima dal vivo; altrimenti massima qualità."""
+    from PIL import Image
+    import remote_control
+    mons = remote_control.monitors() if mons is None else mons
+    try: img = (grab or remote_control.grab)(remote_control.area(mon, mons))
+    except OSError:
+        raise RuntimeError('Schermo non disponibile: il PC è bloccato o in sospensione')
+    img = img.convert('RGB')
+    if img.getbbox() is None: raise RuntimeError('Schermo nero: il PC è bloccato o lo schermo è spento')
+    width, quality, sub = (1920, 74, 2) if live else (2560, 86, 0)
+    if img.width > width:
+        size = (width, max(1, round(img.height * width / img.width)))
+        img = img.resize(size, Image.BILINEAR if live else Image.LANCZOS)
+    buf = io.BytesIO()
+    img.save(buf, 'JPEG', quality=quality, subsampling=sub, optimize=not live)
+    return buf.getvalue()
+
+
 def _user32():
     return ctypes.windll.user32
 
