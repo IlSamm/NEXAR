@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#05070d">
+<title>NEXAR</title>
+<link rel="icon" href="/__nexar/icon.png">
+<style>
+:root{color-scheme:dark;--bg:#05070d;--card:#0e131d;--line:#1e2736;--ink:#eaf2ff;--mut:#8b98ad;--acc:#3b9dff;--ok:#34d399;--bad:#f87171}
+*{box-sizing:border-box}
+body{margin:0;min-height:100dvh;display:grid;place-items:center;padding:24px 16px;background:radial-gradient(680px 460px at 50% 28%,rgba(40,110,255,.2),transparent 70%),var(--bg);color:var(--ink);font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif}
+main{width:100%;max-width:420px;text-align:center}
+img{width:96px;height:96px;border-radius:24px;box-shadow:0 18px 60px rgba(40,120,255,.35)}
+h1{font-size:26px;letter-spacing:.34em;padding-left:.34em;margin:18px 0 2px}
+.who{color:var(--mut);margin:0 0 22px;min-height:24px}
+.state{display:flex;align-items:center;justify-content:center;gap:10px;font-weight:600;margin:0 0 6px}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--mut);flex:none}
+.off .dot{background:var(--bad);box-shadow:0 0 14px var(--bad)}.on .dot{background:var(--ok);box-shadow:0 0 14px var(--ok)}
+.hint{color:var(--mut);font-size:14px;margin:0}
+button{appearance:none;border:0;border-radius:14px;padding:14px 22px;font:600 16px inherit;cursor:pointer;color:#04101f;background:var(--acc);min-height:48px}
+button:disabled{opacity:.5;cursor:default}
+.wake{width:100%;margin-top:22px;background:linear-gradient(180deg,#5bb2ff,#2a83ee);color:#fff}
+.card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:20px;text-align:left}
+.card h2{font-size:17px;margin:0 0 6px}.card ol{margin:0 0 16px;padding-left:20px;color:var(--mut);font-size:14px}.card li{margin:4px 0}
+textarea{width:100%;min-height:96px;resize:vertical;padding:12px;border-radius:12px;border:1px solid var(--line);background:#080c14;color:var(--ink);font:13px/1.4 ui-monospace,Menlo,Consolas,monospace;word-break:break-all}
+textarea:focus-visible,button:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.card button{width:100%;margin-top:12px}
+.err{color:var(--bad);font-size:14px;margin:10px 0 0;min-height:20px}
+.foot{margin-top:22px}.foot button{background:none;color:var(--mut);font-size:13px;min-height:44px;padding:8px 12px}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<main>
+ <img src="/__nexar/icon.png" alt="">
+ <h1>NEXAR</h1>
+ <p class="who" id="who"></p>
+
+ <section class="card" id="pair" hidden>
+  <h2>Collega il tuo PC</h2>
+  <ol><li>Apri NEXAR sul PC → <b>Accensione</b></li><li>Premi <b>Collega Umbrel</b></li><li>Incolla qui il codice</li></ol>
+  <textarea id="code" placeholder="NEXAR1.…" spellcheck="false" autocomplete="off" aria-label="Codice dal PC"></textarea>
+  <button id="save" type="button">Collega</button>
+  <p class="err" id="err" role="alert"></p>
+ </section>
+
+ <section id="off" hidden>
+  <p class="state" id="state"><i class="dot"></i><span id="state-text">Controllo il PC…</span></p>
+  <p class="hint" id="hint"></p>
+  <button class="wake" id="wake" type="button" hidden>⏻ Accendi il PC</button>
+  <div class="foot"><button id="unpair" type="button">Scollega questo PC</button></div>
+ </section>
+</main>
+<script>
+var $=function(i){return document.getElementById(i)},busy=false,waiting=0;
+function j(u,o){return fetch(u,o).then(function(r){return r.json().then(function(d){if(!r.ok)throw new Error(d.detail||'Errore');return d})})}
+function pair(code){$('err').textContent='';$('save').disabled=true;
+ return j('/__nexar/pair',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:code})})
+  .then(function(){history.replaceState(null,'','/');$('pair').hidden=true;tick()})
+  .catch(function(e){$('err').textContent=e.message}).finally(function(){$('save').disabled=false})}
+function tick(){if(busy)return;busy=true;j('/__nexar/status').then(function(s){
+ if(!s.paired){$('pair').hidden=false;$('off').hidden=true;$('who').textContent='Accensione e dashboard del tuo PC';return}
+ if(s.app){location.replace('/');return}
+ $('pair').hidden=true;$('off').hidden=false;$('who').textContent=s.name;
+ $('state').className='state '+(s.pc?'on':'off');
+ $('state-text').textContent=s.pc?'Il PC è acceso':(waiting>Date.now()?'Il PC si sta accendendo…':'Il PC è spento');
+ $('hint').textContent=s.pc?'NEXAR non risponde ancora: si apre da sola appena è pronta.':(waiting>Date.now()?'Si apre da sola appena è pronto.':'');
+ $('wake').hidden=s.pc||waiting>Date.now();
+}).catch(function(){$('who').textContent='Umbrel non risponde'}).finally(function(){busy=false})}
+$('save').onclick=function(){pair($('code').value)};
+$('wake').onclick=function(){$('wake').disabled=true;waiting=Date.now()+120000;$('wake').hidden=true;
+ j('/__nexar/wake',{method:'POST'}).catch(function(e){waiting=0;$('hint').textContent=e.message}).finally(function(){$('wake').disabled=false;tick()})};
+$('unpair').onclick=function(){if(confirm('Scollegare il PC da Umbrel? Servirà un nuovo codice.'))j('/__nexar/unpair',{method:'POST'}).then(tick)};
+var h=location.hash.match(/^#pair=(.+)/);
+if(h){$('pair').hidden=false;$('code').value=decodeURIComponent(h[1]);pair($('code').value)}else tick();
+setInterval(tick,4000);
+</script>
+</body>
+</html>

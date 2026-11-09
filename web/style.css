@@ -2987,3 +2987,34 @@ kbd{display:inline-block;min-width:18px;padding:1px 6px;border-radius:6px;font:6
 html:has(dialog[open]),html:has(.palette:not([hidden])){overflow:hidden}
 dialog,.rc-keys,.rc-set,.relay pre,.events,.boost-apps,.startup-list,.pal-list,.as-list,.scr-wins{overscroll-behavior:contain}
 .rc{overscroll-behavior:none}
+/* ---------- 1.0.49 · logo, Umbrel, amministratore ---------- */
+.brush-stroke{animation:sp-paint 1s cubic-bezier(.45,.05,.3,1) forwards paused}
+.splash-full{animation:sp-settle .4s ease .95s forwards paused}
+.splash-logo{animation:none}
+.splash b{animation-play-state:paused}
+.splash.go .brush-stroke,.splash.go .splash-full,.splash.go b{animation-play-state:running}
+.splash::before{content:"";position:absolute;left:50%;top:50%;width:360px;height:360px;margin:-230px 0 0 -180px;border-radius:50%;pointer-events:none;
+ background:radial-gradient(closest-side,rgba(70,140,255,.32),transparent);opacity:0;will-change:opacity}
+.splash.go::before{animation:sp-halo 2.4s ease-in-out .9s infinite}
+@keyframes sp-halo{0%,100%{opacity:.35}50%{opacity:1}}
+@media (prefers-reduced-motion:reduce){.brush-stroke{stroke-dashoffset:0;animation:none}.splash-full{opacity:1;animation:none}.splash b{animation:none}.splash.go::before{animation:none;opacity:.6}}
+.ulink pre{white-space:pre-wrap;word-break:break-all;max-height:96px;overflow:auto}
+.ulink .btn-row{margin-top:10px;flex-wrap:wrap}
+#admin-box{margin-top:14px}
+#admin-box .set-row{align-items:center;gap:14px}
+#admin-box .btn{flex:none}
+/* ---------- 1.0.49 · ritocchi ---------- */
+::selection{background:rgba(70,140,255,.38);color:#fff}
+*{scrollbar-width:thin;scrollbar-color:rgba(148,170,205,.26) transparent}
+h1,h2,h3{text-wrap:balance}
+.card,.btn,.qb{transition:border-color .22s ease,box-shadow .22s ease,transform .22s cubic-bezier(.2,.8,.2,1),background-color .22s ease}
+@media (hover:hover){
+ .card:hover{border-color:rgba(148,190,255,.2)}
+ .btn:not(:disabled):hover{transform:translateY(-1px)}
+ .btn:not(:disabled):active{transform:translateY(0) scale(.985)}
+}
+:where(button,a,select,input,textarea,[role=switch]):focus-visible{outline:2px solid #5aa9ff;outline-offset:2px}
+.nav-tip{position:fixed;z-index:60;padding:6px 11px;border-radius:9px;background:#141b28;border:1px solid rgba(148,190,255,.22);color:#eaf2ff;font-size:13px;font-weight:600;
+ white-space:nowrap;pointer-events:none;box-shadow:0 10px 30px rgba(0,0,0,.45);opacity:0;transform:translateX(-5px);transition:opacity .14s ease,transform .14s ease}
+.nav-tip.on{opacity:1;transform:none}
+@media (max-width:600px){#umbrel-step{flex-wrap:wrap}#umbrel-step>div{flex:1 1 200px}#umbrel-step>button{width:100%}}

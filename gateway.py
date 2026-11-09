@@ -16,6 +16,7 @@ from datetime import datetime
 
 GATEWAY_PORT = 8767       # il PC, verso Umbrel
 UMBREL_PORT = 8790        # il ponte su Umbrel, verso il Mac
+UMBREL_APP_PORT = 8792    # l'app NEXAR installata dallo store di Umbrel
 CODE_TTL = 600
 CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'   # niente 0/O e 1/I
 MAX_DEVICES = 10
@@ -124,6 +125,15 @@ class Devices:
         self.config['devices'] = devs
         self.save()
         return token, name
+
+    def issue(self, name, tag):
+        """Token per un dispositivo che si collega senza codice a mano. Uno solo per ogni tag: rigenerarlo sostituisce il vecchio."""
+        token = secrets.token_urlsafe(36)
+        devs = [d for d in self.config.get('devices') or [] if d.get('tag') != tag]
+        devs.append({'id': secrets.token_hex(4), 'name': name[:40], 'tag': tag, 'hash': _hash(token), 'added': datetime.now().isoformat(timespec='minutes')})
+        self.config['devices'] = devs
+        self.save()
+        return token
 
     def check(self, token) -> bool:
         if not token or len(token) < 40: return False

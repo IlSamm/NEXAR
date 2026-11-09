@@ -22,7 +22,7 @@ def test_code_is_one_use_expires_and_only_hash_is_saved():
     assert ttl == 600 and len(code) == 9 and code[4] == '-'
     with pytest.raises(PermissionError, match='sbagliato'): d.pair('ZZZZ-ZZZZ', 'Mac')
     token, name = d.pair(code.lower().replace('-', ' '), 'Mac')        # minuscole e spazi vanno bene
-    assert name == 'Mac' and saved and d.check(token) and not d.check(token[:-1] + 'x') and not d.check('')
+    assert name == 'Mac' and saved and d.check(token) and not d.check(token[:-1] + ('y' if token[-1] == 'x' else 'x')) and not d.check('')
     assert token not in json.dumps(cfg) and cfg['devices'][0]['name'] == 'Mac'
     with pytest.raises(PermissionError): d.pair(code, 'Altro')        # già usato
     code2, _ = d.new_code(); clock.t += 601

@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import threading
 import re
+import sys
 import time
 from contextlib import asynccontextmanager
 from collections import defaultdict, deque
@@ -26,6 +27,7 @@ from tunnel import TUNNEL_PORT, Tunnel
 import gateway
 import beacon as beacon_mod
 import control_plus
+import remote_control
 from updater import Updater
 from version import VERSION
 
@@ -58,7 +60,9 @@ async def lifespan(app: FastAPI):
                                info=lambda: {'bot': (getattr(controller, 'telegram_bot', None) or {}).get('username', ''), 'v': VERSION,
                                              # in casa l'app per Mac accende il PC da sola (Wake-on-LAN)
                                              'mac': (controller.state.get('inventory', {}).get('net') or {}).get('mac', ''),
-                                             'bc': (controller.state.get('inventory', {}).get('net') or {}).get('broadcast', '')})
+                                             'bc': (controller.state.get('inventory', {}).get('net') or {}).get('broadcast', ''),
+                                             # l'app su Umbrel segue così i cambi di indirizzo del PC
+                                             'ip': (controller.state.get('inventory', {}).get('net') or {}).get('ip', '')})
     controller.beacon = beacon
     def on_url(url):
         bot.set_webapp(url); beacon.kick.set()
@@ -259,34 +263,80 @@ def fans(data: FanLevel):
     try: return {'ok':True,'message':controller.fans_level(data.profile,data.keep_pump)}
     except (RuntimeError,OSError,ValueError) as ex: raise HTTPException(400,str(ex))
 def local_only(request: Request):
-    # Installazioni e richieste UAC compaiono sullo schermo del PC: mai da Umbrel o dal telefono.
+    # Solo ciò che deve per forza accadere davanti al PC: la prima conferma UAC e il token del bot.
     if is_remote(request):
         raise HTTPException(403,'Operazione disponibile solo dalla app sul PC Windows.')
     return True
 
-@app.post('/api/discover',dependencies=[Depends(authorized),Depends(local_only)])
-def discover():
-    try: return {'ok':True,'message':controller.run_job('discover',lambda: controller.discover(allow_uac=True) and 'Collegamenti aggiornati')}
+def pin_gate(request: Request, x_admin_pin: str | None = Header(default=None)):
+    """Da lontano le operazioni delicate chiedono il PIN del controllo remoto (stessi limiti di tentativi)."""
+    if not is_remote(request): return True
+    try: controller.remote.check_pin(x_admin_pin)
+    except remote_control.NeedPin as ex: raise HTTPException(403,str(ex),headers={'X-Need-Pin':'1'})
+    except PermissionError as ex: raise HTTPException(403,str(ex))
+    return True
+
+def elevator(request: Request):
+    """Sul PC decide la finestra UAC (None); da lontano serve l'attività NEXAR Admin già attivata."""
+    if not is_remote(request): return None
+    if not controller.admin.active():
+        raise HTTPException(409,'Attiva prima "Amministratore da remoto" dall\'app sul PC: Impostazioni → Sistema (una conferma sola).')
+    return controller.admin
+
+class AdminToggle(BaseModel):
+    enabled: bool
+@app.get('/api/admin',dependencies=[Depends(authorized)])
+def admin_state(request: Request):
+    return {**controller.admin.info(),'local':not is_remote(request),'supported':os.name=='nt' and bool(getattr(sys,'frozen',False))}
+@app.post('/api/admin/setup',dependencies=[Depends(authorized),Depends(local_only)])
+def admin_setup(data: AdminToggle):
+    try: return {'ok':True,'message':controller.run_job('admin-setup',controller.admin_setup if data.enabled else controller.admin_remove)}
+    except RuntimeError as ex: raise HTTPException(409,str(ex))
+
+@app.post('/api/umbrel/link',dependencies=[Depends(authorized),Depends(pin_gate)])
+def umbrel_link(request: Request):
+    """Codice per l'app su Umbrel. Il ponte (e la sua regola del firewall) si prepara in background."""
+    g = controller.config.get('gateway') or {}
+    ip = gateway.guess_umbrel() or g.get('umbrel_ip','')
+    if not ip: raise HTTPException(400,"umbrel.local non risponde: controlla che Umbrel sia acceso e nella stessa rete del PC.")
+    remote = is_remote(request)
+    if remote and not g.get('firewall') and not controller.admin.active():
+        raise HTTPException(409,'Serve una conferma sul PC: premi Collega Umbrel dall\'app sul PC, oppure attiva Amministratore da remoto.')
+    fw = (lambda: controller.admin.call('firewall',ip=ip)) if remote else None
+    try: code = controller.umbrel_code()
+    except RuntimeError as ex: raise HTTPException(400,str(ex))
+    if not (g.get('enabled') and g.get('umbrel_ip')==ip):
+        try: controller.run_job('umbrel-link',lambda: controller.gateway_setup(True,ip,fw))
+        except RuntimeError: pass  # già in corso
+    return {'code':code,'url':f'http://{ip}:{gateway.UMBREL_APP_PORT}/#pair={code}','firewall':bool(g.get('firewall'))}
+
+@app.post('/api/discover',dependencies=[Depends(authorized),Depends(pin_gate)])
+def discover(request: Request):
+    # Da lontano nessuna finestra UAC: resterebbe lì sul PC ad aspettare qualcuno.
+    uac = not is_remote(request)
+    try: return {'ok':True,'message':controller.run_job('discover',lambda: controller.discover(allow_uac=uac) and 'Collegamenti aggiornati')}
     except RuntimeError as ex: raise HTTPException(409,str(ex))
 
 class Install(BaseModel):
     key: str
-@app.post('/api/install',dependencies=[Depends(authorized),Depends(local_only)])
-def install(data: Install):
+@app.post('/api/install',dependencies=[Depends(authorized),Depends(pin_gate)])
+def install(data: Install, request: Request):
     import discovery
     if data.key not in discovery.WINGET: raise HTTPException(400,'Programma non previsto')
+    admin = elevator(request)
     def run():
-        msg=discovery.winget_install(data.key)
-        controller.discover(allow_uac=True)
+        msg=discovery.winget_install(data.key,admin)
+        controller.discover(allow_uac=admin is None)
         return msg
     try: return {'ok':True,'message':controller.run_job('install-'+data.key,run)}
     except RuntimeError as ex: raise HTTPException(409,str(ex))
 
-@app.post('/api/autostart/fast',dependencies=[Depends(authorized),Depends(local_only)])
-def autostart_fast():
+@app.post('/api/autostart/fast',dependencies=[Depends(authorized),Depends(pin_gate)])
+def autostart_fast(request: Request):
     import discovery
+    admin = elevator(request)
     def run():
-        msg = discovery.autostart_fast()
+        msg = discovery.autostart_fast(admin)
         with controller.lock:
             controller.config['autostart'] = True
             from core import json_save
@@ -305,28 +355,30 @@ def fan_one(data: FanOne):
     try: return {'ok':True,'message':controller.fan_set(data.id,data.percent,data.curve)}
     except (RuntimeError,OSError,ValueError) as ex: raise HTTPException(400,str(ex))
 
-@app.post('/api/fans/setup',dependencies=[Depends(authorized),Depends(local_only)])
-def fans_setup():
-    try: return {'ok':True,'message':controller.run_job('fans-setup',controller.setup_fans)}
+@app.post('/api/fans/setup',dependencies=[Depends(authorized),Depends(pin_gate)])
+def fans_setup(request: Request):
+    admin = elevator(request)
+    try: return {'ok':True,'message':controller.run_job('fans-setup',lambda: controller.setup_fans(admin))}
     except RuntimeError as ex: raise HTTPException(409,str(ex))
 
-@app.post('/api/fancontrol/open',dependencies=[Depends(authorized),Depends(local_only)])
+@app.post('/api/fancontrol/open',dependencies=[Depends(authorized)])
 def fancontrol_open():
     exe=controller.config.get('fans',{}).get('fancontrol_exe','')
     if not exe or not Path(exe).is_file(): raise HTTPException(404,'Fan Control non trovato')
     os.startfile(exe)
     return {'ok':True,'message':'Fan Control aperto'}
 
-@app.post('/api/autostart',dependencies=[Depends(authorized),Depends(local_only)])
-def autostart(data: Toggle):
+@app.post('/api/autostart',dependencies=[Depends(authorized),Depends(pin_gate)])
+def autostart(data: Toggle, request: Request):
     import discovery
     from core import json_save
+    admin = controller.admin if is_remote(request) and controller.admin.active() else None
     with controller.lock:
         controller.config['autostart']=data.enabled
         json_save(CONFIG_FILE,controller.config)
     try:
         discovery.autostart_set(data.enabled)
-        if not data.enabled: discovery.autostart_fast_off()
+        if not data.enabled: discovery.autostart_fast_off(admin)
     except OSError as ex: raise HTTPException(400,str(ex))
     try: controller.run_job('discover',controller.discover)
     except RuntimeError: pass  # una ricerca è già in corso e vedrà il nuovo valore
@@ -341,9 +393,9 @@ def pc_power_action(data: PowerAction):
     try: return {'ok':True,'message':controller.power_action(data.action,data.minutes,data.after_ai)}
     except (ValueError,RuntimeError,OSError) as ex: raise HTTPException(400,str(ex))
 
-@app.get('/api/power/relay',dependencies=[Depends(authorized),Depends(local_only)])
+@app.get('/api/power/relay',dependencies=[Depends(authorized),Depends(pin_gate)])
 def power_relay():
-    # Contiene il token del bot: solo dalla app sul PC.
+    # Contiene il token del bot: da lontano serve il PIN.
     try: return {'compose':controller.relay_compose(bridge=bool((controller.config.get('gateway') or {}).get('enabled')))}
     except (ValueError,RuntimeError) as ex: raise HTTPException(400,str(ex))
 
@@ -360,18 +412,20 @@ def gateway_state(request: Request):
     if is_remote(request): info.pop('umbrel_ip', None); info.pop('pc_ip', None)
     return {**info, 'local': not is_remote(request)}
 
-@app.get('/api/gateway/guess',dependencies=[Depends(authorized),Depends(local_only)])
+@app.get('/api/gateway/guess',dependencies=[Depends(authorized)])
 def gateway_guess(): return {'umbrel_ip': gateway.guess_umbrel()}
 
 class GatewaySetup(BaseModel):
     enabled: bool
     umbrel_ip: str | None = None
-@app.post('/api/gateway/setup',dependencies=[Depends(authorized),Depends(local_only)])
-def gateway_setup(data: GatewaySetup):
-    try: return {'ok':True,'message':controller.gateway_setup(data.enabled,data.umbrel_ip),'gateway':controller.gateway_info(bridge)}
+@app.post('/api/gateway/setup',dependencies=[Depends(authorized),Depends(pin_gate)])
+def gateway_setup(data: GatewaySetup, request: Request):
+    admin = elevator(request) if data.enabled else None
+    fw = (lambda: admin.call('firewall',ip=data.umbrel_ip or (controller.config.get('gateway') or {}).get('umbrel_ip',''))) if admin else None
+    try: return {'ok':True,'message':controller.gateway_setup(data.enabled,data.umbrel_ip,fw),'gateway':controller.gateway_info(bridge)}
     except (ValueError,RuntimeError,OSError) as ex: raise HTTPException(400,str(ex))
 
-@app.post('/api/devices/code',dependencies=[Depends(authorized),Depends(local_only)])
+@app.post('/api/devices/code',dependencies=[Depends(authorized),Depends(pin_gate)])
 def device_code():
     code, ttl = controller.devices.new_code()
     if beacon: beacon.announce_code(code, ttl)
@@ -474,14 +528,15 @@ def shared_get(name: str):
     try: f = control_plus.shared_file(name)
     except (ValueError,FileNotFoundError) as ex: raise HTTPException(404,str(ex))
     return FileResponse(f, filename=f.name, headers={'Cache-Control':'no-store'})
-@app.post('/api/files/open',dependencies=[Depends(authorized),Depends(local_only)])
+@app.post('/api/files/open',dependencies=[Depends(authorized)])
 def shared_open():
     os.startfile(str(control_plus.share_dir()))
     return {'ok':True,'message':'Cartella aperta'}
 
-@app.post('/api/power/wol',dependencies=[Depends(authorized),Depends(local_only)])
-def power_wol():
-    try: return {'ok':True,'message':controller.run_job('wol',controller.wol_setup)}
+@app.post('/api/power/wol',dependencies=[Depends(authorized),Depends(pin_gate)])
+def power_wol(request: Request):
+    admin = elevator(request)
+    try: return {'ok':True,'message':controller.run_job('wol',lambda: controller.wol_setup(admin))}
     except RuntimeError as ex: raise HTTPException(409,str(ex))
 
 @app.post('/api/update/check',dependencies=[Depends(authorized)])
@@ -598,7 +653,7 @@ def remote_errors(fn):
 @app.get('/api/remote',dependencies=[Depends(authorized)])
 def remote_info(request: Request):
     return {**controller.remote.info(),'local':not is_remote(request)}
-@app.post('/api/remote/setup',dependencies=[Depends(authorized),Depends(local_only)])
+@app.post('/api/remote/setup',dependencies=[Depends(authorized),Depends(pin_gate)])
 def remote_setup(data: RemoteSetup):
     return remote_errors(lambda: {'ok':True,'info':controller.remote_setup(data.enabled,data.pin,data.idle_minutes),'message':'Controllo remoto aggiornato'})
 @app.post('/api/remote/off',dependencies=[Depends(authorized)])
@@ -703,9 +758,12 @@ class CleanRequest(BaseModel):
 @app.post('/api/optimize/clean',dependencies=[Depends(authorized)])
 def optimize_clean(data: CleanRequest, request: Request):
     import discovery
-    remote = is_remote(request)  # la conferma amministratore compare sullo schermo del PC: da remoto solo pulizie utente
+    remote = is_remote(request)
+    needs_admin = any(t.get('admin') and t['key'] in data.keys for t in optimizer.targets())
+    if remote and needs_admin: pin_gate(request, request.headers.get('x-admin-pin'))
+    admin = controller.admin if remote and needs_admin and controller.admin.active() else None
     def job():
-        res = optimizer.clean(data.keys, discovery.run_elevated, allow_admin=not remote)
+        res = optimizer.clean(data.keys, discovery.run_elevated, allow_admin=not remote, admin=admin)
         controller.record_clean(res['freed'], 'manuale')
         optimize_scan_job()
         return 'Pulizia: liberati ' + optimizer.human(res['freed']) + ('. ' + ' · '.join(res['notes']) if res['notes'] else '')
@@ -720,7 +778,10 @@ class StartupToggle(BaseModel):
 def optimize_startup(data: StartupToggle, request: Request):
     import discovery
     try:
-        optimizer.set_startup(data.id, data.enabled, None if is_remote(request) else discovery.run_elevated)
+        remote = is_remote(request)
+        system = data.id.startswith('HKLM|')
+        if remote and system: pin_gate(request, request.headers.get('x-admin-pin'))
+        optimizer.set_startup(data.id, data.enabled, None if remote else discovery.run_elevated, elevator(request) if remote and system else None)
         name = data.id.split('|',2)[-1]
         controller.log_event(f'Avvio di Windows: {name} ' + ('attivato' if data.enabled else 'disattivato'))
         return {'ok':True,'message':f'{name}: ' + ('parte con Windows' if data.enabled else 'non parte più con Windows')}
@@ -776,11 +837,11 @@ def known_large(path):
     f = next((f for f in files if f['path'] == path), None)
     if not f or not os.path.isfile(path): raise HTTPException(404,'File non trovato: ripeti la ricerca')
     return f
-@app.post('/api/optimize/large/reveal',dependencies=[Depends(authorized),Depends(local_only)])
+@app.post('/api/optimize/large/reveal',dependencies=[Depends(authorized)])
 def optimize_large_reveal(data: FilePath):
     known_large(data.path); optimizer.reveal(data.path)
     return {'ok':True,'message':'Cartella aperta sul PC'}
-@app.post('/api/optimize/large/recycle',dependencies=[Depends(authorized),Depends(local_only)])
+@app.post('/api/optimize/large/recycle',dependencies=[Depends(authorized),Depends(pin_gate)])
 def optimize_large_recycle(data: FilePath):
     f = known_large(data.path)
     try: optimizer.to_recycle_bin(data.path)
@@ -817,11 +878,13 @@ def optimize_auto(data: AutoClean):
 def optimize_net_auto(data: AutoClean):
     return {'ok':True,'message':controller.set_net_auto(data.enabled)}
 
-@app.post('/api/optimize/trim',dependencies=[Depends(authorized),Depends(local_only)])
-def optimize_trim():
+@app.post('/api/optimize/trim',dependencies=[Depends(authorized),Depends(pin_gate)])
+def optimize_trim(request: Request):
     import discovery
+    admin = elevator(request)
     def job():
-        if not discovery.run_elevated(optimizer.TRIM_SCRIPT, wait=True): raise RuntimeError('Conferma amministratore annullata')
+        if admin: admin.call('trim')
+        elif not discovery.run_elevated(optimizer.TRIM_SCRIPT, wait=True): raise RuntimeError('Conferma amministratore annullata')
         return 'SSD ottimizzati (TRIM eseguito)'
     try: return {'ok':True,'message':controller.run_job('trim',job)}
     except RuntimeError as ex: raise HTTPException(409,str(ex))

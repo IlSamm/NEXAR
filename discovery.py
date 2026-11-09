@@ -342,14 +342,7 @@ def build_fan_profiles(exe: str, eco_percent: int) -> tuple[dict[str, dict], lis
                 if level == 'eco': chosen.append(nick)
     return profiles, chosen
 
-def fancontrol_setup(exe: str, eco_percent: int, staging: Path) -> list[str]:
-    """Scrive i profili nella cartella protetta di Fan Control e crea le attività per cambiarli senza UAC."""
-    profiles, chosen = build_fan_profiles(exe, eco_percent)
-    if not chosen: raise RuntimeError('Nessuna ventola del case rilevata (servono i sensori collegati)')
-    for k in FAN_MANUAL: profiles[k] = profiles['normal']
-    staging.mkdir(parents=True, exist_ok=True)
-    for level, prof in profiles.items():
-        (staging / FAN_FILES[level]).write_text(json.dumps(prof, indent=2), encoding='utf-8')
+def fancontrol_script(exe: str, staging: Path) -> str:
     dest = Path(exe).parent / 'Configurations'
     script = ''.join(f"Copy-Item -LiteralPath {_q(staging / f)} -Destination {_q(dest / f)} -Force;" for f in FAN_FILES.values())
     sid = user_sid()
@@ -357,12 +350,28 @@ def fancontrol_setup(exe: str, eco_percent: int, staging: Path) -> list[str]:
         script += ''.join(f"& icacls.exe {_q(dest / FAN_FILES[k])} /grant {_q('*' + sid + ':(M)')} | Out-Null;" for k in FAN_MANUAL)
     for key, task in FAN_TASKS.items():
         script += task_script(task, exe, f'-c {FAN_FILES[key]}', at_logon=False, start=False)
-    if not run_elevated(script, wait=True): raise RuntimeError('Conferma da amministratore annullata')
+    return script
+
+def fancontrol_setup(exe: str, eco_percent: int, staging: Path, admin=None) -> list[str]:
+    """Scrive i profili nella cartella protetta di Fan Control e crea le attività per cambiarli senza UAC."""
+    profiles, chosen = build_fan_profiles(exe, eco_percent)
+    if not chosen: raise RuntimeError('Nessuna ventola del case rilevata (servono i sensori collegati)')
+    for k in FAN_MANUAL: profiles[k] = profiles['normal']
+    staging.mkdir(parents=True, exist_ok=True)
+    for level, prof in profiles.items():
+        (staging / FAN_FILES[level]).write_text(json.dumps(prof, indent=2), encoding='utf-8')
+    if admin:
+        admin.call('fans')
+        return chosen
+    if not run_elevated(fancontrol_script(exe, staging), wait=True): raise RuntimeError('Conferma da amministratore annullata')
     return chosen
 
-def winget_install(section: str) -> str:
+def winget_install(section: str, admin=None) -> str:
     pkg = WINGET.get(section)
     if not pkg: raise ValueError('Nessun pacchetto da installare')
+    if admin:
+        admin.call('install', key=section)
+        return pkg + ' installato'
     exe = shutil.which('winget')
     if not exe: raise RuntimeError('winget non disponibile: installa "Programma di installazione app" dal Microsoft Store')
     r = subprocess.run([exe, 'install', '--id', pkg, '--exact', '--source', 'winget', '--silent',
@@ -445,16 +454,18 @@ def autostart_legacy_off():
         try: link.unlink()
         except (FileNotFoundError, OSError): pass
 
-def autostart_fast() -> str:
+def autostart_fast(admin=None) -> str:
     """Una conferma amministratore: NEXAR parte appena accedi a Windows."""
     if not getattr(sys, 'frozen', False): raise RuntimeError('Si attiva dall\'app installata')
-    if not run_elevated(autostart_task_script(sys.executable), wait=True): raise RuntimeError('Conferma amministratore annullata')
+    if admin: admin.call('autostart')
+    elif not run_elevated(autostart_task_script(sys.executable), wait=True): raise RuntimeError('Conferma amministratore annullata')
     if not autostart_task_ok(): raise RuntimeError('Attività di avvio non creata')
     autostart_legacy_off()
     return 'Avvio veloce attivo: NEXAR parte appena accedi a Windows'
 
-def autostart_fast_off():
+def autostart_fast_off(admin=None):
     if os.name == 'nt' and task_exists(AUTOSTART_TASK):
+        if admin: admin.call('autostart_off'); return
         run_elevated(f"Unregister-ScheduledTask -TaskName {_q(AUTOSTART_TASK)} -Confirm:$false", wait=True)
 
 def startup_link() -> Path | None:

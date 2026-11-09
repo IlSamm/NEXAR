@@ -15,6 +15,7 @@ import threading
 import time
 import zipfile
 from pathlib import Path
+from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from version import REPO, VERSION
@@ -29,13 +30,29 @@ def parse(tag):
     m = re.fullmatch(r'v?(\d+)\.(\d+)\.(\d+)', str(tag or '').strip())
     return tuple(map(int, m.groups())) if m else None
 
+def retried(fn, tries=3, wait=4):
+    """GitHub a volte risponde 502/503/504 per qualche minuto: si riprova, poi si spiega cosa succede."""
+    for i in range(tries):
+        try: return fn()
+        except HTTPError as ex:
+            if ex.code < 500: raise
+            if i == tries - 1: raise RuntimeError(f'GitHub non risponde in questo momento (errore {ex.code}): riprova tra poco') from ex
+        except URLError as ex:
+            if i == tries - 1: raise RuntimeError('GitHub non raggiungibile: controlla la connessione e riprova') from ex
+        time.sleep(wait * (i + 1))
+
 def fetch(url, limit=2_000_000):
-    with urlopen(Request(url, headers=HEADERS), timeout=25) as r:
-        return r.read(limit)
+    def once():
+        with urlopen(Request(url, headers=HEADERS), timeout=25) as r:
+            return r.read(limit)
+    return retried(once)
 
 def download(url, dest: Path, progress=None):
     """Scarica verificando dimensione e hash. progress(fatti, totale) a ogni blocco, per la barra nella dashboard."""
     if not url.startswith('https://github.com/'): raise RuntimeError('Indirizzo di download non previsto')
+    return retried(lambda: _download_once(url, dest, progress))
+
+def _download_once(url, dest, progress):
     h = hashlib.sha256(); size = 0
     with urlopen(Request(url, headers={'User-Agent': HEADERS['User-Agent']}), timeout=60) as r, open(dest, 'wb') as f:
         total = int(r.headers.get('Content-Length') or 0)

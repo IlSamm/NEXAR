@@ -1,4 +1,4 @@
-import os
+﻿import os
 import time
 import pytest
 import optimizer
@@ -38,7 +38,7 @@ def test_clean_respects_age_skip_and_pattern(sandbox):
 
 def test_admin_items_need_pc(sandbox):
     res = optimizer.clean(['wintemp'], run_elevated=lambda *a, **k: True, allow_admin=False)
-    assert res['freed'] == 0 and 'solo dall' in res['notes'][0]
+    assert res['freed'] == 0 and 'Amministratore da remoto' in res['notes'][0]
 
 def test_unknown_key_rejected(sandbox):
     with pytest.raises(ValueError): optimizer.clean(['documenti'])

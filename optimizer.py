@@ -112,12 +112,12 @@ def _remove_empty_dirs(root):
             try: os.rmdir(dirpath)
             except OSError: pass
 
-def clean(keys, run_elevated=None, allow_admin=False):
+def clean(keys, run_elevated=None, allow_admin=False, admin=None):
     """Pulisce le voci scelte. Restituisce byte liberati e note. Le voci admin passano da run_elevated (UAC sul PC)."""
     freed, notes, wanted = 0, [], set(keys)
     known = {t['key']: t for t in targets()}
     if wanted - set(known): raise ValueError('Voce di pulizia sconosciuta')
-    admin_paths = []
+    admin_paths, admin_keys = [], []
     for key in wanted:
         t = known[key]
         if t.get('recycle'):
@@ -126,8 +126,8 @@ def clean(keys, run_elevated=None, allow_admin=False):
                 freed += size  # -2147418113 = cestino già vuoto
             continue
         if t.get('admin'):
-            if not allow_admin: notes.append(f'{t["name"]}: solo dall\'app sul PC (serve l\'amministratore)')
-            else: admin_paths += [str(p) for p in t['paths']]
+            if not allow_admin and not admin: notes.append(f'{t["name"]}: attiva Amministratore da remoto sul PC')
+            else: admin_paths += [str(p) for p in t['paths']]; admin_keys.append(key)
             continue
         if t.get('needs_closed') and browsers_open():
             notes.append(f'{t["name"]}: chiudi i browser e riprova'); continue
@@ -136,7 +136,11 @@ def clean(keys, run_elevated=None, allow_admin=False):
             except OSError: pass  # in uso: resta dov'è
         for root in t.get('paths', []):
             if Path(root).is_dir() and not t.get('pattern'): _remove_empty_dirs(root)
-    if admin_paths and run_elevated:
+    if admin_paths and admin:
+        before = sum(s for p in admin_paths for _, s in _files({'paths': [p]}))
+        admin.call('clean', keys=admin_keys)
+        freed += max(0, before - sum(s for p in admin_paths for _, s in _files({'paths': [p]})))
+    elif admin_paths and run_elevated:
         before = sum(s for p in admin_paths for _, s in _files({'paths': [p]}))
         script = ''.join(f"Get-ChildItem -LiteralPath '{p}' -Force -ErrorAction SilentlyContinue | "
                          f"Remove-Item -Recurse -Force -ErrorAction SilentlyContinue;" for p in admin_paths)
@@ -177,7 +181,7 @@ def startup_items():
                               'enabled': approved(winreg.HKEY_CURRENT_USER, 'StartupFolder', f.name), 'admin': False})
     return sorted(items, key=lambda i: i['name'].lower())
 
-def set_startup(item_id, enabled, run_elevated=None):
+def set_startup(item_id, enabled, run_elevated=None, admin=None):
     """Attiva/disattiva un programma all'avvio senza cancellarlo (si riattiva quando vuoi, come in Gestione attività)."""
     import winreg
     hive_name, sub, name = item_id.split('|', 2)
@@ -188,9 +192,10 @@ def set_startup(item_id, enabled, run_elevated=None):
         with winreg.CreateKey(winreg.HKEY_CURRENT_USER, APPROVED + '\\' + sub) as k:
             winreg.SetValueEx(k, name, 0, winreg.REG_BINARY, data)
         return True
-    if not run_elevated: raise RuntimeError('Programma di sistema: modificabile solo dall\'app sul PC')
+    if admin: return admin.call('startup', sub=sub, name=name, enabled=bool(enabled))
+    if not run_elevated: raise RuntimeError('Programma di sistema: attiva Amministratore da remoto sul PC')
     hexdata = ','.join(f'0x{b:02x}' for b in data)
-    script = (f"$p='HKLM:\\{APPROVED}\\{sub}'; New-Item -Path $p -Force | Out-Null; "
+    script = (f"$p='HKLM:\\{APPROVED}\\{sub}'; if(-not (Test-Path -LiteralPath $p)){{New-Item -Path $p -Force | Out-Null}}; "
               f"Set-ItemProperty -Path $p -Name '{name.replace(chr(39), chr(39) * 2)}' -Type Binary -Value ([byte[]]({hexdata}))")
     if not run_elevated(script, wait=True): raise RuntimeError('Conferma amministratore annullata')
     return True

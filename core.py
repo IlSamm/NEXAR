@@ -11,6 +11,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import socket
 import subprocess
 import threading
 import time
@@ -217,6 +218,8 @@ class Control:
                                             notify=lambda m: self.notify(m), log=lambda m: self.log_event(m))
         self.stopper = procstop.Stopper()
         self.ai_watch = ai_watch.AiWatch()
+        import admin_helper
+        self.admin = admin_helper.AdminHelper(DATA_DIR)
         self.remote = remote_control.Remote(lambda: self.config.get('remote_control') or {},
                                             notify=lambda m: self.notify(m), log=lambda m: self.log_event(m))
         self.devices = gateway.Devices(self.config, save=lambda: self._save_config())
@@ -608,6 +611,47 @@ class Control:
                                           bridge={'pc_port': gateway.GATEWAY_PORT, 'port': gateway.UMBREL_PORT}, wake_secret=wake)
         if not net.get('mac'): raise RuntimeError('Scheda di rete via cavo non trovata: premi "Cerca di nuovo" in Collegamenti')
         return pc_power.relay_compose(tg.get('token'), tg.get('allowed_user_id'), net['mac'], net.get('ip', ''), net.get('broadcast', '255.255.255.255'), wake_secret=wake)
+
+    def admin_setup(self):
+        """Una conferma UAC sul PC: da quel momento le azioni da amministratore funzionano anche da lontano."""
+        import admin_helper, discovery, optimizer, pc_power
+        folder = admin_helper.root()
+        exe = sys.executable
+        fan_exe = self.config.get('fans', {}).get('fancontrol_exe') or discovery.find_fancontrol()
+        clean = {t['key']: str(t['paths'][0]) for t in optimizer.targets() if t.get('admin')}
+        runner = admin_helper.runner_text(
+            DATA_DIR / 'admin-request.json', folder / 'result.json', exe, clean, discovery.WINGET,
+            fans_script=discovery.fancontrol_script(fan_exe, ROOT / 'fan_profiles') if fan_exe else '',
+            trim=optimizer.TRIM_SCRIPT, autostart=discovery.autostart_task_script(exe), approved=optimizer.APPROVED,
+            rule=gateway.FIREWALL_RULE, port=gateway.GATEWAY_PORT, autostart_task=discovery.AUTOSTART_TASK)
+        user = f"{os.environ.get('USERDOMAIN', '')}\\{os.environ.get('USERNAME', '')}".strip('\\')
+        if not discovery.run_elevated(admin_helper.setup_script(folder, runner, user), wait=True):
+            raise RuntimeError('Conferma amministratore annullata')
+        if not self.admin.active(): raise RuntimeError('Attività NEXAR Admin non creata')
+        self.log_event('🛡 Amministratore da remoto attivato')
+        return 'Amministratore da remoto attivo'
+
+    def admin_remove(self):
+        import admin_helper, discovery
+        if not discovery.run_elevated(admin_helper.remove_script(admin_helper.root()), wait=True):
+            raise RuntimeError('Conferma amministratore annullata')
+        self.log_event('🛡 Amministratore da remoto disattivato')
+        return 'Amministratore da remoto disattivato'
+
+    def umbrel_code(self):
+        """Codice da incollare una volta nell'app NEXAR su Umbrel: accensione, bot e accesso alla dashboard."""
+        import base64
+        net = self.state.get('inventory', {}).get('net') or {}
+        if not net.get('mac') or not net.get('ip'): raise RuntimeError('Scheda di rete via cavo del PC non trovata: premi "Cerca di nuovo" in Collegamenti')
+        b = getattr(self, 'beacon', None)
+        if not b: raise RuntimeError('Collegamento non disponibile')
+        tg = self.config.get('telegram', {})
+        data = {'v': 1, 'name': socket.gethostname(), 'pc_ip': net['ip'], 'pc_mac': net['mac'], 'broadcast': net.get('broadcast') or '255.255.255.255',
+                'pc_port': gateway.GATEWAY_PORT, 'wake_secret': b.secret(), 'token': self.devices.issue('Umbrel', tag='umbrel'),
+                'bot_token': tg.get('token') or '', 'user_id': tg.get('allowed_user_id') or 0}
+        b.kick.set()
+        self.log_event('🏠 Codice per l\'app su Umbrel generato')
+        return 'NEXAR1.' + base64.urlsafe_b64encode(json.dumps(data, separators=(',', ':')).encode()).decode().rstrip('=')
 
     def wake_link(self):
         """Link di accensione per il telefono: aprirlo pubblica un messaggio su ntfy che il relay su Umbrel ascolta."""
@@ -1158,14 +1202,14 @@ class Control:
         threading.Thread(target=work, daemon=True, name='job-' + name).start()
         return 'Operazione avviata'
 
-    def setup_fans(self):
+    def setup_fans(self, admin=None):
         """Crea i profili ventole PC ECO (una conferma UAC) e li collega."""
         import discovery
         cfg = self.config.get('fans', {})
         exe = cfg.get('fancontrol_exe') or discovery.find_fancontrol()
         if not exe: raise RuntimeError('Fan Control non trovato')
         percent = int(cfg.get('eco_percent', 40))
-        chosen = discovery.fancontrol_setup(exe, percent, ROOT / 'fan_profiles')
+        chosen = discovery.fancontrol_setup(exe, percent, ROOT / 'fan_profiles', admin)
         self.fans_ready_cache = (0.0, False)
         with self.lock:
             self.config.setdefault('fans', {}).update(eco_profile=discovery.FAN_FILES['eco'], normal_profile=discovery.FAN_FILES['normal'],
@@ -1367,11 +1411,12 @@ class Control:
                 'pending': plan, 'hibernate': pc_power.hibernate_available(),
                 'net': self.state.get('inventory', {}).get('net')}
 
-    def wol_setup(self):
+    def wol_setup(self, admin=None):
         import discovery
         net = self.state.get('inventory', {}).get('net') or {}
         if not net.get('name'): raise RuntimeError('Scheda di rete via cavo non trovata')
-        if not discovery.run_elevated(discovery.wol_enable_script(net['name']), wait=True): raise RuntimeError('Conferma amministratore annullata')
+        if admin: admin.call('wol', name=net['name'])
+        elif not discovery.run_elevated(discovery.wol_enable_script(net['name']), wait=True): raise RuntimeError('Conferma amministratore annullata')
         inv = discovery.hardware_inventory()
         if inv:
             with self.lock: self.state['inventory'] = inv; json_save(STATE_FILE, self.state)

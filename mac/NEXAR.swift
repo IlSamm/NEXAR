@@ -278,9 +278,9 @@ final class Model: ObservableObject {
             wakeStatus = (a["on"] as? Bool) == true ? "Umbrel vede il PC già acceso: aspetto che NEXAR risponda…"
                                                      : "Segnale inviato da Umbrel ✓ Il PC si sta accendendo: NEXAR si apre qui da sola."
         } else if local {
-            wakeStatus = "Segnale inviato nella rete di casa. Da fuori casa serve il relay su Umbrel aggiornato (NEXAR sul PC → Accensione → Copia configurazione)."
+            wakeStatus = "Segnale inviato nella rete di casa. Da fuori casa serve l'app NEXAR su Umbrel: installala dal tuo store e premi Collega Umbrel in NEXAR sul PC."
         } else {
-            wakeStatus = "Non sono riuscito a inviare il segnale: controlla la connessione e che il relay su Umbrel sia acceso."
+            wakeStatus = "Non sono riuscito a inviare il segnale: controlla la connessione e che l'app NEXAR su Umbrel sia accesa."
         }
         retry?.cancel()
         retry = Task { [weak self] in

@@ -46,6 +46,10 @@ def pin_ok(pin: str, stored: str) -> bool:
     return hmac.compare_digest(test, digest)
 
 
+class NeedPin(PermissionError):
+    pass
+
+
 def valid_pin(pin) -> bool:
     return isinstance(pin, str) and len(pin) == 6 and pin.isdigit() and len(set(pin)) > 1 and pin not in ('123456', '654321')
 
@@ -396,23 +400,31 @@ class Remote:
         if s: out['session'] = {'who': s['who'], 'since_s': round(self.clock() - s['started']), 'idle_s': round(self.clock() - s['last_input'])}
         return out
 
-    # avvio con PIN
-    def start(self, pin, who='dashboard'):
+    def check_pin(self, pin):
+        """PIN unico: controllo remoto e operazioni protette contano gli stessi tentativi.
+        NeedPin = si può chiedere (di nuovo) il PIN; PermissionError semplice = inutile riprovare ora."""
         c = self.get_cfg() or {}
-        if not c.get('enabled'): raise PermissionError('Controllo remoto spento: si accende dal PC (Schermo → Controllo e privacy)')
         if not c.get('pin_hash'): raise PermissionError('Scegli prima il PIN dal PC')
         now = self.clock()
         if self.locked_until > now:
             raise PermissionError(f'Troppi PIN sbagliati: riprova tra {max(1, round((self.locked_until - now) / 60))} min')
-        if not pin_ok(str(pin or ''), c['pin_hash']):
+        if not pin: raise NeedPin('Serve il PIN')
+        if not pin_ok(str(pin), c['pin_hash']):
             self.fails += 1
             if self.fails >= MAX_FAILS:
                 self.fails, self.locked_until = 0, now + LOCK_SECONDS
-                self.notify(f'⚠️ Controllo remoto: {MAX_FAILS} PIN sbagliati. Bloccato per 15 minuti. Se non eri tu, cambia il PIN dal PC.')
-                self.log('🖱 Controllo remoto bloccato: troppi PIN sbagliati')
+                self.notify(f'⚠️ NEXAR: {MAX_FAILS} PIN sbagliati. Bloccato per 15 minuti. Se non eri tu, cambia il PIN dal PC.')
+                self.log('🖱 PIN bloccato: troppi tentativi sbagliati')
                 raise PermissionError('Troppi PIN sbagliati: bloccato per 15 minuti')
-            raise PermissionError(f'PIN sbagliato ({MAX_FAILS - self.fails} tentativi rimasti)')
+            raise NeedPin(f'PIN sbagliato ({MAX_FAILS - self.fails} tentativi rimasti)')
         self.fails = 0
+
+    # avvio con PIN
+    def start(self, pin, who='dashboard'):
+        c = self.get_cfg() or {}
+        if not c.get('enabled'): raise PermissionError('Controllo remoto spento: accendilo da Schermo → Controllo e privacy')
+        self.check_pin(str(pin or '') or '-')
+        now = self.clock()
         if self.session: self.end(reason='sostituita da una nuova sessione', quiet=True)
         mons = self._mons()
         token = secrets.token_urlsafe(32)

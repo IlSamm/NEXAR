@@ -21,6 +21,11 @@ const DEV_KEY='nexar.device';
 function devGet(){try{return localStorage.getItem(DEV_KEY)||'';}catch(e){return '';}}
 function devSet(v){try{v?localStorage.setItem(DEV_KEY,v):localStorage.removeItem(DEV_KEY);}catch(e){}}
 let key=sessionStorage.getItem('pc_eco_key')||devGet();
+if(window.NEXAR_PROXY&&!key)key='umbrel';   // aperta da Umbrel: il token lo aggiunge l'app su Umbrel, dopo il suo login
+// il logo si disegna solo quando l'immagine è pronta (altrimenti con la rete lenta l'animazione girava a vuoto)
+let splashGo=0;
+(()=>{const s=document.getElementById('splash');if(!s)return;const go=()=>{if(splashGo)return;splashGo=performance.now();s.classList.add('go');};
+ const i=new Image();i.onload=()=>(i.decode?i.decode().catch(()=>{}):Promise.resolve()).then(go);i.onerror=go;i.src='/assets/logo.png';setTimeout(go,1500);})();
 // Dentro l'app NEXAR per Mac: avvisa l'app quando il PC non risponde o il Mac va ricollegato.
 function macApp(msg){try{const h=window.webkit&&window.webkit.messageHandlers&&window.webkit.messageHandlers.nexar;if(h){h.postMessage(msg);return true;}}catch(e){}return false;}
 const initialHash=location.hash.match(/^#access=([A-Za-z0-9_-]{28,})$/);
@@ -135,14 +140,19 @@ function topNote(o={}){
  return h;
 }
 function loginScreen(show){$('auth-screen').hidden=!show;$('app-shell').hidden=show;if(show)hideSplash();}
+// Da lontano le operazioni delicate chiedono il PIN del controllo remoto; resta in memoria 10 minuti.
+let adminPin='',adminPinAt=0,pinWait=null;
+function askPin(err){return new Promise(res=>{pinWait=res;pinSheet('admin');$('rc-pin-err').textContent=err||'';});}
 async function req(path,method='GET',data){
  const headers=tgInit?{'X-TG-Init-Data':tgInit}:{'X-PC-ECO-Key':key};if(data!==undefined)headers['Content-Type']='application/json';
+ const hadPin=adminPin&&Date.now()-adminPinAt<6e5;if(hadPin)headers['X-Admin-Pin']=adminPin;
  const ctrl=new AbortController();const t=setTimeout(()=>ctrl.abort(),15000);
  try{
   const r=await fetch(path,{method,headers,body:data===undefined?undefined:JSON.stringify(data),signal:ctrl.signal,cache:'no-store'});
   if(r.status===401&&tgInit)throw new Error('Questo account Telegram non è abbinato al PC.');
   if(r.status===401){const was=key&&key===devGet();sessionStorage.removeItem('pc_eco_key');if(was){devSet('');macApp('unpaired');}key='';loginScreen(true);
    throw new Error(was?'Questo dispositivo è stato scollegato dal PC: collegalo di nuovo con un codice.':'Chiave di accesso non valida.');}
+  if(r.status===403&&r.headers.get('x-need-pin')){const o=await r.json().catch(()=>({}));adminPin='';const p=await askPin(hadPin?o.detail:'');if(!p)throw new Error('Operazione annullata');adminPin=p;adminPinAt=Date.now();return req(path,method,data);}
   if(r.status===503&&!path.startsWith('/__')){let o={};try{o=await r.clone().json();}catch(e){}if(o.off){if(!macApp('check'))location.reload();throw new Error(o.detail);}}
   if(r.status>=520&&r.status<=530)macApp('check');   // tunnel Cloudflare caduto: l'app per Mac cerca il nuovo indirizzo
   const obj=await r.json();if(!r.ok)throw new Error(obj.detail||'Errore di comunicazione');return obj;
@@ -323,7 +333,7 @@ function render(s){
  ['fans-eco','fans-normal','q-fans-eco','q-fans-normal'].forEach(id=>$(id).disabled=!s.fans_enabled);
  ['fans-off','fans-max'].forEach(id=>$(id).disabled=!s.fans_enabled||!s.fans_levels_ready);
  ['off','eco','normal','max'].forEach(l=>$('fans-'+l).classList.toggle('selected',s.fans_level===l));
- const upgrade=s.fans_enabled&&!s.remote&&(!s.fans_levels_ready||s.fans_profiles_outdated);$('fans-upgrade').hidden=!upgrade;
+ const upgrade=s.fans_enabled&&(!s.fans_levels_ready||s.fans_profiles_outdated);$('fans-upgrade').hidden=!upgrade;
  $('fans-upgrade-title').textContent=s.fans_levels_ready?'Nuovo Massimo: tutte le ventole al 100%':'Nuovi profili Spente e Massimo';
  const fanN=(s.fans||[]).filter(f=>f.rpm>0).length;
  $('cool-title').textContent=!s.fans_enabled?'Gestione del BIOS':{off:'Ventole spente',eco:'Profilo silenzioso',max:'Tutte al massimo'}[s.fans_level]||'Profilo normale';
@@ -426,7 +436,9 @@ function demoUpdate(v){
 let splashGone=false;
 function hideSplash(){
  if(splashGone)return;splashGone=true;
- setTimeout(()=>{$('splash').classList.add('gone');setTimeout(()=>$('splash').remove(),600);},Math.max(0,(tgInit?700:2100)-performance.now()));   // il tempo di vedere la N dipinta
+ const out=()=>{$('splash').classList.add('gone');setTimeout(()=>$('splash').remove(),600);};
+ // la N finisce di dipingersi sempre, poi sparisce
+ const wait=()=>{if(!splashGo){setTimeout(wait,60);return;}setTimeout(out,Math.max(0,1500-(performance.now()-splashGo)));};wait();
 }
 function renderFans(fans){
  const box=$('fan-list');
@@ -772,11 +784,39 @@ document.querySelectorAll('#sched-kind button').forEach(b=>b.addEventListener('c
 document.querySelectorAll('#sched-chips button').forEach(b=>b.addEventListener('click',()=>powerAction(schedKind,Number(b.dataset.minutes))));
 $('sched-ai').addEventListener('click',()=>powerAction(schedKind,0,true));
 $('wol-enable').addEventListener('click',()=>post('/api/power/wol',{}));
+// app NEXAR su Umbrel: un codice da incollare una volta sola
+$('umbrel-link').addEventListener('click',async()=>{
+ const b=$('umbrel-link');b.disabled=true;
+ try{
+  const r=demo?{code:'NEXAR1.anteprima',url:'#',firewall:true}:await req('/api/umbrel/link','POST',{});
+  $('umbrel-code').textContent=r.code;$('umbrel-open').href=r.url;$('umbrel-box').hidden=false;
+  try{await navigator.clipboard.writeText(r.code);notify('Codice copiato: apri NEXAR su Umbrel e incollalo.');}catch(e){notify('Copia il codice e incollalo in NEXAR su Umbrel.');}
+  if(!r.firewall&&!current?.remote)notify('Conferma la richiesta di Windows: permette solo a Umbrel di aprire la dashboard.');
+ }catch(ex){notify('⚠ '+ex.message,true);}finally{b.disabled=false;}
+});
+$('umbrel-copy').addEventListener('click',async()=>{try{await navigator.clipboard.writeText($('umbrel-code').textContent);notify('Codice copiato');}catch(e){notify('Copia non riuscita: selezionalo a mano.',true);}});
 $('relay-show').addEventListener('click',async()=>{
  if(demo){notify('Anteprima: non disponibile.');return;}
  try{const r=await req('/api/power/relay');$('relay-text').textContent=r.compose;
   $('relay-warn').textContent=r.compose.includes('BOT_TOKEN')?'Contiene il token del bot e la chiave di accensione: incollalo solo nel tuo Umbrel.':'Contiene la chiave di accensione: incollalo solo nel tuo Umbrel.';
   $('relay-box').hidden=false;}catch(ex){notify('⚠ '+ex.message,true);}
+});
+// operazioni da amministratore anche da lontano (una conferma sul PC, poi basta il PIN)
+let adminInfo=null;
+async function loadAdmin(){
+ if(demo)adminInfo=adminInfo||{active:false,local:true,supported:true};else{try{adminInfo=await req('/api/admin');}catch(ex){return;}}
+ const a=adminInfo,b=$('admin-toggle');
+ $('admin-text').textContent=a.active?'Attivo: pulizie di Windows, TRIM, installazioni, firewall e Wake-on-LAN funzionano anche da lontano, con il PIN.'
+  :a.local?'Una conferma qui sul PC e le operazioni da amministratore funzioneranno anche da lontano, protette dal PIN.':'Si attiva una sola volta dall\'app sul PC.';
+ b.textContent=a.active?'Disattiva':'Attiva';b.classList.toggle('primary',!a.active);
+ b.hidden=!a.local||!a.supported;
+}
+$('admin-toggle').addEventListener('click',async()=>{
+ const on=!adminInfo?.active;
+ if(demo){adminInfo={...adminInfo,active:on};loadAdmin();return;}
+ notify('Conferma la richiesta di Windows sullo schermo del PC.');
+ try{const r=await req('/api/admin/setup','POST',{enabled:on});notify('✓ '+r.message);}catch(ex){notify('⚠ '+ex.message,true);}
+ [3000,8000,16000].forEach(ms=>setTimeout(loadAdmin,ms));
 });
 let wakeLink='';
 async function loadWakeLink(){
@@ -987,7 +1027,7 @@ function renderClean(d){
  const max=Math.max(1,...rep.items.map(i=>i.bytes));
  rep.items.forEach((i,k)=>{
   const row=el('label','clean-row'+(i.bytes?'':' empty'));row.style.setProperty('--i',k);const cb=el('input');cb.type='checkbox';cb.value=i.key;
-  const blocked=(i.admin&&current?.remote)||i.note.startsWith('chiudi');
+  const blocked=(i.admin&&current?.remote&&!adminInfo?.active)||i.note.startsWith('chiudi');
   cb.checked=i.bytes>0&&!i.permanent&&!i.admin&&!blocked;cb.disabled=!i.bytes||blocked;cb.addEventListener('change',updateSelected);
   const ico=el('span','clean-ico');ico.append(icon(CLEAN_ICO[i.key]||'clean'));
   const t=el('div');const name=el('b','',i.name);
@@ -1015,14 +1055,14 @@ function renderStartup(items){
   const row=el('div','startup-row');const ic=el('span','app-ico',initials(i.name));ic.style.setProperty('--h',hue(i.name));
   const t=el('div');t.append(el('b','',i.name),el('small','',i.scope+(i.admin?' · serve admin':'')));
   const tg=el('button','toggle');tg.type='button';tg.setAttribute('role','switch');tg.setAttribute('aria-checked',i.enabled?'true':'false');tg.setAttribute('aria-label','Avvio di '+i.name);tg.append(el('span'));
-  tg.disabled=i.admin&&!!current?.remote;
+  tg.disabled=i.admin&&!!current?.remote&&!adminInfo?.active;
   tg.addEventListener('click',async e=>{e.stopPropagation();if(demo){notify('Anteprima: comando non attivo.');return;}
    if(tg.dataset.busy)return;tg.dataset.busy='1';tg.disabled=true;const want=!i.enabled;
    tg.setAttribute('aria-checked',want?'true':'false');   // si vede subito sulla riga premuta
    try{const r=await req('/api/optimize/startup','POST',{id:i.id,enabled:want});i.enabled=want;notify('✓ '+r.message);
     $('opt-startup-sub').textContent=`${items.filter(x=>x.enabled).length} attivi su ${items.length}: meno programmi = Windows parte prima`;}
    catch(ex){tg.setAttribute('aria-checked',i.enabled?'true':'false');notify('⚠ '+ex.message,true);}
-   finally{delete tg.dataset.busy;tg.disabled=i.admin&&!!current?.remote;}});
+   finally{delete tg.dataset.busy;tg.disabled=i.admin&&!!current?.remote&&!adminInfo?.active;}});
   row.dataset.id=i.id;row.append(ic,t,tg);st.append(row);
  });
 }
@@ -2073,8 +2113,8 @@ function renderRemote(){
  $('rc-enabled').setAttribute('aria-checked',i.enabled?'true':'false');
  $('rc-note').textContent=i.locked_for?`Bloccato per troppi PIN sbagliati: ancora ${Math.ceil(i.locked_for/60)} min`
   :i.active?'Qualcuno sta usando il PC da lontano':i.enabled?(i.pin_set?'Acceso: collegati da dove vuoi':'Acceso, ma manca il PIN')
-  :local?(i.pin_set?'Spento: accendilo per usarlo da lontano':'Scegli un PIN, poi accendilo'):'Spento: si accende dal PC, per sicurezza';
- $('rc-setup').hidden=!local;$('rc-pin-set').querySelector('span').textContent=i.pin_set?'Cambia il PIN':'Scegli il PIN';
+  :i.pin_set?'Spento: accendilo per usarlo da lontano':local?'Scegli un PIN, poi accendilo':'Manca il PIN: si sceglie la prima volta dal PC';
+ $('rc-setup').hidden=!local&&!i.pin_set;$('rc-pin-set').querySelector('span').textContent=i.pin_set?'Cambia il PIN':'Scegli il PIN';
  $('rc-idle').value=String(i.idle_minutes||10);
  $('rc-live').hidden=!i.active;
  if(i.active&&i.session)$('rc-live-sub').textContent=`Da ${i.session.who} · da ${Math.max(1,Math.round(i.session.since_s/60))} min`;
@@ -2082,23 +2122,24 @@ function renderRemote(){
  const st=i.active?'live':i.locked_for?'locked':!i.enabled?'off':!i.pin_set?'pin':'ready';
  $('rc-panel').dataset.state=st;
  $('rc-state').textContent={live:'In uso',locked:'Bloccato',off:'Spento',pin:'Manca il PIN',ready:'Pronto'}[st];
- $('rc-take').querySelector('span').textContent=st==='live'?'Riprendi il controllo':!i.enabled&&local?'Accendi e collegati':'Prendi il controllo';
+ $('rc-take').querySelector('span').textContent=st==='live'?'Riprendi il controllo':!i.enabled&&(local||i.pin_set)?'Accendi e collegati':'Prendi il controllo';
  $('rc-fact-idle').textContent=`Si chiude da sola dopo ${i.idle_minutes||10} min senza comandi`;
 }
 async function rcSetup(body){
  if(demo){Object.assign(DEMO_RC,body.enabled!==undefined?{enabled:body.enabled}:{},body.pin?{pin_set:true}:{},body.idle_minutes?{idle_minutes:body.idle_minutes}:{});rcInfo={...DEMO_RC};renderRemote();return true;}
- try{const r=await rcPost('/api/remote/setup',body);rcInfo={...r.info,local:true};renderRemote();notify('✓ '+r.message);return true;}catch(ex){notify('⚠ '+ex.message,true);return false;}
+ try{const r=await req('/api/remote/setup','POST',body);rcInfo={...r.info,local:!!rcInfo?.local};renderRemote();notify('✓ '+r.message);return true;}catch(ex){notify('⚠ '+ex.message,true);return false;}
 }
 function pinSheet(mode){
  // mode: 'enter' = entra con il PIN, 'set' = scegli un PIN nuovo (solo dal PC)
  const d=$('rc-pin'),a=$('rc-pin-in'),b=$('rc-pin-in2');a.value='';b.value='';$('rc-pin-err').textContent='';
- b.hidden=mode!=='set';$('rc-pin-title').textContent=mode==='set'?'Scegli il PIN':'PIN del controllo remoto';
- $('rc-pin-text').textContent=mode==='set'?'6 cifre, non tutte uguali. Servirà ogni volta che controlli il PC da lontano: non usare quello di Windows.':'Inserisci il PIN di 6 cifre scelto sul PC.';
- $('rc-pin-ok').textContent=mode==='set'?'Salva':'Entra';d.dataset.mode=mode;d.showModal();setTimeout(()=>a.focus(),60);
+ b.hidden=mode!=='set';$('rc-pin-title').textContent=mode==='set'?'Scegli il PIN':mode==='admin'?'Conferma con il PIN':'PIN del controllo remoto';
+ $('rc-pin-text').textContent=mode==='set'?'6 cifre, non tutte uguali. Servirà ogni volta che controlli il PC da lontano: non usare quello di Windows.':mode==='admin'?'Stai facendo un\'operazione delicata da lontano: serve il PIN di 6 cifre del controllo remoto.':'Inserisci il PIN di 6 cifre scelto sul PC.';
+ $('rc-pin-ok').textContent=mode==='set'?'Salva':mode==='admin'?'Conferma':'Entra';d.dataset.mode=mode;d.showModal();setTimeout(()=>a.focus(),60);
 }
 async function pinSubmit(){
  const d=$('rc-pin'),pin=$('rc-pin-in').value.trim(),err=$('rc-pin-err');
  if(!/^\d{6}$/.test(pin)){err.textContent='Servono 6 cifre';return;}
+ if(d.dataset.mode==='admin'){const f=pinWait;pinWait=null;d.close();f&&f(pin);return;}
  if(d.dataset.mode==='set'){
   if(pin!==$('rc-pin-in2').value.trim()){err.textContent='I due PIN non sono uguali';return;}
   if(await rcSetup({pin,enabled:true}))d.close();return;
@@ -2112,15 +2153,17 @@ async function pinSubmit(){
 }
 $('rc-pin-ok').addEventListener('click',pinSubmit);
 $('rc-pin-cancel').addEventListener('click',()=>$('rc-pin').close());
+$('rc-pin').addEventListener('close',()=>{if(pinWait){const f=pinWait;pinWait=null;f('');}});
 ['rc-pin-in','rc-pin-in2'].forEach(id=>$(id).addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();pinSubmit();}}));
 $('rc-take').addEventListener('click',()=>{
  const i=rcInfo||{};
- if(!i.enabled){if(i.local){i.pin_set?rcSetup({enabled:true}).then(ok=>ok&&pinSheet('enter')):pinSheet('set');}
-  else notify('Il controllo remoto è spento: si accende dal PC, in Schermo → Controllo e privacy.',true);return;}
+ if(!i.enabled){if(i.pin_set)rcSetup({enabled:true}).then(ok=>{if(!ok)return;if(adminPin&&!i.local)rcPost('/api/remote/start',{pin:adminPin}).then(rcOpen).catch(()=>pinSheet('enter'));else pinSheet('enter');});
+  else if(i.local)pinSheet('set');
+  else notify('Il PIN si sceglie la prima volta dal PC, in Schermo → Controllo e privacy.',true);return;}
  pinSheet('enter');
 });
 $('rc-enabled').addEventListener('click',e=>{e.preventDefault();const on=$('rc-enabled').getAttribute('aria-checked')!=='true';
- if(!rcInfo?.local){if(on){notify('Per sicurezza il controllo remoto si accende solo dal PC.',true);return;}
+ if(!rcInfo?.local){if(on){if(!rcInfo?.pin_set){notify('Il PIN si sceglie la prima volta dal PC.',true);return;}rcSetup({enabled:true});return;}
   (demo?Promise.resolve({info:{...DEMO_RC,enabled:false}}):rcPost('/api/remote/off',{})).then(r=>{rcInfo={...r.info,local:false};renderRemote();notify('✓ Controllo remoto spento');}).catch(ex=>notify('⚠ '+ex.message,true));return;}
  if(on&&!rcInfo.pin_set){pinSheet('set');return;}rcSetup({enabled:on});});
 $('rc-pin-set').addEventListener('click',()=>pinSheet('set'));
@@ -2973,4 +3016,11 @@ function setupWinbar(){
 }
 addEventListener('pywebviewready',setupWinbar);
 if(window.pywebview?.api)setupWinbar();
+// barra laterale a sole icone: il nome della pagina compare passandoci sopra
+(()=>{const tip=el('div','nav-tip');document.body.append(tip);
+ document.querySelectorAll('.rail-nav button[data-view]').forEach(b=>{const name=(b.textContent||'').trim();if(!name)return;b.setAttribute('aria-label',name);
+  b.addEventListener('pointerenter',e=>{if(e.pointerType!=='mouse'||b.getBoundingClientRect().width>120)return;const r=b.getBoundingClientRect();tip.textContent=name;tip.style.left=r.right+10+'px';tip.style.top=r.top+r.height/2-16+'px';tip.classList.add('on');});
+  b.addEventListener('pointerleave',()=>tip.classList.remove('on'));b.addEventListener('click',()=>tip.classList.remove('on'));});})();
+if(window.NEXAR_PROXY)$('logout').hidden=true;
+if(demo||key||tgInit)setTimeout(loadAdmin,400);
 })();
