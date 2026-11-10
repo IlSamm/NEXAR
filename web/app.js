@@ -200,6 +200,7 @@ function navigate(view){
  if(curView!==view)pageScan();curView=view;setZone();syncTelegram();
  document.querySelectorAll('.page.active .tabs').forEach(inkTabs);
  $('page-title').textContent=titles[view][0];$('page-desc').textContent=view==='home'?greeting():titles[view][1];
+ pageIcon(view);
  window.scrollTo({top:0});
 }
 function setBar(id,v,max=100){const p=typeof v==='number'?Math.max(0,Math.min(100,v/max*100)):0;$(id).style.width=p+'%';
@@ -1325,6 +1326,12 @@ document.addEventListener('click',e=>{
 },{passive:true});
 // Barra laterale ridotta a sole icone (ricordata su questo dispositivo).
 document.querySelectorAll('.rail-nav button').forEach(b=>{b.dataset.label=b.textContent.trim();b.setAttribute('aria-label',b.dataset.label);});
+function pageIcon(view){
+ // Nell'intestazione: l'icona della pagina, dello stesso colore della voce nella barra laterale.
+ const nb=document.querySelector(`.rail-nav [data-view="${view}"]`),u=nb?.querySelector('use')?.getAttribute('href'),box=$('page-ico');
+ if(!box||!u)return;box.querySelector('use').setAttribute('href',u);
+ const c=getComputedStyle(nb).getPropertyValue('--c').trim();if(c)box.style.setProperty('--pc',c);
+}
 function setZone(){
  // Il colore di sfondo, titoli e menu segue la sezione (in Home segue la modalità).
  const z=curView==='gaming'||curView==='optimize'?curView:curView==='home'&&current?.mode&&current.mode!=='normal'?current.mode:'';

@@ -3223,3 +3223,47 @@ button.au-q:hover{border-color:rgba(251,191,36,.4)}
  .in-desktop .winbar.scrolled{background:transparent;backdrop-filter:none;-webkit-backdrop-filter:none;box-shadow:none}
 }
 .in-telegram .main>.top{position:static;backdrop-filter:none;-webkit-backdrop-filter:none;background:none}
+/* ---------- 1.0.55 · barra laterale nuova (sempre solo icone) e ritocchi generali ---------- */
+@media (min-width:761px){
+ .app.rail-mini{--rail-w:96px;grid-template-columns:var(--rail-w) minmax(0,1fr)}
+ .rail-mini .rail{position:sticky;top:14px;align-self:start;height:calc(100vh - 28px);margin:14px 0 14px 14px;padding:16px 0 14px;
+  display:flex;flex-direction:column;align-items:center;overflow:visible;border-radius:28px;z-index:40;
+  background:linear-gradient(180deg,rgba(24,28,39,.86),rgba(12,14,20,.9));border:1px solid rgba(255,255,255,.075);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.06),0 30px 60px -30px rgba(0,0,0,.95);backdrop-filter:blur(22px) saturate(150%);-webkit-backdrop-filter:blur(22px) saturate(150%)}
+ .rail-mini .brand{width:100%;justify-content:center;padding:0 0 14px;margin:0 0 6px;border:0}
+ .rail-mini .brand img{width:42px;height:42px}
+ .rail-mini .rail-nav{display:flex;flex-direction:column;align-items:center;gap:5px;width:100%}
+ .rail-mini .nav-sec{display:block;width:30px;padding:7px 0;font-size:0}
+ .rail-mini .nav-sec::after{margin:0;height:1px;border-radius:1px;background:rgba(255,255,255,.09)}
+ .rail-mini .rail-nav button{width:52px;height:52px;padding:0;border-radius:17px;justify-content:center;background:transparent!important;box-shadow:none!important;transition:background .2s,transform .2s}
+ .rail-mini .rail-nav button:hover{background:color-mix(in srgb,var(--c) 15%,transparent)!important}
+ .rail-mini .rail-nav button:active{transform:scale(.94)}
+ .rail-mini .nav-ico{width:52px;height:52px;border-radius:17px;display:grid;place-items:center;transition:background .25s,box-shadow .25s}
+ .rail-mini .nav-ico .i{width:22px;height:22px;stroke-width:1.9;color:color-mix(in srgb,var(--c) 50%,#97a1b2)!important}
+ .rail-mini .rail-nav button:hover .nav-ico .i{color:color-mix(in srgb,var(--c) 70%,#fff)!important}
+ .rail-mini .rail-nav button.active .nav-ico{background:linear-gradient(145deg,color-mix(in srgb,var(--c) 88%,#fff),color-mix(in srgb,var(--c) 58%,#000))!important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.32),0 10px 26px -8px var(--c)!important}
+ .rail-mini .rail-nav button.active .nav-ico .i{color:#fff!important}
+ .rail-mini .rail-nav button.active::before{display:block!important;content:"";position:absolute;left:-14px;top:15px;bottom:15px;width:4px;border-radius:0 4px 4px 0;background:var(--c);box-shadow:0 0 14px var(--c)}
+ .rail-mini .rail-nav button:hover::after{content:attr(data-label);position:absolute;left:calc(100% + 18px);top:50%;transform:translateY(-50%);padding:7px 12px;border-radius:11px;
+  background:#1c2230;border:1px solid rgba(255,255,255,.1);color:#fff;font-size:13px;font-weight:650;white-space:nowrap;pointer-events:none;z-index:60;
+  box-shadow:0 14px 34px -12px rgba(0,0,0,.9);animation:railTip .16s ease-out}
+ .rail-mini .rail-nav .badge{top:6px;right:6px;box-shadow:0 0 0 3px #151924}
+ .in-desktop .winbar{left:var(--rail-w,96px)}
+ .top-ico{flex:none;width:42px;height:42px;border-radius:14px;display:grid;place-items:center;color:#fff;
+  background:linear-gradient(145deg,color-mix(in srgb,var(--pc,#3b82f6) 88%,#fff),color-mix(in srgb,var(--pc,#3b82f6) 58%,#000));
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.3),0 10px 24px -10px var(--pc,#3b82f6);transition:background .3s,box-shadow .3s}
+ .top-ico .i{width:21px;height:21px}
+ .main>.top{padding-left:28px}
+}
+@media (min-width:761px) and (max-height:760px){
+ .rail-mini .rail-nav{gap:2px}.rail-mini .rail-nav button,.rail-mini .nav-ico{width:46px;height:46px;border-radius:15px}
+ .rail-mini .nav-sec{padding:4px 0}.rail-mini .rail-nav button.active::before{left:-17px}
+}
+@keyframes railTip{from{opacity:0;transform:translate(-6px,-50%)}to{opacity:1;transform:translate(0,-50%)}}
+.top-ico{display:none}
+@media (min-width:761px){.top-ico{display:grid}}
+/* titolo pulito, senza sfumatura a metà parola */
+.top h1{background:none!important;-webkit-text-fill-color:currentColor;color:var(--text)!important;font-weight:750!important;letter-spacing:-.02em}
+/* sfondo più calmo: le luci colorate restano ma non coprono le schede */
+.aurora i{opacity:.42}

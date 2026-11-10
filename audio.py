@@ -314,7 +314,7 @@ def apo_write(boosts: dict, cfg_dir: str):
     with open(main, 'w', encoding='utf-8') as h: h.write(new)
 
 
-def _runas(exe, args='', hidden=False, wait=True):
+def _runas(exe, args='', hidden=False, wait=True, cwd=None):
     """Avvia con la finestra di conferma di Windows (UAC). False se l'utente dice di no."""
     class SEI(ctypes.Structure):
         _fields_ = [('cbSize', wintypes.DWORD), ('fMask', c_ulong), ('hwnd', wintypes.HWND), ('lpVerb', wintypes.LPCWSTR),
@@ -322,6 +322,7 @@ def _runas(exe, args='', hidden=False, wait=True):
                     ('nShow', ctypes.c_int), ('hInstApp', wintypes.HINSTANCE), ('lpIDList', c_void_p), ('lpClass', wintypes.LPCWSTR),
                     ('hkeyClass', wintypes.HKEY), ('dwHotKey', wintypes.DWORD), ('hIcon', wintypes.HANDLE), ('hProcess', wintypes.HANDLE)]
     s = SEI(); s.cbSize = ctypes.sizeof(SEI); s.fMask = 0x40; s.lpVerb = 'runas'; s.lpFile = exe; s.lpParameters = args
+    if cwd: s.lpDirectory = cwd
     s.nShow = 0 if hidden else 1
     if not ctypes.windll.shell32.ShellExecuteExW(byref(s)): return False
     if wait and s.hProcess:
@@ -372,8 +373,9 @@ class Installer:
             # una conferma sola: installazione silenziosa e poi la finestra per scegliere cuffie e microfono
             pf = os.environ.get('ProgramW6432') or os.environ.get('ProgramFiles') or r'C:\Program Files'
             sel = os.path.join(pf, 'EqualizerAPO')
-            cmd = (f'/c "start "" /wait "{dest}" /S & if exist "{sel}\\DeviceSelector.exe" (start "" "{sel}\\DeviceSelector.exe") '
-                   f'else if exist "{sel}\\Configurator.exe" (start "" "{sel}\\Configurator.exe")"')
+            # DeviceSelector cerca i suoi file Qt nella cartella da cui parte: va avviato da lì (/D)
+            cmd = (f'/c "start "" /wait "{dest}" /S & if exist "{sel}\\DeviceSelector.exe" (start "" /D "{sel}" "{sel}\\DeviceSelector.exe") '
+                   f'else if exist "{sel}\\Configurator.exe" (start "" /D "{sel}" "{sel}\\Configurator.exe")"')
             if not self.runas(os.path.join(os.environ.get('SystemRoot', r'C:\Windows'), 'System32', 'cmd.exe'), cmd, True):
                 raise RuntimeError('Installazione annullata: serve il sì nella finestra di Windows')
             self.state.update(step='select')
@@ -392,7 +394,11 @@ def _sha(path):
 def open_selector():
     tool = apo_tool()
     if not tool: raise RuntimeError("L'amplificatore non è installato")
-    if not _runas(tool, wait=False): raise RuntimeError('Annullato: serve il sì nella finestra di Windows')
+    folder = os.path.dirname(tool)
+    # avviato dalla sua cartella, altrimenti Qt non trova i plugin ("no Qt platform plugin")
+    cmd = os.path.join(os.environ.get('SystemRoot', r'C:\Windows'), 'System32', 'cmd.exe')
+    if not _runas(cmd, f'/c "cd /d "{folder}" && start "" /D "{folder}" "{tool}""', True, wait=False, cwd=folder):
+        raise RuntimeError('Annullato: serve il sì nella finestra di Windows')
 
 
 # ---------------------------------------------------------------- abbassamento durante le chiamate

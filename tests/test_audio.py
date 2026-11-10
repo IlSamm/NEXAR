@@ -61,6 +61,7 @@ def test_installer_runs_only_the_official_file(tmp_path, monkeypatch):
     assert inst.info()['step'] == 'select' and len(asked) == 1
     exe, args, hidden = asked[0]
     assert exe.lower().endswith('cmd.exe') and hidden and '/S' in args and 'DeviceSelector.exe' in args
+    assert '/D "' in args          # parte dalla sua cartella, se no Qt non trova i plugin
     bad, asked = _setup(tmp_path / 'x', monkeypatch, b'cattivo')
     assert bad.info()['step'] == 'error' and 'ufficiale' in bad.info()['error'] and asked == []
     assert not os.path.exists(tmp_path / 'x' / audio.APO_SETUP['name'])
@@ -104,3 +105,12 @@ def test_endpoints_and_install_only_from_the_pc(monkeypatch):
     far = TestClient(main.app, client=('203.0.113.9', 1000))
     r = far.post('/api/audio/install', json={}, headers=h)
     assert r.status_code == 409 and 'dal PC' in r.json()['detail']
+
+
+def test_selector_starts_from_its_own_folder(monkeypatch):
+    seen = []
+    monkeypatch.setattr(audio, 'apo_tool', lambda: r'C:\Program Files\EqualizerAPO\DeviceSelector.exe')
+    monkeypatch.setattr(audio, '_runas', lambda exe, args='', hidden=False, wait=True, cwd=None: seen.append((exe, args, cwd)) or True)
+    audio.open_selector()
+    exe, args, cwd = seen[0]
+    assert cwd == r'C:\Program Files\EqualizerAPO' and 'cd /d "C:\Program Files\EqualizerAPO"' in args and args.endswith('DeviceSelector.exe""')
