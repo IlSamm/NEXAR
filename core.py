@@ -117,13 +117,13 @@ def gpu_read():
 def collect_sensors(url: str):
     # URL di telemetria solo su loopback: nessun SSRF da configurazioni remote.
     if url not in ('http://127.0.0.1:8085/data.json', 'http://localhost:8085/data.json'):
-        return {'cpu_temp':None,'fans':[],'cpu_power':None,'temp_ids':{}}
+        return {'cpu_temp':None,'fans':[],'cpu_power':None,'temp_ids':{},'temps':[]}
     try:
         with urlopen(url, timeout=0.6) as response:
             if int(response.headers.get('Content-Length', 0)) > 1_000_000: raise ValueError('JSON troppo grande')
             tree = json.loads(response.read(1_000_001))
     except Exception:
-        return {'cpu_temp':None,'fans':[],'cpu_power':None,'temp_ids':{}}
+        return {'cpu_temp':None,'fans':[],'cpu_power':None,'temp_ids':{},'temps':[]}
     candidates, fans, cpu_power, gpu_ids = [], [], [], []
     def walk(node, trail):
         if isinstance(node, list):
@@ -157,8 +157,13 @@ def collect_sensors(url: str):
     walk(tree, [])
     best = sorted(candidates, key=lambda c: c[0], reverse=True)[0] if candidates else None
     temp_ids = {k: v for k, v in (('cpu', best[2] if best else ''), ('gpu', sorted(gpu_ids)[0][2] if gpu_ids else '')) if v}
+    try:
+        import temps  # noqa: F401  (anche per PyInstaller)
+        groups = temps.groups(tree)
+    except Exception as ex:
+        logging.debug('temperature: %s', ex); groups = []
     return {'cpu_temp': best[1] if best else None,'fans':fans,
-            'cpu_power': cpu_power[0] if cpu_power else None, 'temp_ids': temp_ids}
+            'cpu_power': cpu_power[0] if cpu_power else None, 'temp_ids': temp_ids, 'temps': groups}
 
 HIGH_PERFORMANCE = '8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c'
 USB_SUSPEND = ('2a737441-1930-4402-8d77-b2bebba308a3', '48e6b7a6-50f5-4782-a5d4-53bb8f07e226')
@@ -1589,7 +1594,7 @@ class Control:
                 'gpu':gpu['load'], 'gpu_temp':gpu['temp'], 'gpu_watts':gpu['watts'],
                 'ram':round(mem.percent,1),'ram_used':round(mem.used/1024**3,1),
                 'ram_total':round(mem.total/1024**3,1), 'fans':sensors['fans'],
-                'cpu_power':sensors.get('cpu_power'),
+                'cpu_power':sensors.get('cpu_power'), 'temps':sensors.get('temps') or [],
             }
             rgb=self.config.get('rgb',{})
             telemetry['power']=energy_model.estimate({

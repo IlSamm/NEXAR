@@ -7,7 +7,7 @@ const titles={
  home:['Panoramica','Il tuo PC sotto controllo, ovunque tu sia.'],
  energy:['Consumi','Quanto assorbe il PC dalla presa, componente per componente.'],
  lights:['Luci','Colori e luminosità dei LED.'],
- cooling:['Ventole','Temperature e profili di raffreddamento.'],
+ cooling:['Temperature','Tutti i sensori del PC dal vivo e le ventole.'],
  power:['Accensione','Spegni, riavvia, sospendi o programma.'],
  audio:['Audio','Cuffie, casse e microfono: volume, amplificatore e app.'],
  screen:['Schermo','Guarda il PC da lontano, chiudi finestre bloccate, volume e avvisi dell’AI.'],
@@ -53,6 +53,11 @@ const hist={cpu:[],gpu:[],power:[],ram:[],fan:[]};let curView='home';
 const COMP={cpu:'#38bdf8',gpu:'#a78bfa',board:'#94a3b8',ram:'#2dd4bf',disks:'#fbbf24',cooling:'#34d399',rgb:'#f472b6',usb:'#fb923c',monitor:'#e2e8f0'};
 const statusDemo={connected:true,version:'1.0.0',update:new URLSearchParams(location.search).has('upd')?{supported:true,available:true,latest:'1.0.31',checked_at:'2026-11-03T21:10:00'}:{supported:true,available:false,checked_at:'2026-11-03T21:10:00'},mode:'gaming',fans_level:'max',fans_levels_ready:true,cpu:12,cpu_temp:46,gpu:6,gpu_temp:38,gpu_watts:24,ram:34,ram_used:10.9,ram_total:31.1,eco_cpu_max_percent:90,
  fans:[{name:'CPU Fan',rpm:930,ctl:'/lpc/demo/control/0'},{name:'System Fan #1',rpm:0,ctl:'/lpc/demo/control/1'},{name:'System Fan #2',rpm:740,ctl:'/lpc/demo/control/2'},{name:'System Fan #3',rpm:750,ctl:'/lpc/demo/control/3'},{name:'Pump Fan',rpm:2400,ctl:'/lpc/demo/control/4'}],fans_manual_ready:true,fans_custom:{'/lpc/demo/control/2':45},
+ temps:[{kind:'cpu',name:'AMD Ryzen 7 9800X3D',rows:[{id:'c0',name:'Processore',value:46,max:88,hot:80,crit:90},{id:'c1',name:'CCD 1',value:41,max:86,hot:80,crit:90}]},
+  {kind:'gpu',name:'NVIDIA GeForce RTX 3060 Ti',rows:[{id:'g0',name:'Chip',value:38,max:74,hot:75,crit:85},{id:'g1',name:'Punto più caldo',value:49,max:96,hot:90,crit:100}]},
+  {kind:'board',name:'Scheda madre',rows:[{id:'b0',name:'Sistema',value:44,max:47,hot:60,crit:75},{id:'b1',name:'VRM (alimentazione CPU)',value:52,max:61,hot:75,crit:95},{id:'b2',name:'Chipset',value:58,max:62,hot:60,crit:75}]},
+  {kind:'ram',name:'Memoria RAM',rows:[{id:'r0',name:'Banco 1',value:37,max:43,hot:50,crit:55},{id:'r1',name:'Banco 3',value:36,max:41,hot:50,crit:55}]},
+  {kind:'disk',name:'Dischi',rows:[{id:'d0',name:'Crucial CT1000P310SSD8',tag:'NVMe',value:42,max:44,hot:60,crit:82},{id:'d1',name:'Sabrent',tag:'NVMe',value:31,max:45,hot:60,crit:74},{id:'d2',name:'Kingston SA2000M8250G',tag:'NVMe',value:35,max:35,hot:60,crit:74},{id:'d3',name:'WD WD10EARS-00Y5B1',tag:'HDD',value:34,max:34,hot:45,crit:55}]}],
  rgb_enabled:true,fans_enabled:true,auto_enabled:true,processes:{codex:true,claude:false},telegram_enabled:true,rgb_color:'#ff0000',rgb_brightness:100,
  rgb_palette:['#ffffff','#ff0000','#ff8a00','#ffd400','#2cff5a','#00e5ff','#1f6bff','#8a3cff','#ff3cc8'],
  hardware:{cpu:'AMD Ryzen 7 9800X3D',gpu:'NVIDIA GeForce RTX 3060 Ti',motherboard:'MSI MAG B850 TOMAHAWK MAX WIFI',cooler:'ARCTIC Liquid Freezer II 240'},
@@ -348,7 +353,7 @@ function render(s){
  if(!rgbTouched&&s.rgb_color){$('rgb-color').value=s.rgb_color;$('rgb-bright').value=s.rgb_brightness??100;$('rgb-bright-val').textContent=$('rgb-bright').value+'%';}
  renderPalette(s.rgb_palette||[]);
  paintOrb(s.rgb_off);
- renderFans(s.fans||[]);
+ renderFans(s.fans||[]);renderTemps(s.temps||[]);renderPump(s.fans||[]);
  // Telegram e connessione
  const bot=s.telegram_bot||{};
  $('telegram-indicator').textContent=bot.error?'Bot non raggiungibile':s.telegram_enabled?`Collegato a @${bot.username||'bot'} · solo il tuo account`:bot.username?`@${bot.username}: invia il codice /pair`:'Non collegato';
@@ -1357,6 +1362,48 @@ document.addEventListener('pointermove',e=>{
 
 const calm=matchMedia('(prefers-reduced-motion: reduce)');
 let lastMode=null,fxQuiet=0;
+const TP_ICON={cpu:'cpu',gpu:'gpu',board:'grid',ram:'ram',disk:'disk'};
+function tpLevel(r){return r.value>=r.crit?'crit':r.value>=r.hot?'hot':r.value>=r.hot-15?'warm':'cool';}
+function tpPct(v,r){const lo=20,hi=Math.max(r.crit+5,lo+10);return Math.max(2,Math.min(100,(v-lo)/(hi-lo)*100));}
+function renderTemps(groups){
+ // Tutte le temperature: una scheda per componente, barre che si riempiono dal freddo al caldo.
+ const box=$('tp-grid');if(!box)return;
+ if(!groups.length){if(box._map||!box.firstElementChild?.classList.contains('muted')){box._map=null;box.replaceChildren(el('p','muted','Collega i sensori in Collegamenti per vedere tutte le temperature.'));}$('tp-sum').hidden=true;return;}
+ if(!box._map){box._map=new Map();box.replaceChildren();}
+ const seen=new Set();let hottest=null;
+ groups.forEach((g,i)=>{
+  const key=g.kind+'|'+g.name;seen.add(key);
+  let c=box._map.get(key);
+  if(!c){c=el('div','tp-g k-'+g.kind);c.style.setProperty('--i',i);
+   c.innerHTML=`<div class="tp-head"><span class="tp-ico"><svg class="i"><use href="#i-${TP_ICON[g.kind]||'temp'}"/></svg></span><div><small></small><b></b></div><strong class="tp-big"></strong></div><div class="tp-rows"></div>`;
+   c.querySelector('small').textContent={cpu:'Processore',gpu:'Scheda video',board:'Scheda madre',ram:'Memoria',disk:'Archiviazione'}[g.kind]||'';
+   c.querySelector('b').textContent=g.kind==='board'&&current?.hardware?.motherboard?current.hardware.motherboard:g.name;c._rows=new Map();box._map.set(key,c);box.append(c);}
+  const top=g.rows.reduce((a,r)=>!a||r.value>a.value?r:a,null);
+  const big=c.querySelector('.tp-big');countUp(big,g.kind==='cpu'||g.kind==='gpu'?g.rows[0]?.value:top?.value,v=>typeof v==='number'?Math.round(v)+'°':'—');
+  c.dataset.lv=top?tpLevel(top):'cool';
+  const rows=c.querySelector('.tp-rows'),rs=new Set();
+  g.rows.forEach(r=>{rs.add(r.id);if(!hottest||r.value/r.crit>hottest.value/hottest.crit)hottest={...r,dev:g.name};
+   let row=c._rows.get(r.id);
+   if(!row){row=el('div','tp-row');row.innerHTML=`<span class="tp-n"><span></span></span><span class="tp-bar"><i class="tp-fill"></i><i class="tp-max"></i></span><b class="tp-v"></b>`;
+    row.querySelector('.tp-n span').textContent=r.name;if(r.tag){row.querySelector('.tp-n').append(el('em','',r.tag));}
+    c._rows.set(r.id,row);rows.append(row);}
+   const p=tpPct(r.value,r);row.dataset.lv=tpLevel(r);
+   const f=row.querySelector('.tp-fill');f.style.width=p.toFixed(1)+'%';f.style.setProperty('--w',p.toFixed(1));
+   const m=row.querySelector('.tp-max');m.hidden=typeof r.max!=='number';if(typeof r.max==='number')m.style.left=tpPct(r.max,r).toFixed(1)+'%';
+   countUp(row.querySelector('.tp-v'),r.value,v=>typeof v==='number'?Math.round(v)+' °C':'—');
+   row.title=`${r.name}: ${Math.round(r.value)} °C${typeof r.max==='number'?` · massimo ${Math.round(r.max)} °C`:''} · si scalda da ${r.hot} °C`;});
+  [...c._rows].forEach(([k,row])=>{if(!rs.has(k)){row.remove();c._rows.delete(k);}});
+ });
+ [...box._map].forEach(([k,c])=>{if(!seen.has(k)){c.remove();box._map.delete(k);}});
+ const sum=$('tp-sum'),lv=hottest?tpLevel(hottest):'cool';sum.hidden=!hottest;
+ if(hottest){sum.dataset.lv=lv;sum.textContent=lv==='cool'||lv==='warm'?'Tutto fresco':`${hottest.dev} · ${hottest.name} ${Math.round(hottest.value)} °C`;}
+}
+function renderPump(fans){
+ // La pompa del liquido: OK solo se gira davvero (prima era una scritta fissa).
+ const p=fans.find(f=>/pump/i.test(f.name)),g=$('tg-pump');if(!g)return;g.hidden=!p;if(!p)return;
+ const on=p.rpm>0;$('hw-pump').textContent=on?p.rpm:'Ferma';g.classList.toggle('hot',!on);
+ const a=$('hw-pump-arc');a.style.strokeDasharray=`${on?Math.min(75,p.rpm/3000*75).toFixed(1):0} 100`;
+}
 function countUp(node,value,fmt){
  // Il numero scorre dal valore precedente al nuovo (niente salti secchi ogni 4 secondi).
  if(typeof value!=='number'||!Number.isFinite(value)){node._v=undefined;node.textContent=fmt(value);return;}
@@ -1603,7 +1650,19 @@ function cleanFinish(message,ok=true){
  cfx.h=null;cfx.box=null;h.finish(message,ok);
 }
 function cleanClose(){const h=cfx.h;cfx.h=null;cfx.box=null;h?.close();}
-function pageScan(){}
+function pageScan(){
+ // Entrando in una pagina le schede arrivano una dopo l'altra (Web Animations: non tocca le animazioni CSS già presenti).
+ if(calm.matches||!Element.prototype.animate)return;
+ const p=document.querySelector('.page.active');if(!p)return;
+ const items=[...p.children].filter(e=>!e.hidden&&e.offsetParent!==null);
+ const bento=p.querySelector('.bento');
+ const list=bento?items.flatMap(e=>e===bento||e.contains(bento)?[...bento.children].filter(t=>t.offsetParent!==null):[e]):items;
+ list.slice(0,14).forEach((e,i)=>e.animate([{opacity:0,transform:'translateY(18px) scale(.985)'},{opacity:1,transform:'none'}],
+  {duration:650,delay:60+i*55,easing:'cubic-bezier(.16,1,.3,1)',fill:'backwards'}));
+ const ico=$('page-ico');ico?.animate([{transform:'scale(.6) rotate(-14deg)',opacity:.4},{transform:'scale(1.08) rotate(3deg)',opacity:1,offset:.6},{transform:'none'}],
+  {duration:550,easing:'cubic-bezier(.34,1.56,.64,1)'});
+ const t=$('page-title');t?.animate([{opacity:0,transform:'translateX(-8px)'},{opacity:1,transform:'none'}],{duration:420,easing:'cubic-bezier(.16,1,.3,1)'});
+}
 $('cfg-anim-try').addEventListener('click',e=>{
  // Anteprima dello stile scelto: nessuna modalità viene cambiata.
  if(current)current.anim_style=$('cfg-anim').value;const m=current?.mode||'normal';
@@ -1669,7 +1728,7 @@ document.querySelectorAll('[data-eco-select]').forEach(s=>s.addEventListener('ch
 
 /* ---------- ricerca rapida (Ctrl+K) e scorciatoie ---------- */
 const PAGES=[['home','Panoramica','home'],['gaming','Gaming','game'],['optimize','Ottimizza','clean'],['energy','Consumi','plug'],['lights','Luci','bulb'],
- ['cooling','Ventole','fan'],['audio','Audio','headphones'],['power','Accensione','power'],['links','Collegamenti','link'],['settings','Impostazioni','sliders']];
+ ['cooling','Temperature','temp'],['screen','Schermo','monitor'],['audio','Audio','headphones'],['power','Accensione','power'],['links','Collegamenti','link'],['settings','Impostazioni','sliders']];
 function paletteItems(){
  const it=PAGES.map(([v,t,ic],i)=>({t,s:`Pagina · ${i+1}`,ic,run:()=>navigate(v)}));
  it.push({t:'AI ECO',s:'Modalità',ic:'leaf',run:()=>action('eco')},{t:'Normale',s:'Modalità',ic:'bolt',run:()=>action('normal')},{t:'Gaming',s:'Modalità',ic:'game',run:()=>action('gaming')},
@@ -2849,18 +2908,20 @@ $('file-open').addEventListener('click',()=>post('/api/files/open',{}));
 
 /* ---------- Personalizza la Home: nascondi e riordina le schede (salvato su questo dispositivo) ---------- */
 const LAYOUT_KEY='nexar.layout';
+// nascoste finché non le riaccendi: "Programmi" ripete quello che c'è già in Ottimizza
+const DEF_HIDDEN=['procs'];
 const TILE_NAMES={cpu:'Processore',gpu:'Scheda video',ram:'Memoria',fan:'Ventole',energy:'Energia',game:'Gaming',opt:'Ottimizza',ai:'Agenti AI',quick:'Azioni rapide',
  chart:'Carico',temps:'Temperature',net:'Rete',disks:'Dischi',procs:'Programmi',media:'Musica e volume',share:'Appunti e file'};
 function bentoTiles(){return [...document.querySelectorAll('#page-home .bento>[data-tile]')];}
 function layoutGet(){try{return JSON.parse(localStorage.getItem(LAYOUT_KEY))||{};}catch(e){return {};}}
 function layoutSave(l){try{localStorage.setItem(LAYOUT_KEY,JSON.stringify(l));}catch(e){}}
-function isTileShown(id){return !(layoutGet().hidden||[]).includes(id);}
+function isTileShown(id){return !(layoutGet().hidden||DEF_HIDDEN).includes(id);}
 function layoutApply(){
  const l=layoutGet(),box=document.querySelector('#page-home .bento');const tiles=bentoTiles();
  const order=(l.order||[]).filter(id=>tiles.some(t=>t.dataset.tile===id));
  tiles.map(t=>t.dataset.tile).forEach(id=>{if(!order.includes(id))order.push(id);});
  order.forEach(id=>box.append(tiles.find(t=>t.dataset.tile===id)));
- tiles.forEach(t=>t.classList.toggle('tile-off',(l.hidden||[]).includes(t.dataset.tile)));
+ tiles.forEach(t=>t.classList.toggle('tile-off',(l.hidden||DEF_HIDDEN).includes(t.dataset.tile)));
 }
 function layoutEdit(on){
  const page=$('page-home');page.classList.toggle('editing',on);$('home-edit').setAttribute('aria-pressed',on?'true':'false');
@@ -2876,7 +2937,7 @@ function layoutEdit(on){
 }
 function currentOrder(){return bentoTiles().map(t=>t.dataset.tile);}
 function moveTile(id,d){const o=currentOrder(),i=o.indexOf(id),j=i+d;if(j<0||j>=o.length)return;[o[i],o[j]]=[o[j],o[i]];const l=layoutGet();l.order=o;layoutSave(l);layoutApply();layoutEdit(true);}
-function toggleTile(id){const l=layoutGet();const h=new Set(l.hidden||[]);h.has(id)?h.delete(id):h.add(id);l.hidden=[...h];layoutSave(l);layoutApply();layoutEdit(true);if(id==='procs'&&isTileShown(id))loadHomeProcs();}
+function toggleTile(id){const l=layoutGet();const h=new Set(l.hidden||DEF_HIDDEN);h.has(id)?h.delete(id):h.add(id);l.hidden=[...h];layoutSave(l);layoutApply();layoutEdit(true);if(id==='procs'&&isTileShown(id))loadHomeProcs();}
 let dragTile=null;
 document.querySelector('#page-home .bento').addEventListener('dragstart',e=>{const t=e.target.closest?.('[data-tile]');if(!t||!$('page-home').classList.contains('editing'))return;dragTile=t.dataset.tile;t.classList.add('dragging');e.dataTransfer.effectAllowed='move';});
 document.querySelector('#page-home .bento').addEventListener('dragover',e=>{if(dragTile)e.preventDefault();});

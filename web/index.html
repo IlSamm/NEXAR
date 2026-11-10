@@ -100,7 +100,7 @@
    <small class="nav-sec">Hardware</small>
    <button data-view="energy"><span class="nav-ico n-energy"><svg class="i"><use href="#i-plug"/></svg></span>Consumi</button>
    <button data-view="lights"><span class="nav-ico n-lights"><svg class="i"><use href="#i-bulb"/></svg></span>Luci</button>
-   <button data-view="cooling"><span class="nav-ico n-cooling"><svg class="i"><use href="#i-fan"/></svg></span>Ventole</button>
+   <button data-view="cooling"><span class="nav-ico n-cooling"><svg class="i"><use href="#i-temp"/></svg></span>Temperature</button>
    <button data-view="power"><span class="nav-ico n-power"><svg class="i"><use href="#i-power"/></svg></span>Accensione</button>
    <small class="nav-sec">Sistema</small>
    <button data-view="links"><span class="nav-ico n-links"><svg class="i"><use href="#i-link"/></svg></span>Collegamenti<i class="badge" id="links-badge" hidden></i></button>
@@ -220,7 +220,7 @@
      </section>
 
      <section class="card b-temps" data-tile="temps">
-      <div class="card-head"><div><h3>Temperature</h3><p id="chart-temps-sub">Processore e scheda video, ultimi 15 minuti</p></div><div class="legend-mini"><span class="c-cpu">CPU <b id="tc-now">—</b></span><span class="c-gpu">GPU <b id="tg-now">—</b></span></div></div>
+      <div class="card-head"><div><h3>Temperature</h3><p id="chart-temps-sub">Processore e scheda video, ultimi 15 minuti</p></div><div class="legend-mini"><span class="c-cpu">CPU <b id="tc-now">—</b></span><span class="c-gpu">GPU <b id="tg-now">—</b></span><button class="btn small ghost" type="button" data-view="cooling">Tutte</button></div></div>
       <div class="rchips" data-chart="temps" role="group" aria-label="Periodo del grafico"><button type="button" data-r="15m" class="on">15 min</button><button type="button" data-r="24h">24 ore</button><button type="button" data-r="7d">7 giorni</button><button type="button" data-r="30d">30 giorni</button></div>
       <div class="chart" id="chart-temps"></div>
      </section>
@@ -424,7 +424,7 @@
       <div class="st-extra" id="st-extra"></div>
      </section>
     </div>
-    <section class="card">
+    <section class="card" hidden>
      <div class="card-head"><div><h3>Andamento</h3><p>Watt alla presa, ultimi minuti</p></div></div>
      <div class="chart" id="chart-power"></div>
     </section>
@@ -482,10 +482,14 @@
      <div class="tgauges">
       <div class="tg" id="tg-cpu"><svg viewBox="0 0 120 120" aria-hidden="true"><circle class="tg-track" cx="60" cy="60" r="50" pathLength="100"/><circle class="tg-fill" id="hw-cpu-arc" cx="60" cy="60" r="50" pathLength="100"/></svg><div><b id="hw-cpu">—</b><small>Processore</small></div></div>
       <div class="tg" id="tg-gpu"><svg viewBox="0 0 120 120" aria-hidden="true"><circle class="tg-track" cx="60" cy="60" r="50" pathLength="100"/><circle class="tg-fill" id="hw-gpu-arc" cx="60" cy="60" r="50" pathLength="100"/></svg><div><b id="hw-gpu">—</b><small>Scheda video</small></div></div>
-      <div class="tg pump"><svg viewBox="0 0 120 120" aria-hidden="true"><circle class="tg-track" cx="60" cy="60" r="50" pathLength="100"/><circle class="tg-fill ok" cx="60" cy="60" r="50" pathLength="100"/></svg><div><b>OK</b><small>Pompa AIO</small></div></div>
+      <div class="tg pump" id="tg-pump" hidden><svg viewBox="0 0 120 120" aria-hidden="true"><circle class="tg-track" cx="60" cy="60" r="50" pathLength="100"/><circle class="tg-fill ok" id="hw-pump-arc" cx="60" cy="60" r="50" pathLength="100"/></svg><div><b id="hw-pump">—</b><small>Pompa AIO</small></div></div>
      </div>
     </section>
     <div class="notice" id="fans-upgrade" hidden><div><b id="fans-upgrade-title">Nuovi profili Spente e Massimo</b><small>Spente e Massimo su tutte le ventole, anche radiatore, pompa e scheda video. Si creano una volta in Fan Control: serve una conferma da amministratore.</small></div><button class="btn small primary" type="button" id="fans-upgrade-btn">Aggiorna profili</button></div>
+    <section class="card tp-card" id="tp-card">
+     <div class="card-head"><div><h3>Tutte le temperature</h3><p id="tp-sub">Dal vivo · la tacca bianca è il massimo da quando hai acceso il PC</p></div><span class="tp-sum" id="tp-sum" hidden></span></div>
+     <div class="tp-grid" id="tp-grid"><p class="muted">Collega i sensori in Collegamenti per vedere tutte le temperature.</p></div>
+    </section>
     <section class="card">
      <div class="card-head"><div><h3>Le tue ventole</h3><p>Giri al minuto in tempo reale</p></div><span class="tag" id="fan-free" hidden>—</span></div>
      <div class="fan-grid" id="fan-list"></div>
@@ -904,7 +908,7 @@
   <button data-view="gaming"><svg class="i"><use href="#i-game"/></svg>Gaming</button>
   <button data-view="optimize"><svg class="i"><use href="#i-clean"/></svg>Ottimizza</button>
   <button data-view="lights"><svg class="i"><use href="#i-bulb"/></svg>Luci</button>
-  <button data-view="cooling"><svg class="i"><use href="#i-fan"/></svg>Ventole</button>
+  <button data-view="cooling"><svg class="i"><use href="#i-temp"/></svg>Temp</button>
   <button data-view="more"><svg class="i"><use href="#i-grid"/></svg>Altro</button>
  </nav>
 </div>
