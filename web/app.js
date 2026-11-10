@@ -3234,6 +3234,8 @@ $('au-max').addEventListener('click',async()=>{if(await auSend('/api/audio/max',
 $('au-duck').addEventListener('click',async e=>{e.preventDefault();if(!auInfo)return;const off=$('au-duck').getAttribute('aria-checked')==='true';
  if(await auSend('/api/audio/ducking',{enabled:off},true)){auInfo.ducking=off;renderAudio();notify(off?'✓ Durante le chiamate Windows abbassa gli altri suoni':'✓ Volume pieno anche durante le chiamate');}});
 setInterval(()=>{if(curView==='audio'&&!document.hidden&&!auDrag&&!demo&&!auInfo?.setup?.step?.match(/download|install/))loadAudio(true);},5000);
+/* intestazione fissa: una riga sottile appena scorri */
+addEventListener('scroll',()=>document.body.classList.toggle('scrolled',scrollY>6),{passive:true});
 if(window.NEXAR_PROXY)$('logout').hidden=true;
 if(demo||key||tgInit)setTimeout(loadAdmin,400);
 })();
