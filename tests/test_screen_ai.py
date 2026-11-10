@@ -114,10 +114,10 @@ def test_telegram_schermo_sends_photo(tmp_path, monkeypatch):
     photos, texts = [], []
     bot.send_photo = lambda chat, jpg, caption='', markup=None: photos.append((chat, jpg, markup))
     bot.send = lambda chat, msg, markup=None: texts.append(msg)
-    monkeypatch.setattr(c, 'screen_shot', lambda who='': b'jpg')
+    monkeypatch.setattr(c, 'screen_shot', lambda who='', mon=None: b'jpg')
     bot.dispatch('/schermo', 7)
     assert photos[0][:2] == (7, b'jpg') and photos[0][2]['inline_keyboard'][0][0]['callback_data'] == 'schermo'
-    def off(who=''): raise PermissionError('disattivato')
+    def off(who='', mon=None): raise PermissionError('disattivato')
     monkeypatch.setattr(c, 'screen_shot', off)
     bot.dispatch('schermo', 7)
     assert 'disattivato' in texts[-1]

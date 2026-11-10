@@ -437,7 +437,7 @@ class Remote:
         self.overlay.show('🖱  Controllo remoto attivo  ·  NEXAR')
         self.notify(f'🖱 Controllo remoto del PC iniziato ({who}). Se non sei tu: sul PC apri NEXAR → Schermo → Termina e cambia il PIN.')
         self.log(f'🖱 Controllo remoto iniziato ({who})')
-        return {'token': token, 'monitors': [{k: m[k] for k in ('id', 'name', 'w', 'h', 'primary')} for m in mons],
+        return {'token': token, 'monitors': [{k: m[k] for k in ('id', 'name', 'x', 'y', 'w', 'h', 'primary')} for m in mons],
                 'idle_minutes': self.cfg()['idle_minutes']}
 
     def check(self, token):

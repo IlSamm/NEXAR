@@ -162,7 +162,7 @@ class TelegramBot:
         return {'inline_keyboard': self.app_row() + [[SCREEN_BTN]]}
 
     def send_screen(self, chat):
-        try: jpg = self.ctrl.screen_shot('Telegram')
+        try: jpg = self.ctrl.screen_shot('Telegram', 0)   # solo lo schermo principale
         except (PermissionError, RuntimeError) as ex:
             self.send(chat, '🖥 ' + html.escape(str(ex)), self.menu()); return
         when = time.strftime('%H:%M:%S')

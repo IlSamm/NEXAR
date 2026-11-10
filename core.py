@@ -535,7 +535,7 @@ class Control:
         return jpg
 
     def screen_view(self):
-        try: mons = [{'id': m['id'], 'w': m['w'], 'h': m['h'], 'primary': m['primary']} for m in remote_control.monitors()]
+        try: mons = [{k: m[k] for k in ('id', 'x', 'y', 'w', 'h', 'primary')} for m in remote_control.monitors()]
         except Exception: mons = []
         return {'settings': self.screen_settings(), 'windows': screen_remote.windows(), 'ai_busy': self.ai_watch.busy(), 'monitors': mons}
 
