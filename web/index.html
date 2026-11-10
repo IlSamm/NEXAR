@@ -47,6 +47,8 @@
  <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8.5" y="8.5" width="12" height="12" rx="2.5"/><path d="M15.5 8.5V6a2.5 2.5 0 0 0-2.5-2.5H6A2.5 2.5 0 0 0 3.5 6v7A2.5 2.5 0 0 0 6 15.5h2.5"/></symbol>
  <symbol id="i-disk" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r=".8"/></symbol>
  <symbol id="i-game" viewBox="0 0 24 24"><path d="M7.5 7h9a5 5 0 0 1 4.9 6l-.8 3.7a2.4 2.4 0 0 1-4.2 1L14.6 16H9.4l-1.8 1.7a2.4 2.4 0 0 1-4.2-1L2.6 13a5 5 0 0 1 4.9-6z"/><path d="M7.5 10v3M6 11.5h3"/><circle cx="15.5" cy="11" r=".9"/><circle cx="17.5" cy="13" r=".9"/></symbol>
+ <symbol id="i-headphones" viewBox="0 0 24 24"><path d="M4 15v-3a8 8 0 0 1 16 0v3"/><rect x="3.5" y="14" width="4.5" height="6.5" rx="1.8"/><rect x="16" y="14" width="4.5" height="6.5" rx="1.8"/></symbol>
+ <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21M8.5 21h7"/></symbol>
  <symbol id="i-max" viewBox="0 0 24 24"><path d="M5 18 12 6l7 12M8.5 13h7"/></symbol>
  <symbol id="i-clean" viewBox="0 0 24 24"><path d="m14.5 3.5 6 6M17.5 6.5 11 13"/><path d="M11 13c-3 0-6.5 1.5-7.5 7.5 6-1 7.5-4.5 7.5-7.5z"/><path d="M5 9.5l1-2 1 2 2 1-2 1-1 2-1-2-2-1zM15 17l.7-1.3L17 15l-1.3-.7L15 13l-.7 1.3L13 15l1.3.7z"/></symbol>
  <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4.5v15l12.5-7.5z"/></symbol><symbol id="i-prev" viewBox="0 0 24 24"><path d="M18 6v12l-9-6 9-6Z"/><path d="M6 6v12"/></symbol><symbol id="i-next" viewBox="0 0 24 24"><path d="M6 6v12l9-6-9-6Z"/><path d="M18 6v12"/></symbol><symbol id="i-playpause" viewBox="0 0 24 24"><path d="M4 6v12l8-6-8-6Z"/><path d="M15.5 6v12M20 6v12"/></symbol><symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 15.5V4.5m-4.5 4.5L12 4.5 16.5 9M5 19.5h14"/></symbol><symbol id="i-expand" viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></symbol><symbol id="i-fit" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="14" rx="2.5"/><path d="M9 9.5 7 12l2 2.5M15 9.5l2 2.5-2 2.5"/></symbol><symbol id="i-tap" viewBox="0 0 24 24"><path d="M9.5 11V5.5a1.75 1.75 0 0 1 3.5 0V11l3.6.7a2.3 2.3 0 0 1 1.8 2.6l-.7 4.2A3 3 0 0 1 14.7 21h-3.3a3 3 0 0 1-2.4-1.2l-3.3-4.4a1.6 1.6 0 0 1 2.4-2.1L9.5 15"/><path d="M6.5 6.5a5 5 0 0 1 9.4-.8"/></symbol><symbol id="i-mouse-r" viewBox="0 0 24 24"><rect x="6" y="3" width="12" height="18" rx="6"/><path d="M12 3v7h6"/><path d="M12.6 3.6h4.2v5.8h-4.2z" fill="currentColor" stroke="none" opacity=".55"/></symbol><symbol id="i-music" viewBox="0 0 24 24"><path d="M9 18V5.5l11-2V16"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></symbol>
@@ -94,6 +96,7 @@
    <button data-view="gaming"><span class="nav-ico n-gaming"><svg class="i"><use href="#i-game"/></svg></span>Gaming</button>
    <button data-view="optimize"><span class="nav-ico n-optimize"><svg class="i"><use href="#i-clean"/></svg></span>Ottimizza</button>
    <button data-view="screen"><span class="nav-ico n-screen"><svg class="i"><use href="#i-monitor"/></svg></span>Schermo</button>
+   <button data-view="audio"><span class="nav-ico n-audio"><svg class="i"><use href="#i-headphones"/></svg></span>Audio</button>
    <small class="nav-sec">Hardware</small>
    <button data-view="energy"><span class="nav-ico n-energy"><svg class="i"><use href="#i-plug"/></svg></span>Consumi</button>
    <button data-view="lights"><span class="nav-ico n-lights"><svg class="i"><use href="#i-bulb"/></svg></span>Luci</button>
@@ -803,6 +806,32 @@
     </div>
    </section>
 
+   <!-- AUDIO -->
+   <section class="page" id="page-audio">
+    <div class="au">
+     <div class="au-top">
+      <section class="card au-amp" id="au-amp" data-step="none">
+       <div class="au-amp-ico" aria-hidden="true"><i></i><i></i><i></i><svg class="i"><use href="#i-vol"/></svg></div>
+       <div class="au-amp-t">
+        <small>Amplificatore</small><h3 id="au-amp-title">Più forte del 100%</h3><p id="au-amp-text">Cuffie e microfono fino a +18 dB.</p>
+        <ol class="au-steps" id="au-steps"><li data-s="1"><b>1</b>Installa</li><li data-s="2"><b>2</b>Scegli cuffie e microfono</li><li data-s="3"><b>3</b>Riavvia il PC</li></ol>
+        <div class="au-bar" id="au-bar" hidden><i id="au-bar-fill"></i></div>
+       </div>
+       <button class="btn primary au-amp-btn" type="button" id="au-amp-btn">Installa l'amplificatore</button>
+      </section>
+      <div class="au-quick">
+       <button class="card au-q" type="button" id="au-max"><span class="opt-ico c-amber"><svg class="i"><use href="#i-bolt"/></svg></span><span><b>Tutto al 100%</b><small>Cuffie, microfono e ogni app, senza muto</small></span></button>
+       <label class="card au-q"><span class="opt-ico c-violet"><svg class="i"><use href="#i-send"/></svg></span><span><b>Volume pieno in chiamata</b><small>Di serie Windows abbassa tutto quando parli su Discord o Teams</small></span><button class="toggle" type="button" id="au-duck" role="switch" aria-label="Non abbassare il volume durante le chiamate"><span></span></button></label>
+      </div>
+     </div>
+     <div class="au-devs">
+      <section class="card au-card"><div class="card-head"><div><h3>Cuffie e casse</h3><p>Da dove esce l'audio del PC</p></div></div><div id="au-out"><p class="muted">Caricamento…</p></div></section>
+      <section class="card au-card"><div class="card-head"><div><h3>Microfono</h3><p>Quello che sentono Discord, giochi e chiamate</p></div></div><div id="au-in"><p class="muted">Caricamento…</p></div></section>
+     </div>
+     <section class="card au-apps"><div class="card-head"><div><h3>Volume delle app</h3><p>I programmi che stanno usando l'audio adesso</p></div></div><div class="au-app-list" id="au-apps"></div></section>
+    </div>
+   </section>
+
    <!-- SCHERMO -->
    <section class="page" id="page-screen">
     <div class="sv scr-card" id="scr-card">
@@ -859,6 +888,7 @@
    <section class="page" id="page-more">
     <div class="more-list">
      <button data-view="screen"><span class="more-ico c-blue"><svg class="i"><use href="#i-monitor"/></svg></span><div><b>Schermo</b><small>Guarda il PC, finestre, volume, avvisi dell'AI</small></div><svg class="i chev"><use href="#i-chev"/></svg></button>
+     <button data-view="audio"><span class="more-ico c-violet"><svg class="i"><use href="#i-headphones"/></svg></span><div><b>Audio</b><small>Cuffie, microfono, amplificatore e volume delle app</small></div><svg class="i chev"><use href="#i-chev"/></svg></button>
      <button data-view="energy"><span class="more-ico c-cyan"><svg class="i"><use href="#i-plug"/></svg></span><div><b>Consumi</b><small>Watt alla presa, kWh e costi</small></div><svg class="i chev"><use href="#i-chev"/></svg></button>
      <button data-view="power"><span class="more-ico c-red"><svg class="i"><use href="#i-power"/></svg></span><div><b>Accensione e app</b><small>Spegni, riavvia, timer, apri app sul PC</small></div><svg class="i chev"><use href="#i-chev"/></svg></button>
      <button data-view="links"><span class="more-ico c-cyan"><svg class="i"><use href="#i-link"/></svg></span><div><b>Collegamenti</b><small id="more-links">Programmi collegati</small></div><svg class="i chev"><use href="#i-chev"/></svg></button>

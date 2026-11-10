@@ -25,6 +25,7 @@ import pc_power
 import procstop
 import apps_remote
 import screen_remote
+import audio
 import ai_watch
 import remote_control
 import gateway
@@ -220,6 +221,7 @@ class Control:
         self.ai_watch = ai_watch.AiWatch()
         import admin_helper
         self.admin = admin_helper.AdminHelper(DATA_DIR)
+        self.audio_setup = audio.Installer(str(DATA_DIR / 'downloads'), log=self.log_event)
         self.remote = remote_control.Remote(lambda: self.config.get('remote_control') or {},
                                             notify=lambda m: self.notify(m), log=lambda m: self.log_event(m))
         self.devices = gateway.Devices(self.config, save=lambda: self._save_config())
@@ -533,6 +535,66 @@ class Control:
             self.screen_logged = now
             self.log_event('🖥 Schermo visto da remoto (' + who + ')')
         return jpg
+
+    # ---------- audio: cuffie, casse, microfoni, app ----------
+    def _audio_boosts(self):
+        return (self.config.get('audio') or {}).get('boosts') or {}
+
+    def audio_view(self):
+        o = audio.overview(self._audio_boosts())
+        o['setup'] = self.audio_setup.info()
+        return o
+
+    def audio_device(self, dev_id, volume=None, mute=None, default=None):
+        if volume is not None and not 0 <= volume <= 100: raise ValueError('Volume tra 0 e 100')
+        if volume is not None or mute is not None: audio.set_device(dev_id, volume, mute)
+        if default: audio.set_default(dev_id); return 'Ora l\'audio passa da qui'
+        return 'Fatto'
+
+    def audio_boost(self, dev_id, db=None, eq=None, hw=None):
+        guid = audio.guid_of(dev_id)
+        if not guid: raise ValueError('Dispositivo audio non valido')
+        if hw is not None:
+            got = audio.set_hw_boost(dev_id, hw)
+            return f'Boost della scheda audio: +{got:g} dB'
+        flow = 'in' if dev_id.startswith('{0.0.1.') else 'out'
+        if db is not None and not 0 <= db <= audio.MAX_BOOST[flow]: raise ValueError(f'Amplificazione tra 0 e +{audio.MAX_BOOST[flow]} dB')
+        if eq is not None and eq not in audio.EQ_PRESETS: raise ValueError('Suono non previsto')
+        with self.lock:
+            boosts = self.config.setdefault('audio', {}).setdefault('boosts', {})
+            b = boosts.setdefault(guid, {'db': 0, 'eq': 'flat'})
+            if db is not None: b['db'] = round(float(db), 1)
+            if eq is not None: b['eq'] = eq
+            if not b['db'] and b['eq'] == 'flat': boosts.pop(guid, None)
+            json_save(CONFIG_FILE, self.config)
+            snapshot = {k: dict(v) for k, v in boosts.items()}
+        paths = audio.apo_paths()
+        if not paths: return "Salvato: si sente appena installi l'amplificatore"
+        try: audio.apo_write(snapshot, paths[1])
+        except OSError as ex: raise RuntimeError("Non riesco a scrivere le impostazioni dell'amplificatore: " + str(ex))
+        return 'Amplificazione aggiornata'
+
+    def audio_app(self, app_id, volume=None, mute=None):
+        if volume is not None and not 0 <= volume <= 100: raise ValueError('Volume tra 0 e 100')
+        audio.set_app(str(app_id).lower(), volume, mute)
+        return 'Fatto'
+
+    def audio_max(self):
+        audio.max_all()
+        self.log_event('🔊 Audio: tutto al massimo')
+        return 'Cuffie, microfono e app al 100%'
+
+    def audio_ducking(self, on):
+        audio.set_ducking(bool(on))
+        return 'Durante le chiamate Windows abbassa gli altri suoni' if on else 'Durante le chiamate il volume non si abbassa più'
+
+    def audio_install(self):
+        if audio.apo_paths(): raise ValueError("L'amplificatore è già installato")
+        return self.audio_setup.start()
+
+    def audio_selector(self):
+        audio.open_selector()
+        return 'Sul PC si è aperta la finestra: spunta cuffie e microfono, OK, poi riavvia il PC'
 
     def screen_view(self):
         try: mons = [{k: m[k] for k in ('id', 'x', 'y', 'w', 'h', 'primary')} for m in remote_control.monitors()]

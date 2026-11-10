@@ -637,6 +637,54 @@ def screen_settings(data: ScreenSettings):
     s = controller.set_screen_settings(data.view,data.ai_alert)
     return {'ok':True,'settings':s,'message':'Impostazioni schermo salvate'}
 
+# ---------- audio: cuffie, casse, microfoni e app ----------
+class AudioDevice(BaseModel):
+    id: str
+    volume: int | None = None
+    mute: bool | None = None
+    default: bool | None = None
+class AudioBoost(BaseModel):
+    id: str
+    db: float | None = None
+    eq: str | None = None
+    hw: float | None = None
+class AudioApp(BaseModel):
+    id: str
+    volume: int | None = None
+    mute: bool | None = None
+def audio_errors(fn):
+    try: return {'ok':True,'message':fn()}
+    except ValueError as ex: raise HTTPException(400,str(ex))
+    except (RuntimeError,OSError) as ex: raise HTTPException(409,str(ex))
+def audio_here(request: Request):
+    if is_remote(request): raise HTTPException(409,'Si fa dal PC: Windows chiede una conferma sullo schermo. Da lontano puoi usare il controllo remoto.')
+@app.get('/api/audio',dependencies=[Depends(authorized)])
+def audio_info():
+    try: return controller.audio_view()
+    except (RuntimeError,OSError) as ex: raise HTTPException(409,'Audio non disponibile: '+str(ex))
+@app.post('/api/audio/device',dependencies=[Depends(authorized)])
+def audio_device(data: AudioDevice):
+    return audio_errors(lambda: controller.audio_device(data.id,data.volume,data.mute,data.default))
+@app.post('/api/audio/boost',dependencies=[Depends(authorized)])
+def audio_boost(data: AudioBoost):
+    return audio_errors(lambda: controller.audio_boost(data.id,data.db,data.eq,data.hw))
+@app.post('/api/audio/app',dependencies=[Depends(authorized)])
+def audio_app(data: AudioApp):
+    return audio_errors(lambda: controller.audio_app(data.id,data.volume,data.mute))
+@app.post('/api/audio/max',dependencies=[Depends(authorized)])
+def audio_max():
+    return audio_errors(controller.audio_max)
+@app.post('/api/audio/ducking',dependencies=[Depends(authorized)])
+def audio_ducking(data: Toggle):
+    return audio_errors(lambda: controller.audio_ducking(data.enabled))
+@app.post('/api/audio/install',dependencies=[Depends(authorized),Depends(audio_here)])
+def audio_install():
+    try: return {'ok':True,'setup':controller.audio_install(),'message':'Scarico l\'amplificatore…'}
+    except ValueError as ex: raise HTTPException(400,str(ex))
+@app.post('/api/audio/selector',dependencies=[Depends(authorized),Depends(audio_here)])
+def audio_selector():
+    return audio_errors(controller.audio_selector)
+
 # ---------- controllo remoto: mouse, tastiera e schermo dal vivo ----------
 class RemoteSetup(BaseModel):
     enabled: bool | None = None
