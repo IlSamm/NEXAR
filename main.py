@@ -648,6 +648,7 @@ class AudioBoost(BaseModel):
     db: float | None = None
     eq: str | None = None
     hw: float | None = None
+    bands: list[float] | None = None
 class AudioApp(BaseModel):
     id: str
     volume: int | None = None
@@ -667,7 +668,14 @@ def audio_device(data: AudioDevice):
     return audio_errors(lambda: controller.audio_device(data.id,data.volume,data.mute,data.default))
 @app.post('/api/audio/boost',dependencies=[Depends(authorized)])
 def audio_boost(data: AudioBoost):
-    return audio_errors(lambda: controller.audio_boost(data.id,data.db,data.eq,data.hw))
+    return audio_errors(lambda: controller.audio_boost(data.id,data.db,data.eq,data.hw,data.bands))
+@app.get('/api/audio/levels',dependencies=[Depends(authorized)])
+def audio_levels():
+    try: return controller.audio_levels()
+    except (RuntimeError,OSError) as ex: raise HTTPException(409,str(ex))
+@app.post('/api/audio/mictest',dependencies=[Depends(authorized)])
+def audio_mic_test(data: Toggle):
+    return audio_errors(lambda: controller.audio_mic_test(data.enabled))
 @app.post('/api/audio/app',dependencies=[Depends(authorized)])
 def audio_app(data: AudioApp):
     return audio_errors(lambda: controller.audio_app(data.id,data.volume,data.mute))

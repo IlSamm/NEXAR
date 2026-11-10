@@ -24,11 +24,27 @@ from ctypes import POINTER, byref, c_float, c_uint, c_ulong, c_ushort, c_void_p,
 
 RENDER, CAPTURE = 0, 1
 MAX_BOOST = {'out': 18, 'in': 24}   # dB in più al massimo: oltre si sente solo distorsione
-EQ_PRESETS = {
-    'flat': '',
-    'bass': 'GraphicEQ: 25 6; 40 6; 63 5; 100 4; 160 2; 250 0; 400 0; 630 0; 1000 0; 1600 0; 2500 0; 4000 0; 6300 0; 10000 0; 16000 0',
-    'voice': 'GraphicEQ: 25 -12; 40 -10; 63 -8; 100 -5; 160 -2; 250 0; 400 0; 630 1; 1000 2; 1600 3; 2500 3; 4000 2; 6300 1; 10000 0; 16000 -1',
+BANDS = [31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000]   # equalizzatore a 10 bande, in Hz
+EQ_CURVES = {   # dB per banda
+    'flat': [0] * 10,
+    'bass': [7, 6, 4, 2, 0, 0, 0, 0, 0, 0],
+    'voice': [-10, -6, -2, 0, 1, 2, 3, 2, 0, -1],
+    'game': [-3, -2, -1, 0, 0, 1, 3, 5, 4, 2],       # passi e dettagli più chiari
+    'music': [4, 3, 1, 0, -1, 0, 1, 2, 3, 3],
 }
+EQ_PRESETS = {*EQ_CURVES, 'custom'}
+EQ_LIMIT = 12
+
+
+def eq_gains(b: dict) -> list:
+    if (b.get('eq') or 'flat') == 'custom':
+        g = b.get('bands') or []
+        return [float(x) for x in g] if len(g) == len(BANDS) else [0.0] * len(BANDS)
+    return list(EQ_CURVES.get(b.get('eq') or 'flat', EQ_CURVES['flat']))
+
+
+def eq_line(gains) -> str:
+    return 'GraphicEQ: ' + '; '.join(f'{f} {g:g}' for f, g in zip(BANDS, gains)) if any(gains) else ''
 APO_CLSID = '{EACD2258-FCAC-4FF4-B36D-419E924A6D79}'
 APO_SETUP = {   # file ufficiale su SourceForge, controllato prima di avviarlo
     'url': 'https://downloads.sourceforge.net/project/equalizerapo/1.4.2/EqualizerAPO-x64-1.4.2.exe',
@@ -62,7 +78,8 @@ IID = {
     'sessions': '{77AA99A0-1BD6-484F-8BC7-2C654C9A9B6F}', 'control2': '{BFB7FF88-7239-4FC9-8FA2-07C950BE9C6D}',
     'simple': '{87CE5498-68D6-44E5-9215-6DA47EF883D8}', 'topology': '{2A07407E-6497-4A18-9787-32F79BD0D98F}',
     'part': '{AE2DE0E4-5BCA-4F2D-AA46-5D13F8FDB3A9}', 'level': '{7FB7B48F-531D-44A2-BCB3-5AD5A134B3DC}',
-    'policy': '{F8679F50-850A-41CF-9C72-430F290290C8}',
+    'policy': '{F8679F50-850A-41CF-9C72-430F290290C8}', 'meter': '{C02216F6-8C67-4B5B-9D00-D008E73E0064}',
+    'client': '{1CB9AD4C-DBFA-4C32-B178-C2F568A703B2}',
 }
 CLSID_ENUM = '{BCDE0395-E52F-467C-8E3D-C4579291692E}'
 CLSID_POLICY = '{870AF99C-171D-4F9E-AF0D-E63DF40C2BC9}'
@@ -259,7 +276,7 @@ def apo_text(boosts: dict) -> str:
     """Il file nexar.txt: un blocco per ogni dispositivo amplificato."""
     out = ['# NEXAR · amplificatore audio. Lo riscrive NEXAR: le modifiche fatte a mano si perdono.']
     for guid, b in sorted(boosts.items()):
-        db, eq = float(b.get('db') or 0), EQ_PRESETS.get(b.get('eq') or 'flat', '')
+        db, eq = float(b.get('db') or 0), eq_line(eq_gains(b))
         if not re.fullmatch(r'\{[0-9a-f-]{36}\}', guid) or (db <= 0 and not eq): continue
         out += ['', f'Device: {guid}']
         if db > 0: out.append(f'Preamp: {db:g} dB')
@@ -399,7 +416,7 @@ def set_ducking(on: bool):
 def overview(boosts=None) -> dict:
     boosts = boosts or {}
     apo = apo_paths()
-    res = {'out': [], 'in': [], 'apps': [], 'ducking': ducking(),
+    res = {'out': [], 'in': [], 'apps': [], 'ducking': ducking(), 'eq': {'bands': BANDS, 'curves': EQ_CURVES, 'limit': EQ_LIMIT},
            'apo': {'installed': bool(apo), 'tool': bool(apo_tool(apo)) if apo else False}}
     with _com():
         en = _enumerator()
@@ -414,7 +431,7 @@ def overview(boosts=None) -> dict:
                 d = {'id': did, 'name': _prop(store, PK_DESC) or _prop(store, PK_NAME) or 'Dispositivo audio',
                      'adapter': _prop(store, PK_ADAPTER) or '', 'kind': FORM.get(_prop(store, PK_FORM) or 0, 'other'),
                      'default': did == default, 'comm': did == comm, 'volume': vol, 'mute': mute,
-                     'boost': {'db': float(b.get('db') or 0), 'eq': b.get('eq') or 'flat', 'max': MAX_BOOST[key],
+                     'boost': {'db': float(b.get('db') or 0), 'eq': b.get('eq') or 'flat', 'bands': eq_gains(b), 'max': MAX_BOOST[key],
                                'ready': bool(apo) and apo_on(flow, g)}}
                 if flow == CAPTURE:
                     hw = _boost_level(dev)
@@ -470,6 +487,60 @@ def _pretty(exe):
     known = {'msedge': 'Microsoft Edge', 'chrome': 'Google Chrome', 'firefox': 'Firefox', 'spotify': 'Spotify', 'discord': 'Discord',
              'steam': 'Steam', 'steamwebhelper': 'Steam', 'vlc': 'VLC', 'teams': 'Teams', 'ms-teams': 'Teams', 'zoom': 'Zoom'}
     return known.get(n.lower(), n[:1].upper() + n[1:])
+
+
+# ---------------------------------------------------------------- livelli dal vivo
+def _peak(meter):
+    f = c_float(); meter.call(3, (POINTER(c_float),), byref(f))
+    return round(min(1.0, max(0.0, f.value)), 3)
+
+
+def levels() -> dict:
+    """Quanto suonano adesso: cuffie, microfono e ogni app (0..1). Leggero: la pagina lo chiede più volte al secondo."""
+    out = {'out': 0.0, 'in': 0.0, 'apps': {}}
+    with _com():
+        en = _enumerator()
+        for flow, key in ((RENDER, 'out'), (CAPTURE, 'in')):
+            try: out[key] = _peak(en.out(4, (c_uint, c_uint), flow, 0).activate('meter'))
+            except OSError: pass
+        try:
+            for ctl, _, pid, system in _sessions(en):
+                k = _app_key(pid, system)[0]
+                if not k: continue
+                try: out['apps'][k] = max(out['apps'].get(k, 0.0), _peak(ctl.qi('meter')))
+                except OSError: pass
+        except OSError: pass
+    return out
+
+
+class MicTest:
+    """Tiene aperto il microfono per qualche secondo, così si vede il livello mentre parli.
+    Non registra niente: il suono non viene letto né salvato."""
+    def __init__(self): self.until, self.thread, self.error = 0.0, None, ''
+
+    def active(self): return bool(self.thread and self.thread.is_alive() and time.monotonic() < self.until)
+
+    def start(self, seconds=30):
+        self.until = time.monotonic() + seconds
+        if self.thread and self.thread.is_alive(): return
+        self.error = ''
+        self.thread = threading.Thread(target=self._run, daemon=True, name='audio-mic-test'); self.thread.start()
+
+    def stop(self): self.until = 0.0
+
+    def _run(self):
+        try:
+            ctypes.windll.ole32.CoInitializeEx(None, 0)
+            client = _enumerator().out(4, (c_uint, c_uint), CAPTURE, 0).activate('client')
+            fmt = c_void_p(); client.call(8, (POINTER(c_void_p),), byref(fmt))
+            try: client.call(3, (c_uint, c_ulong, ctypes.c_longlong, ctypes.c_longlong, c_void_p, c_void_p), 0, 0, 2_000_000, 0, fmt, None)
+            finally: ctypes.windll.ole32.CoTaskMemFree(fmt)
+            client.call(10)
+            try:
+                while time.monotonic() < self.until: time.sleep(0.2)
+            finally: client.call(11)
+        except OSError:
+            self.error = 'Microfono non disponibile: forse è usato da un\'altra app in modo esclusivo'
 
 
 # ---------------------------------------------------------------- comandi

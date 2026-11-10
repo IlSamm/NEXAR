@@ -3062,18 +3062,23 @@ if(window.pywebview?.api)setupWinbar();
   b.addEventListener('pointerleave',()=>tip.classList.remove('on'));b.addEventListener('click',()=>tip.classList.remove('on'));});})();
 /* ---------- audio: cuffie, microfono, amplificatore, app ---------- */
 let auInfo=null,auDrag=false,auPoll=null;
-const DEMO_AUDIO={ducking:true,apo:{installed:false,tool:false},setup:{step:'idle',pct:0,error:''},
- out:[{id:'{0.0.0.00000000}.{93dcc598-8e2a-41c9-80ff-b5b6b47d3f1f}',name:'Cuffie',adapter:'2- Arctis Nova Pro Wireless',kind:'headphones',default:true,comm:false,volume:100,mute:false,boost:{db:6,eq:'flat',max:18,ready:false}},
+const DEMO_AUDIO={ducking:true,apo:{installed:true,tool:true},setup:{step:'idle',pct:0,error:''},
+ eq:{bands:[31,62,125,250,500,1000,2000,4000,8000,16000],limit:12,curves:{flat:[0,0,0,0,0,0,0,0,0,0],bass:[7,6,4,2,0,0,0,0,0,0],voice:[-10,-6,-2,0,1,2,3,2,0,-1],game:[-3,-2,-1,0,0,1,3,5,4,2],music:[4,3,1,0,-1,0,1,2,3,3]}},
+ out:[{id:'{0.0.0.00000000}.{93dcc598-8e2a-41c9-80ff-b5b6b47d3f1f}',name:'Cuffie',adapter:'2- Arctis Nova Pro Wireless',kind:'headphones',default:true,comm:false,volume:100,mute:false,boost:{db:6,eq:'game',bands:[-3,-2,-1,0,0,1,3,5,4,2],max:18,ready:true}},
   {id:'{0.0.0.00000000}.{a21b5361-24ce-4924-b3f5-349bcc317f82}',name:'Altoparlanti',adapter:'Echo Dot-HDT',kind:'speakers',default:false,comm:false,volume:16,mute:false,boost:{db:0,eq:'flat',max:18,ready:false}},
   {id:'{0.0.0.00000000}.{8260921f-203b-4292-933f-fcc727787362}',name:'SteelSeries Sonar - Chat',adapter:'SteelSeries Sonar Virtual Audio Device',kind:'headset',default:false,comm:true,volume:100,mute:false,boost:{db:0,eq:'flat',max:18,ready:false}}],
- in:[{id:'{0.0.1.00000000}.{11111111-2222-3333-4444-555555555555}',name:'Microfono',adapter:'HyperX Quadcast',kind:'mic',default:true,comm:false,volume:100,mute:false,boost:{db:0,eq:'voice',max:24,ready:false}},
+ in:[{id:'{0.0.1.00000000}.{11111111-2222-3333-4444-555555555555}',name:'Microfono',adapter:'HyperX Quadcast',kind:'mic',default:true,comm:false,volume:100,mute:false,boost:{db:0,eq:'voice',bands:[-10,-6,-2,0,1,2,3,2,0,-1],max:24,ready:true}},
   {id:'{0.0.1.00000000}.{66666666-2222-3333-4444-555555555555}',name:'Microfono',adapter:'2- Arctis Nova Pro Wireless',kind:'mic',default:false,comm:false,volume:100,mute:false,boost:{db:0,eq:'flat',max:24,ready:false},hw:{name:'Microphone Boost',min:0,max:30,step:10,db:10}}],
  apps:[{id:'fortniteclient-win64-shipping.exe',name:'Fortnite',volume:100,mute:false,active:true},{id:'spotify.exe',name:'Spotify',volume:42,mute:false,active:true},
   {id:'discord.exe',name:'Discord',volume:80,mute:false,active:false},{id:'system',name:'Suoni di sistema',volume:100,mute:true,active:false}]};
-async function loadAudio(){
- if(demo)auInfo=JSON.parse(JSON.stringify(DEMO_AUDIO));
- else{try{auInfo=await req('/api/audio');}catch(ex){$('au-out').replaceChildren(el('p','muted',ex.message));$('au-in').replaceChildren();return;}}
- renderAudio();
+let auSig='';
+async function loadAudio(quiet){
+ let next;
+ if(demo)next=quiet?auInfo:JSON.parse(JSON.stringify(DEMO_AUDIO));
+ else{try{next=await req('/api/audio');}catch(ex){if(!quiet){$('au-out').replaceChildren(el('p','muted',ex.message));$('au-in').replaceChildren();}return;}}
+ const sig=JSON.stringify(next);if(quiet&&sig===auSig)return;   // niente di nuovo: la pagina resta com'è
+ if(quiet&&(auDrag||document.querySelector('#page-audio :is(input,button):focus-visible')))return;
+ auSig=sig;auInfo=next;renderAudio();auMicBtn();auLvlLoop();
 }
 function auTitle(d){const a=(d.adapter||'').replace(/^\d+-\s*/,'').trim();return a?[a,d.name]:[d.name,''];}
 function auIcon(d){return d.kind==='mic'||d.kind==='line'&&d.id.startsWith('{0.0.1.')?'mic':['headphones','headset'].includes(d.kind)?'headphones':d.kind==='hdmi'?'monitor':'vol';}
@@ -3100,6 +3105,8 @@ function auMain(d,flow){
  const [t,sub]=auTitle(d),box=el('div','au-main'),apo=auInfo.apo||{};
  const head=el('div','au-dev-head'),ico=el('span','au-ico '+flow);ico.append(icon(auIcon(d)));
  const nm=el('div');nm.append(el('b','',t),el('small','',[sub,'Predefinito'].filter(Boolean).join(' · ')));head.append(ico,nm);
+ if(flow==='in'){const tb=el('button','btn small au-test');tb.type='button';tb.id='au-mic-test';tb.append(icon('mic'),el('span','','Prova il microfono'));
+  tb.addEventListener('click',async()=>{const on=!auMic;if(demo){auMic=on;auMicBtn();return;}if(await auSend('/api/audio/mictest',{enabled:on},true)){auMic=on;auMicErr='';auMicBtn();}});head.append(tb);}
  // volume
  const vol=el('div','au-row'),mute=el('button','au-mute'+(d.mute?' on':''));mute.type='button';
  mute.setAttribute('aria-label',d.mute?'Riattiva':'Muto');mute.title=d.mute?'Riattiva':'Muto';mute.append(icon(d.mute?'vol-x':flow==='in'?'mic':'vol'));
@@ -3107,24 +3114,67 @@ function auMain(d,flow){
  const vv=el('output','au-val',d.volume+'%');
  const vr=auRange(0,100,1,d.volume,{label:'Volume',input:v=>{vv.textContent=v+'%';auSend('/api/audio/device',{id:d.id,volume:v},true);},change:v=>{d.volume=v;vv.textContent=v+'%';auSend('/api/audio/device',{id:d.id,volume:v},true);}});
  vol.append(mute,el('span','au-lab','Volume'),vr,vv);
+ const lv=el('div','au-row lvl');lv.append(el('span'),el('span','au-lab',flow==='in'?'Livello':'Adesso'),auMeter(flow),el('span'));
  // amplificazione (Equalizer APO)
  const amp=el('div','au-row amp'+(d.boost.ready?'':' wait')),av=el('output','au-val');
  const show=db=>{av.replaceChildren(el('b','',db>0?`+${db} dB`:'Spenta'));if(db>0)av.append(el('small','',auPct(db)+'%'));};show(d.boost.db);
  const ar=auRange(0,d.boost.max,1,d.boost.db,{label:'Amplificazione',input:show,change:async v=>{d.boost.db=v;show(v);await auSend('/api/audio/boost',{id:d.id,db:v},!d.boost.ready&&apo.installed);}});
  const ai=el('span','au-amp-i');ai.append(icon('bolt'));amp.append(ai,el('span','au-lab','Amplifica'),ar,av);
- box.append(head,vol,amp);
+ box.append(head,vol,lv,amp);
  if(!d.boost.ready)box.append(el('p','au-hint',!apo.installed?'Installa l\'amplificatore qui sopra: poi questo cursore alza davvero oltre il 100%.':'Attiva l\'amplificatore su questo dispositivo (pulsante in alto) e riavvia il PC una volta.'));
  else if(d.boost.db>=10)box.append(el('p','au-hint warn','Se senti gracchiare, abbassa un po\': il suono è già al limite.'));
- // suono
- const eq=flow==='in'?[['flat','Naturale'],['voice','Voce chiara']]:[['flat','Naturale'],['bass','Bassi'],['voice','Voci chiare']];
- const sr=el('div','au-row sound');sr.append(el('span','au-lab','Suono'),auChips(eq,d.boost.eq,v=>{d.boost.eq=v;auSend('/api/audio/boost',{id:d.id,eq:v},true).then(r=>{if(r)notify(flow==='in'?'✓ Microfono: '+(v==='voice'?'voce chiara':'naturale'):'✓ Suono: '+({flat:'naturale',bass:'più bassi',voice:'voci chiare'}[v]));});},'Suono'));
- box.append(sr);
+ // suono: preset ed equalizzatore a 10 bande
+ const names=flow==='in'?{flat:'Naturale',voice:'Voce chiara'}:{flat:'Naturale',bass:'Bassi',voice:'Voci chiare',game:'Giochi · passi',music:'Musica'};
+ const eqOpts=Object.entries(names);if(d.boost.eq==='custom')eqOpts.push(['custom','Personalizzato']);
+ const sr=el('div','au-row sound');sr.append(el('span','au-lab','Suono'),auChips(eqOpts,d.boost.eq,v=>{
+  d.boost.eq=v;d.boost.bands=[...(auInfo.eq?.curves?.[v]||d.boost.bands)];renderAudio();
+  auSend('/api/audio/boost',{id:d.id,eq:v},true).then(r=>{if(r)notify('✓ Suono: '+(names[v]||'personalizzato').toLowerCase());});},'Suono'));
+ box.append(sr,auEq(d,flow));
  // boost della scheda audio (microfoni analogici)
  if(d.hw){const steps=[];for(let v=d.hw.min;v<=d.hw.max+.01;v+=d.hw.step)steps.push([String(v),v>0?`+${v}`:'0']);
   const hr=el('div','au-row sound');hr.append(el('span','au-lab','Boost scheda'),auChips(steps,String(d.hw.db),v=>{d.hw.db=+v;auSend('/api/audio/boost',{id:d.id,hw:+v});},'Boost della scheda audio'));
   box.append(hr);}
  return box;
 }
+function auEq(d,flow){
+ const info=auInfo.eq||{bands:[31,62,125,250,500,1000,2000,4000,8000,16000],limit:12},key='eq'+flow;
+ const det=el('details','au-eq');det.open=!!auOpen[key]||d.boost.eq==='custom';det.addEventListener('toggle',()=>{auOpen[key]=det.open;});
+ const sum=el('summary','','Equalizzatore a 10 bande');det.append(sum);
+ const grid=el('div','au-eq-bands');const inputs=[];
+ const send=()=>{const bands=inputs.map(i=>+i.value);d.boost.eq='custom';d.boost.bands=bands;auOpen[key]=true;
+  auSend('/api/audio/boost',{id:d.id,bands},true).then(r=>{if(r&&!document.querySelector('.au-eq-bands input:active'))renderAudio();});};
+ info.bands.forEach((f,i)=>{const col=el('div','au-band'),g=d.boost.bands?.[i]??0,val=el('output','',(g>0?'+':'')+g);
+  const r=el('input');r.type='range';r.min=-info.limit;r.max=info.limit;r.step=1;r.value=g;r.setAttribute('aria-label',`${f<1000?f+' Hz':f/1000+' kHz'}`);
+  const paint=()=>{const v=+r.value;val.textContent=(v>0?'+':'')+v;col.classList.toggle('up',v>0);col.classList.toggle('down',v<0);};paint();
+  r.addEventListener('pointerdown',()=>{auDrag=true;});r.addEventListener('input',paint);r.addEventListener('change',()=>{auDrag=false;paint();send();});
+  inputs.push(r);col.append(val,r,el('small','',f<1000?String(f):f/1000+'k'));grid.append(col);});
+ const foot=el('div','au-eq-foot');const reset=el('button','btn small','Azzera');reset.type='button';
+ reset.addEventListener('click',()=>{inputs.forEach(i=>{i.value=0;});d.boost.eq='flat';d.boost.bands=Array(10).fill(0);renderAudio();auSend('/api/audio/boost',{id:d.id,eq:'flat'},true);});
+ foot.append(el('small','',d.boost.ready?'Si sente subito, anche dal telefono.':'Si sente quando l\'amplificatore è attivo su questo dispositivo.'),reset);
+ det.append(grid,foot);return det;
+}
+/* livelli dal vivo: cuffie, microfono e app */
+let auLvlOn=false,auMic=false;
+function auLvl(p){return p>0?Math.max(0,Math.min(1,1+Math.log10(p)*20/54)):0;}
+function auPaint(L){
+ document.querySelectorAll('#page-audio [data-lvl]').forEach(e=>{const k=e.dataset.lvl,p=k==='out'?L.out:k==='in'?L.in:(L.apps||{})[k.slice(4)]||0;e.style.transform=`scaleX(${(1-auLvl(p)).toFixed(3)})`;});
+ if(L.mic_test!==undefined&&L.mic_test!==auMic){auMic=L.mic_test;auMicBtn();}
+ if(L.mic_error&&auMic===false&&auMicErr!==L.mic_error){auMicErr=L.mic_error;notify('⚠ '+L.mic_error,true);}
+}
+let auMicErr='';
+function auMicBtn(){const b=$('au-mic-test');if(!b)return;b.classList.toggle('on',auMic);b.querySelector('span').textContent=auMic?'Parla ora…':'Prova il microfono';}
+async function auLvlLoop(){
+ if(auLvlOn)return;auLvlOn=true;let t=0;
+ await new Promise(r=>setTimeout(r,50));   // navigate() segna la pagina subito dopo
+ try{while(curView==='audio'){
+  if(document.hidden){await new Promise(r=>setTimeout(r,800));continue;}
+  let L;
+  if(demo){t+=.14;const w=x=>Math.max(0,.18+.5*Math.abs(Math.sin(t*x))*Math.random());L={out:w(1.7),in:auMic?w(2.3):0,apps:{'fortniteclient-win64-shipping.exe':w(1.7),'spotify.exe':w(1.1)},mic_test:auMic};}
+  else{try{L=await req('/api/audio/levels');}catch(e){await new Promise(r=>setTimeout(r,2500));continue;}}
+  auPaint(L);await new Promise(r=>setTimeout(r,demo?140:120));
+ }}finally{auLvlOn=false;}
+}
+function auMeter(k){const m=el('span','au-meter');const i=el('i');i.dataset.lvl=k;m.append(i);return m;}
 function auOthers(list,flow){
  if(!list.length)return null;
  const det=el('details','au-more'),sum=el('summary','',list.length===1?'Un altro dispositivo':`Altri ${list.length} dispositivi`);det.append(sum);
@@ -3147,7 +3197,7 @@ function renderAudio(){
  if(!(i.apps||[]).length)apps.append(el('p','muted','Nessuna app sta usando l\'audio in questo momento.'));
  (i.apps||[]).forEach(a=>{const row=el('div','au-app'+(a.active?' on':'')),ic=el('span','as-ico',a.id==='system'?'':initials(a.name));
   if(a.id==='system')ic.append(icon('vol'));ic.style.setProperty('--h',hue(a.name));
-  const nm=el('div','au-app-n');nm.append(el('b','',a.name),el('small','',a.active?'Sta suonando':'In silenzio'));
+  const nm=el('div','au-app-n');nm.append(el('b','',a.name),auMeter('app:'+a.id));
   const v=el('output','au-val',a.volume+'%'),m=el('button','au-mute'+(a.mute?' on':''));m.type='button';m.setAttribute('aria-label',(a.mute?'Riattiva ':'Muto ')+a.name);m.append(icon(a.mute?'vol-x':'vol'));
   m.addEventListener('click',async()=>{a.mute=!a.mute;renderAudio();await auSend('/api/audio/app',{id:a.id,mute:a.mute},true);});
   const r=auRange(0,100,1,a.volume,{label:'Volume di '+a.name,input:x=>{v.textContent=x+'%';auSend('/api/audio/app',{id:a.id,volume:x},true);},change:x=>{a.volume=x;v.textContent=x+'%';auSend('/api/audio/app',{id:a.id,volume:x},true);}});
@@ -3183,7 +3233,7 @@ $('au-amp-btn').addEventListener('click',async()=>{
 $('au-max').addEventListener('click',async()=>{if(await auSend('/api/audio/max',{})){if(demo){[...auInfo.out,...auInfo.in].filter(d=>d.default).forEach(d=>{d.volume=100;d.mute=false;});auInfo.apps.forEach(a=>{a.volume=100;a.mute=false;});renderAudio();}else loadAudio();}});
 $('au-duck').addEventListener('click',async e=>{e.preventDefault();if(!auInfo)return;const off=$('au-duck').getAttribute('aria-checked')==='true';
  if(await auSend('/api/audio/ducking',{enabled:off},true)){auInfo.ducking=off;renderAudio();notify(off?'✓ Durante le chiamate Windows abbassa gli altri suoni':'✓ Volume pieno anche durante le chiamate');}});
-setInterval(()=>{if(curView==='audio'&&!document.hidden&&!auDrag&&!demo&&!auInfo?.setup?.step?.match(/download|install/))loadAudio();},6000);
+setInterval(()=>{if(curView==='audio'&&!document.hidden&&!auDrag&&!demo&&!auInfo?.setup?.step?.match(/download|install/))loadAudio(true);},5000);
 if(window.NEXAR_PROXY)$('logout').hidden=true;
 if(demo||key||tgInit)setTimeout(loadAdmin,400);
 })();

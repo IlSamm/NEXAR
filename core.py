@@ -221,6 +221,7 @@ class Control:
         self.ai_watch = ai_watch.AiWatch()
         import admin_helper
         self.admin = admin_helper.AdminHelper(DATA_DIR)
+        self.audio_mic = audio.MicTest()
         self.audio_setup = audio.Installer(str(DATA_DIR / 'downloads'), log=self.log_event)
         self.remote = remote_control.Remote(lambda: self.config.get('remote_control') or {},
                                             notify=lambda m: self.notify(m), log=lambda m: self.log_event(m))
@@ -551,7 +552,7 @@ class Control:
         if default: audio.set_default(dev_id); return 'Ora l\'audio passa da qui'
         return 'Fatto'
 
-    def audio_boost(self, dev_id, db=None, eq=None, hw=None):
+    def audio_boost(self, dev_id, db=None, eq=None, hw=None, bands=None):
         guid = audio.guid_of(dev_id)
         if not guid: raise ValueError('Dispositivo audio non valido')
         if hw is not None:
@@ -560,11 +561,18 @@ class Control:
         flow = 'in' if dev_id.startswith('{0.0.1.') else 'out'
         if db is not None and not 0 <= db <= audio.MAX_BOOST[flow]: raise ValueError(f'Amplificazione tra 0 e +{audio.MAX_BOOST[flow]} dB')
         if eq is not None and eq not in audio.EQ_PRESETS: raise ValueError('Suono non previsto')
+        if bands is not None:
+            if len(bands) != len(audio.BANDS) or any(not -audio.EQ_LIMIT <= float(x) <= audio.EQ_LIMIT for x in bands):
+                raise ValueError(f'Equalizzatore: {len(audio.BANDS)} bande tra -{audio.EQ_LIMIT} e +{audio.EQ_LIMIT} dB')
+            eq = 'custom'
         with self.lock:
             boosts = self.config.setdefault('audio', {}).setdefault('boosts', {})
             b = boosts.setdefault(guid, {'db': 0, 'eq': 'flat'})
             if db is not None: b['db'] = round(float(db), 1)
             if eq is not None: b['eq'] = eq
+            if bands is not None: b['bands'] = [round(float(x), 1) for x in bands]
+            if b['eq'] != 'custom': b.pop('bands', None)
+            elif not any(b.get('bands') or []): b['eq'] = 'flat'; b.pop('bands', None)
             if not b['db'] and b['eq'] == 'flat': boosts.pop(guid, None)
             json_save(CONFIG_FILE, self.config)
             snapshot = {k: dict(v) for k, v in boosts.items()}
@@ -578,6 +586,15 @@ class Control:
         if volume is not None and not 0 <= volume <= 100: raise ValueError('Volume tra 0 e 100')
         audio.set_app(str(app_id).lower(), volume, mute)
         return 'Fatto'
+
+    def audio_levels(self):
+        lv = audio.levels()
+        lv['mic_test'] = self.audio_mic.active(); lv['mic_error'] = self.audio_mic.error
+        return lv
+
+    def audio_mic_test(self, on):
+        if on: self.audio_mic.start(); return 'Parla: la barra del microfono si muove'
+        self.audio_mic.stop(); return 'Prova del microfono finita'
 
     def audio_max(self):
         audio.max_all()

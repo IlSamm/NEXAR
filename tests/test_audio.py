@@ -21,7 +21,7 @@ def test_guid_and_text_only_for_real_boosts():
     text = audio.apo_text({'{93dcc598-8e2a-41c9-80ff-b5b6b47d3f1f}': {'db': 6, 'eq': 'bass'},
                            '{11111111-2222-3333-4444-555555555555}': {'db': 0, 'eq': 'flat'},
                            'Device: all\nPreamp: 40 dB': {'db': 40}})
-    assert 'Device: {93dcc598-8e2a-41c9-80ff-b5b6b47d3f1f}\nPreamp: 6 dB\nGraphicEQ: 25 6' in text
+    assert 'Device: {93dcc598-8e2a-41c9-80ff-b5b6b47d3f1f}\nPreamp: 6 dB\nGraphicEQ: 31 7; 62 6; 125 4' in text
     assert '11111111' not in text and '40 dB' not in text      # spento o nome non valido: niente righe
     assert text.rstrip().endswith('Device: all')
 
@@ -79,6 +79,14 @@ def test_boost_is_saved_checked_and_written(tmp_path, monkeypatch):
     monkeypatch.setattr(audio, 'apo_paths', lambda: ('C:/x', str(cfg)))
     assert c.audio_boost(OUT, eq='voice') == 'Amplificazione aggiornata'
     assert 'Preamp: 8 dB' in (cfg / 'nexar.txt').read_text(encoding='utf-8')
+    c.audio_boost(OUT, bands=[0, 0, 0, 0, 0, 0, 2, 4, 3, -1.5])
+    b = c.config['audio']['boosts']['{93dcc598-8e2a-41c9-80ff-b5b6b47d3f1f}']
+    assert b['eq'] == 'custom' and b['bands'][7] == 4.0
+    assert 'GraphicEQ: 31 0; 62 0; 125 0; 250 0; 500 0; 1000 0; 2000 2; 4000 4; 8000 3; 16000 -1.5' in (cfg / 'nexar.txt').read_text(encoding='utf-8')
+    with pytest.raises(ValueError): c.audio_boost(OUT, bands=[20] * 10)
+    with pytest.raises(ValueError): c.audio_boost(OUT, bands=[1, 2])
+    c.audio_boost(OUT, eq='game')
+    assert 'bands' not in c.config['audio']['boosts']['{93dcc598-8e2a-41c9-80ff-b5b6b47d3f1f}']
     c.audio_boost(OUT, db=0, eq='flat')
     assert '{93dcc598' not in str(c.config['audio']['boosts'])
 
