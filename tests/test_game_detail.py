@@ -110,3 +110,27 @@ def test_game_detail_and_profile_applied(tmp_path, monkeypatch):
     c.save_game_profile('steam-367520', {'fans': 'max'})
     assert c.apply_game_profile({'id': 'steam-367520', 'name': 'Hollow Knight'}) == ['ventole max'] and fans == ['max']
     assert json.loads((tmp_path / 'config.json').read_text(encoding='utf-8'))['gaming_boost']['per_game']['steam-367520'] == {'fans': 'max'}
+
+
+def test_epic_cover_from_launcher_catalog(tmp_path):
+    import base64
+    cat = tmp_path / 'catcache.bin'
+    items = [{'id': 'abc123', 'namespace': 'ns', 'title': 'Rocket League®', 'keyImages': [
+        {'type': 'DieselGameBoxTall', 'url': 'https://cdn1.epicgames.com/item/ns/Tall_1200x1600-x'},
+        {'type': 'DieselGameBox', 'url': 'https://cdn1.epicgames.com/item/ns/Wide 2560x1440.jpg'},
+        {'type': 'Thumbnail', 'url': 'https://evil.example.com/x.png'}]}]
+    cat.write_bytes(base64.b64encode(json.dumps(items).encode()))
+    calls = []
+    def fetch(url):
+        calls.append(url)
+        if 'storesearch' in url: pytest.fail('Epic trovato nel catalogo: niente ricerca su Steam')
+        return _png(1200, 1600) if url.startswith('https://cdn1.epicgames.com/') else None
+    c = game_covers.Covers(tmp_path / 'covers', fetch=fetch, epic=lambda: game_covers.epic_catalog(cat))
+    game = {'id': 'epic-Sugar', 'name': 'Rocket League®', 'epic': ['abc123']}
+    p = c.path(game, 'capsule')
+    assert p and p.suffix == '.jpg' and calls[0].endswith('Tall_1200x1600-x?resize=1&w=600')
+    from PIL import Image
+    assert Image.open(p).format == 'JPEG' and max(Image.open(p).size) <= 1350
+    assert c.path(game, 'header') and '%20' in calls[-1]
+    assert not any('evil' in u for u in calls)
+    assert game_covers.epic_catalog(tmp_path / 'nessuno.bin') == {}

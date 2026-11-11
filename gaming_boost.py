@@ -159,7 +159,8 @@ def epic_games(base=None):
         found[app] = {'id': 'epic-' + re.sub(r'[^A-Za-z0-9_-]', '', app)[:60], 'name': str(j.get('DisplayName') or app),
                       'store': 'Epic', 'dir': str(folder), 'size': int(j.get('InstallSize') or 0), 'last': 0,
                       'launch': f'com.epicgames.launcher://apps/{ref}?action=launch&silent=true', 'cover': False,
-                      'exe': str(exe) if j.get('LaunchExecutable') and exe.is_file() else ''}
+                      'exe': str(exe) if j.get('LaunchExecutable') and exe.is_file() else '',
+                      'epic': list(dict.fromkeys(i for i in (j.get('CatalogItemId'), j.get('MainGameCatalogItemId')) if i))}
     return list(found.values())
 
 RIOT_PRODUCTS = {'valorant': ('VALORANT', 'valorant'), 'league of legends': ('League of Legends', 'league_of_legends')}

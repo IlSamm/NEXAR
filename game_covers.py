@@ -5,8 +5,10 @@ una volta sola e tenute sul PC (anche per i giochi di Epic e GOG che esistono pu
 Da internet si chiede solo il nome del gioco al negozio di Steam e l'immagine pubblica: niente account, niente dati del PC.
 """
 from __future__ import annotations
+import base64
 import io
 import json
+import os
 import logging
 import re
 import threading
@@ -55,12 +57,73 @@ def _image_ok(data: bytes) -> bool:
         return False
 
 
+EPIC_CATALOG = Path(os.environ.get('PROGRAMDATA', r'C:\ProgramData')) / 'Epic' / 'EpicGamesLauncher' / 'Data' / 'Catalog' / 'catcache.bin'
+EPIC_KINDS = {'capsule': ('DieselGameBoxTall', 'OfferImageTall'), 'header': ('DieselGameBox', 'OfferImageWide'),
+              'hero': ('DieselGameBox', 'OfferImageWide'), 'logo': ('DieselGameBoxLogo',)}
+EPIC_HOSTS = ('https://cdn1.epicgames.com/', 'https://cdn2.unrealengine.com/', 'https://cdn1.unrealengine.com/')
+EPIC_WIDTH = {'capsule': 600, 'header': 1280, 'hero': 1920, 'logo': 800}
+_epic = {'mtime': None, 'images': {}}
+_epic_lock = threading.Lock()
+
+
+def epic_catalog(path: Path = None):
+    """id del catalogo Epic → immagini {tipo: url}. Il file del launcher è JSON in base64; si rilegge solo se cambia."""
+    path = Path(path or EPIC_CATALOG)
+    try: mtime = path.stat().st_mtime
+    except OSError: return {}
+    with _epic_lock:
+        if _epic['mtime'] == (str(path), mtime): return _epic['images']
+        images = {}
+        try:
+            items = json.loads(base64.b64decode(path.read_bytes()))
+            for it in items if isinstance(items, list) else []:
+                imgs = {k.get('type'): k.get('url') for k in it.get('keyImages') or [] if isinstance(k, dict) and k.get('url')}
+                if it.get('id') and imgs: images[str(it['id'])] = imgs
+        except (OSError, ValueError, TypeError) as ex:
+            logging.info('Catalogo Epic non leggibile: %s', ex)
+        _epic.update(mtime=(str(path), mtime), images=images)
+        return images
+
+
+def epic_image_urls(ids, kind, catalog=epic_catalog):
+    """Indirizzi delle immagini ufficiali Epic per il gioco (prima ridimensionate dal loro server, poi originali)."""
+    if not ids or kind not in EPIC_KINDS: return []
+    images = catalog() or {}
+    out = []
+    for item in ids:
+        imgs = images.get(str(item)) or {}
+        for t in EPIC_KINDS[kind]:
+            u = str(imgs.get(t) or '')
+            if u.startswith(EPIC_HOSTS):
+                u = u.replace(' ', '%20')
+                out += [u + ('&' if '?' in u else '?') + f'resize=1&w={EPIC_WIDTH[kind]}', u]
+        if out: break
+    return out
+
+
+def _shrink(data: bytes, kind: str) -> bytes:
+    """Immagini scaricate: JPEG (o PNG per i loghi) di dimensioni ragionevoli, qualunque formato mandi il server."""
+    try:
+        from PIL import Image
+        im = Image.open(io.BytesIO(data)); im.load()
+        limit = {'capsule': (900, 1350), 'header': (1280, 720), 'hero': (1920, 1080), 'logo': (1000, 500)}[kind]
+        if kind != 'logo' and im.format == 'JPEG' and im.size[0] <= limit[0] and im.size[1] <= limit[1]: return data
+        im.thumbnail(limit)
+        buf = io.BytesIO()
+        if kind == 'logo': im.convert('RGBA').save(buf, 'PNG')
+        else: im.convert('RGB').save(buf, 'JPEG', quality=88)
+        return buf.getvalue()
+    except Exception:
+        return data
+
+
 class Covers:
-    def __init__(self, folder: Path, online=lambda: True, fetch=None, local=None):
+    def __init__(self, folder: Path, online=lambda: True, fetch=None, local=None, epic=None):
         self.dir = Path(folder)
         self.online = online
         self.fetch = fetch or _fetch
         self.local = local            # (appid, kind) -> Path | None: cache di Steam sul PC
+        self.epic_catalog = epic or epic_catalog
         self.lock = threading.Lock()
         self._meta = None
 
@@ -151,19 +214,26 @@ class Covers:
         if dest.is_file(): return dest
         key = f'{gid}/{kind}'
         if not self.online() or self._missed(key): return None
-        appid = self.appid(game)
-        if not appid: return None
         data, err = None, False
-        with _net:
-            for f in KIND_FILES[kind]:
-                for cdn in CDNS:
-                    try: data = self.fetch(cdn.format(id=appid, f=f))
-                    except Exception: err, data = True, None
-                    if data and _image_ok(data): break
-                    data = None
-                if data: break
+        # Epic: le copertine ufficiali sono già elencate nel catalogo del launcher Epic sul PC.
+        for url in epic_image_urls(game.get('epic'), kind, self.epic_catalog):
+            try: data = self.fetch(url)
+            except Exception: err, data = True, None
+            if data and _image_ok(data): break
+            data = None
+        appid = None if data else self.appid(game)
+        if appid:
+            with _net:
+                for f in KIND_FILES[kind]:
+                    for cdn in CDNS:
+                        try: data = self.fetch(cdn.format(id=appid, f=f))
+                        except Exception: err, data = True, None
+                        if data and _image_ok(data): break
+                        data = None
+                    if data: break
         if not data:
             self._remember(miss={key: [time.time(), NET_ERROR if err else NO_MATCH]}); return None
+        data = _shrink(data, kind)
         dest.parent.mkdir(parents=True, exist_ok=True)
         tmp = dest.with_suffix('.tmp'); tmp.write_bytes(data); tmp.replace(dest)
         return dest
