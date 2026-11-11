@@ -21,7 +21,7 @@ import hashlib
 import json
 from urllib.parse import parse_qsl
 
-from core import ROOT, ASSET_ROOT, CONFIG_FILE, DATA_DIR, FROZEN, INSTALL_DIR, MIGRATED_FROM, Control, json_load
+from core import ROOT, ASSET_ROOT, CONFIG_FILE, DATA_DIR, FROZEN, INSTALL_DIR, MIGRATED_FROM, Control, json_load, start_rtss
 from telegram_bot import TelegramBot
 from tunnel import TUNNEL_PORT, Tunnel
 import gateway
@@ -816,6 +816,11 @@ def gaming_game_profile(gid: str, data: GameProfile):
 @app.post('/api/gaming/game/{gid}/folder',dependencies=[Depends(authorized)])
 def gaming_game_folder(gid: str):
     try: return {'ok':True,'message':controller.game_folder(gid)}
+    except (ValueError,OSError) as ex: raise HTTPException(400,str(ex))
+
+@app.post('/api/gaming/rtss',dependencies=[Depends(authorized)])
+def gaming_rtss():
+    try: return {'ok':True,'message':start_rtss()}
     except (ValueError,OSError) as ex: raise HTTPException(400,str(ex))
 
 @app.post('/api/gaming/game/{gid}/verify',dependencies=[Depends(authorized)])

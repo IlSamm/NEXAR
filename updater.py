@@ -22,7 +22,7 @@ from version import REPO, VERSION
 
 API = f'https://api.github.com/repos/{REPO}/releases/latest'
 ASSET = re.compile(r'^NEXAR-(\d+\.\d+\.\d+)-win64\.zip$')
-CHECK_EVERY = 6 * 3600
+CHECK_EVERY = 30 * 60
 MAX_ZIP = 400 * 1024 * 1024
 HEADERS = {'User-Agent': 'NEXAR-updater', 'Accept': 'application/vnd.github+json'}
 

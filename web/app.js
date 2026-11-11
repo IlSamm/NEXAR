@@ -51,7 +51,7 @@ if(tgInit){
 let tgApp=null;let current=null,busy=false,rgbTouched=false,schedKind='shutdown';
 const hist={cpu:[],gpu:[],power:[],ram:[],fan:[]};let curView='home';
 const COMP={cpu:'#38bdf8',gpu:'#a78bfa',board:'#94a3b8',ram:'#2dd4bf',disks:'#fbbf24',cooling:'#34d399',rgb:'#f472b6',usb:'#fb923c',monitor:'#e2e8f0'};
-const statusDemo={connected:true,version:'1.0.0',update:new URLSearchParams(location.search).has('upd')?{supported:true,available:true,latest:'1.0.31',checked_at:'2026-11-03T21:10:00'}:{supported:true,available:false,checked_at:'2026-11-03T21:10:00'},mode:'gaming',fans_level:'max',fans_levels_ready:true,cpu:12,cpu_temp:46,gpu:6,gpu_temp:38,gpu_watts:24,ram:34,ram_used:10.9,ram_total:31.1,eco_cpu_max_percent:90,
+const statusDemo={connected:true,fps:142,version:'1.0.0',update:new URLSearchParams(location.search).has('upd')?{supported:true,available:true,latest:'1.0.31',checked_at:'2026-11-03T21:10:00'}:{supported:true,available:false,checked_at:'2026-11-03T21:10:00'},mode:'gaming',fans_level:'max',fans_levels_ready:true,cpu:12,cpu_temp:46,gpu:6,gpu_temp:38,gpu_watts:24,ram:34,ram_used:10.9,ram_total:31.1,eco_cpu_max_percent:90,
  fans:[{name:'CPU Fan',rpm:930,ctl:'/lpc/demo/control/0'},{name:'System Fan #1',rpm:0,ctl:'/lpc/demo/control/1'},{name:'System Fan #2',rpm:740,ctl:'/lpc/demo/control/2'},{name:'System Fan #3',rpm:750,ctl:'/lpc/demo/control/3'},{name:'Pump Fan',rpm:2400,ctl:'/lpc/demo/control/4'}],fans_manual_ready:true,fans_custom:{'/lpc/demo/control/2':45},
  temps:[{kind:'cpu',name:'AMD Ryzen 7 9800X3D',rows:[{id:'/amdcpu/0/temperature/2',name:'Processore',value:46,max:88,hot:80,crit:90},{id:'/amdcpu/0/temperature/3',name:'CCD 1',value:41,max:86,hot:80,crit:90}]},
   {kind:'gpu',name:'NVIDIA GeForce RTX 3060 Ti',rows:[{id:'/gpu-nvidia/0/temperature/0',name:'Chip',value:38,max:74,hot:75,crit:85},{id:'/gpu-nvidia/0/temperature/2',name:'Punto più caldo',value:49,max:96,hot:90,crit:100}]},
@@ -186,6 +186,16 @@ function ask(title,text,{danger=true,ico='power',yes='Conferma'}={}){
  d.returnValue='';d.showModal();
  return new Promise(res=>d.addEventListener('close',()=>res(d.returnValue==='yes'),{once:true}));
 }
+function railInk(){
+ // L'indicatore della barra laterale scivola da una voce all'altra invece di saltare.
+ const nav=document.querySelector('.rail-nav');if(!nav)return;let ink=nav.querySelector('.rail-ink');
+ if(!ink){ink=el('i','rail-ink');ink.setAttribute('aria-hidden','true');nav.prepend(ink);addEventListener('resize',()=>railInk());}
+ const a=nav.querySelector('button.active');if(!a||!a.offsetHeight){ink.hidden=true;return;}ink.hidden=false;
+ ink.style.setProperty('--ic',getComputedStyle(a).getPropertyValue('--c').trim()||'#3b82f6');
+ ink.style.width=a.offsetWidth+'px';ink.style.height=a.offsetHeight+'px';
+ ink.style.transform=`translate(${a.offsetLeft}px,${a.offsetTop}px)`;
+ if(!ink.classList.contains('ready'))requestAnimationFrame(()=>ink.classList.add('ready'));
+}
 function navigate(view){
  if(!titles[view])return;
  if(view==='settings'){if(!demo){loadSettings();loadEvents();}loadEco();}
@@ -199,7 +209,7 @@ function navigate(view){
  if(view==='links')loadGateway();
  if(view!=='screen'&&scrLiveOn)scrLive(false);
  const tab=['power','screen','audio','links','settings','energy','lights'].includes(view)&&!document.querySelector(`.tabbar [data-view="${view}"]`)?'more':view;
- document.querySelectorAll('.rail-nav [data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===view));
+ document.querySelectorAll('.rail-nav [data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===view));railInk();
  document.querySelectorAll('.tabbar [data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===tab));
  document.querySelectorAll('.page').forEach(p=>p.classList.toggle('active',p.id==='page-'+view));
  if(curView!==view)pageScan();curView=view;setZone();syncTelegram();
@@ -253,19 +263,24 @@ function chart(id,series,max,unit,o={}){
    cur.push({i,x:X(i),y:Y(v)});}
   if(cur.length)segs.push(cur);
   const g=`g-${id}-${k}`;
-  body+=`<linearGradient id="${g}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${s.color}" stop-opacity="${k?.12:.3}"/><stop offset="1" stop-color="${s.color}" stop-opacity="0"/></linearGradient>`;
+  body+=`<linearGradient id="${g}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${s.color}" stop-opacity="${k?.2:.4}"/><stop offset=".6" stop-color="${s.color}" stop-opacity="${k?.05:.1}"/><stop offset="1" stop-color="${s.color}" stop-opacity="0"/></linearGradient>`;
   segs.forEach(seg=>{const P=seg.map(p=>[p.x,p.y]),d=smoothPath(P,H);
-   body+=`<path d="${d} L${P[P.length-1][0].toFixed(1)},${H} L${P[0][0].toFixed(1)},${H} Z" fill="url(#${g})"/><path class="cl" d="${d}" stroke="${s.color}" stroke-width="2.2" fill="none" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>`;});
+   body+=`<path d="${d} L${P[P.length-1][0].toFixed(1)},${H} L${P[0][0].toFixed(1)},${H} Z" fill="url(#${g})"/><path class="cl" style="--c:${s.color}" d="${d}" stroke="${s.color}" stroke-width="2.6" fill="none" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>`;});
   const last=segs.length?segs[segs.length-1][segs[segs.length-1].length-1]:null;
   if(last&&!o.noDot)dots+=`<i class="c-dot" style="left:${(last.x/W*100).toFixed(2)}%;top:${(last.y/H*100).toFixed(2)}%;--c:${s.color}"></i>`;
  });
+ let marks='';
+ if(T&&o.marks)o.marks.forEach(m=>{let bi=0,bd=Infinity;for(let i=0;i<n;i++){const d=Math.abs(T[i]-m.t);if(d<bd){bd=d;bi=i;}}
+  const v=series[0].data[bi];if(typeof v!=='number')return;
+  marks+=`<span class="c-mark${X(bi)/W>.8?' l':''}" style="left:${(X(bi)/W*100).toFixed(2)}%;top:${(Y(v)/H*100).toFixed(2)}%;--c:${m.color}"><i></i><em>${m.label}</em></span>`;});
+ if(typeof o.avgLine==='number')body+=`<line class="c-avg" x1="0" x2="${W}" y1="${Y(o.avgLine).toFixed(1)}" y2="${Y(o.avgLine).toFixed(1)}"/>`;
  const oo={...o,now:T?T[n-1]:0,span};
  const lab=T?[0,.5,1].map(f=>chartWhen(t0+span*f,oo)):[];
  if(T&&o.rel)lab[0]='−'+Math.max(1,Math.round(span/60))+' min',lab[1]='−'+Math.max(1,Math.round(span/120))+' min',lab[2]='adesso';
  box.innerHTML=`<div class="chart-scale"><span>${Math.round(top)}${unit}</span><span>${Math.round(top/2)}${unit}</span><span>0${unit}</span></div>`+
-  `<div class="chart-plot"><svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"><g class="gridlines"><line x1="0" y1="2" x2="${W}" y2="2"/><line x1="0" y1="${H/2}" x2="${W}" y2="${H/2}"/><line x1="0" y1="${H-2}" x2="${W}" y2="${H-2}"/></g>${body}</svg>${dots}`+
-  `<i class="c-cross" hidden></i><div class="c-tip" hidden></div>${lab.length?`<div class="chart-x"><span>${lab[0]}</span><span>${lab[1]}</span><span>${lab[2]}</span></div>`:''}</div>`;
- box.classList.toggle('has-x',!!lab.length);
+  `<div class="chart-plot"><svg${box._drawn?'':' class="c-in"'} viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"><g class="gridlines"><line x1="0" y1="2" x2="${W}" y2="2"/><line x1="0" y1="${H/2}" x2="${W}" y2="${H/2}"/><line class="base" x1="0" y1="${H-1}" x2="${W}" y2="${H-1}"/></g>${body}</svg>${dots}`+
+  `${marks}<i class="c-cross" hidden></i><div class="c-tip" hidden></div>${lab.length?`<div class="chart-x"><span>${lab[0]}</span><span>${lab[1]}</span><span>${lab[2]}</span></div>`:''}</div>`;
+ box.classList.toggle('has-x',!!lab.length);if(n>1)box._drawn=true;
  box._c={series,T,n,X,Y,W,H,unit,o:{...oo,tip:true}};
  if(!box._move){
   box._move=e=>{const c=box._c,plot=box.querySelector('.chart-plot');if(!c||!c.n||!plot)return;box._pe=e;
@@ -604,8 +619,10 @@ function renderDonut(items,total){
  const svg=$('e-stack');if(!svg)return;const tot=items.reduce((a,i)=>a+i.watts,0)||1;let at=0;
  if(!svg._segs){svg.innerHTML='<circle class="dn-track" cx="100" cy="100" r="78" pathLength="100"/>';svg._segs=new Map();}
  const seen=new Set();
- const show=i=>{$('e-donut-sub').textContent=i?i.name:'Totale';$('e-donut-top').textContent=i?nf(i.watts/tot*100,0)+'%':Math.round(total)+' W';
-  $('e-donut-w').textContent=i?`${i.source==='misurato'?'':'~'}${nf(i.watts,i.watts<10?1:0)} W`:`${items.length} voci`;};
+ // a riposo il centro mostra chi consuma di più: il totale è già scritto in grande accanto
+ const big=items.reduce((a,i)=>!a||i.watts>a.watts?i:a,null);
+ const show=i=>{const k=i||big;$('e-donut-sub').textContent=k?(i?k.name:'Il più affamato'):'Totale';$('e-donut-top').textContent=k?nf(k.watts/tot*100,0)+'%':Math.round(total)+' W';
+  $('e-donut-w').textContent=k?(i?'':k.name+' · ')+`${k.source==='misurato'?'':'~'}${nf(k.watts,k.watts<10?1:0)} W`:`${items.length} voci`;};
  items.forEach(i=>{const len=i.watts/tot*100;if(len<.3){at+=len;return;}seen.add(i.key);
   let c=svg._segs.get(i.key);
   if(!c){c=document.createElementNS('http://www.w3.org/2000/svg','circle');
@@ -1051,7 +1068,7 @@ function renderChecks(d,h){
   ['check','Salute dischi',hd?`${hd.filter(x=>x.ok).length} su ${hd.length} ok`:'Non controllata',hd?(hd.every(x=>x.ok)?'ok':'bad'):'none',hd?(hd.every(x=>x.ok)?'Tutti in salute':'Un disco va controllato'):'Tocca per controllare','disks'],
   ['wave','Rete',net?.internet?.ms!=null?net.internet.ms+' ms':'Non provata',!net?'none':['ottima','buona'].includes(net.quality)?'ok':net.quality==='lenta'?'warn':'bad',net?`Connessione ${net.quality}`:'Tocca per provare','net']];
  const LBL={ok:'OK',warn:'Attenzione',bad:'Da sistemare',none:'Da fare'};
- $('opt-side-free').textContent=rep?bytes(rep.total):'…';
+
  const box=$('opt-checks');box.replaceChildren();
  const fill={clean:rep?Math.min(100,rep.total/(5*GB)*100):0,large:c?100-Math.round(free*100):0,startup:Math.min(100,(h.on||0)/20*100),apps:h.ram||0,
   disks:hd?hd.filter(x=>x.ok).length/hd.length*100:0,net:net?.internet?.ms!=null?Math.min(100,net.internet.ms):0};
@@ -1384,10 +1401,10 @@ function spark(valId,data,max,color){
  if(!svg){svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('class','spark');svg.setAttribute('viewBox','0 0 100 40');
   svg.setAttribute('preserveAspectRatio','none');svg.setAttribute('aria-hidden','true');tile.prepend(svg);}
  const pts=data.length>1?data:[0,0];const top=max||Math.max(1,...pts)*1.2;
- const line=pts.map((v,i)=>[i*100/(pts.length-1),38-Math.min(1,Math.max(0,v/top))*34]).map((p,i)=>(i?'L':'M')+p[0].toFixed(1)+','+p[1].toFixed(1)).join(' ');
+ const line=smoothPath(pts.map((v,i)=>[i*100/(pts.length-1),38-Math.min(1,Math.max(0,v/top))*32]),40);
  const id='sg-'+valId;
  svg.innerHTML=`<defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${color}" stop-opacity=".3"/><stop offset="1" stop-color="${color}" stop-opacity="0"/></linearGradient></defs>`+
-  `<path d="${line} L100,40 L0,40 Z" fill="url(#${id})"/><path d="${line}" fill="none" stroke="${color}" stroke-width="1.6" stroke-opacity=".75" vector-effect="non-scaling-stroke"/>`;
+  `<path d="${line} L100,40 L0,40 Z" fill="url(#${id})"/><path d="${line}" fill="none" stroke="${color}" stroke-width="2" stroke-opacity=".9" vector-effect="non-scaling-stroke" style="filter:drop-shadow(0 0 4px ${color})"/>`;
 }
 // Luce che segue il mouse sulle carte (solo mouse, niente su telefono).
 document.addEventListener('pointermove',e=>{
@@ -1863,7 +1880,7 @@ function renderHomeWeek(d){
  days.forEach(([dt,x],i)=>{const c=el('div','wk'+(i===6?' today':''));const bar=el('div','wk-bar');const f=el('i');
   f.style.height=Math.max(4,(x?.kwh||0)/mx*100)+'%';f.style.setProperty('--i',i);bar.append(f);
   c.title=`${dt.toLocaleDateString('it-IT',{weekday:'long',day:'numeric'})}: ${x?nf(x.kwh,2)+' kWh · '+eur(x.cost):'nessun dato'}`;
-  c.append(bar,el('small','',dt.toLocaleDateString('it-IT',{weekday:'narrow'})));box.append(c);});
+  c.append(el('em','wk-v',x?.kwh?nf(x.kwh,1):''),bar,el('small','',dt.toLocaleDateString('it-IT',{weekday:'narrow'})));box.append(c);});
 }
 function greeting(){
  const d=new Date(),h=d.getHours();
@@ -1932,18 +1949,19 @@ const FAN_NAMES={off:'Spente',off_pump:'Spente',eco:'Silenziose',normal:'Normali
 const FAN_BAR={off:0,off_pump:8,eco:35,normal:60,max:100};
 const DEMO_GAMING={boost:{active:true,game:'Hollow Knight',boosted:['hollow_knight.exe'],lowered:['discord.exe'],closed:['chrome.exe'],
   tweaks:['Modalità gioco di Windows','Registrazione Xbox in background spenta'],running:{id:'steam-367520',name:'Hollow Knight',store:'Steam'},
-  session:{game:'Hollow Knight',gid:'steam-367520',start:Date.now()/1000-2580,elapsed:2580,cpu_temp_max:71,gpu_temp_max:66,cpu_temp_avg:63,gpu_temp_avg:60,cpu_avg:31,gpu_avg:74,kwh:.21,watts_avg:288},
+  session:{game:'Hollow Knight',gid:'steam-367520',start:Date.now()/1000-2580,elapsed:2580,cpu_temp_max:71,gpu_temp_max:66,cpu_temp_avg:63,gpu_temp_avg:60,cpu_avg:31,gpu_avg:74,kwh:.21,watts_avg:288,fps_avg:141,fps_low:96,fps_max:165},
   settings:{game_priority:true,game_mode:true,no_dvr:true,reopen:true,auto:true,mouse:false,apps:{'discord.exe':'lower','chrome.exe':'close'},eco_apps:{'chrome.exe':'lower'},stop_junk:true,eco_throttle:true,hidden:[]}},
- games:[{id:'steam-367520',name:'Hollow Knight',store:'Steam',size:5.2e9,last:Date.now()/1000-3000,playtime:9600,cover:false},
-  {id:'steam-526870',name:'Satisfactory',store:'Steam',size:3e10,last:Date.now()/1000-90000,playtime:2400,cover:false},
-  {id:'riot-valorant',name:'VALORANT',store:'Riot',size:0,last:Date.now()/1000-400000,playtime:3700,cover:false},
+ games:[{id:'steam-367520',name:'Hollow Knight',store:'Steam',size:5.2e9,last:Date.now()/1000-3000,playtime:9600,cover:false,sessions:6,fps:143,fps_low:101,cpu_t:62,gpu_t:58},
+  {id:'steam-526870',name:'Satisfactory',store:'Steam',size:3e10,last:Date.now()/1000-90000,playtime:2400,cover:false,sessions:2,fps:74,fps_low:48,cpu_t:71,gpu_t:69},
+  {id:'riot-valorant',name:'VALORANT',store:'Riot',size:0,last:Date.now()/1000-400000,playtime:3700,cover:false,sessions:3,fps:238,fps_low:171,cpu_t:68,gpu_t:61},
   {id:'steam-275850',name:'No Man’s Sky',store:'Steam',size:2.9e10,last:1763492602,playtime:0,cover:false},
   {id:'epic-Fortnite',name:'Fortnite',store:'Epic',size:1.1e11,last:0,playtime:0,cover:false},
   {id:'epic-Sugar',name:'Rocket League®',store:'Epic',size:2.4e10,last:0,playtime:0,cover:false},
   {id:'steam-2358720',name:'Black Myth: Wukong',store:'Steam',size:1.5e11,last:1764102958,playtime:0,cover:false},
   {id:'steam-739630',name:'Phasmophobia',store:'Steam',size:2e10,last:1778601360,playtime:0,cover:false}],
- history:[{game:'Hollow Knight',gid:'steam-367520',start:Date.now()/1000-90000,elapsed:4320,cpu_temp_max:74,gpu_temp_max:68,parts_max:{hotspot:83,vrm:58,ram:44,disk:46},kwh:.34,cost:.1,watts_avg:283},
-  {game:'VALORANT',gid:'riot-valorant',start:Date.now()/1000-400000,elapsed:3700,cpu_temp_max:79,gpu_temp_max:71,kwh:.31,cost:.09,watts_avg:301}],
+ fps:{source:{state:'on'},live:142},
+ history:[{game:'Hollow Knight',gid:'steam-367520',start:Date.now()/1000-90000,elapsed:4320,fps_avg:139,fps_low:94,cpu_temp_max:74,gpu_temp_max:68,parts_max:{hotspot:83,vrm:58,ram:44,disk:46},kwh:.34,cost:.1,watts_avg:283},
+  {game:'VALORANT',gid:'riot-valorant',start:Date.now()/1000-400000,elapsed:3700,fps_avg:238,fps_low:171,cpu_temp_max:79,gpu_temp_max:71,kwh:.31,cost:.09,watts_avg:301}],
  apps:[{name:'chrome.exe',bytes:1.2e9,count:12,game:false},{name:'discord.exe',bytes:4e8,count:5,game:false},{name:'overwolf.exe',bytes:3.1e8,count:6,game:false},
   {name:'spotify.exe',bytes:2.6e8,count:4,game:false},{name:'browser_assistant.exe',bytes:9e7,count:2,game:false},{name:'manycam.exe',bytes:1.4e8,count:1,game:false}],
  junk:{'overwolf.exe':'Overwolf','browser_assistant.exe':'assistente del browser Opera','manycam.exe':'webcam virtuale ManyCam'},
@@ -1986,27 +2004,84 @@ function renderGaming(d,animate=false){
   b.addEventListener('click',()=>saveGaming({rgb_color:c}));sw.append(b);});
  sw.querySelectorAll('button').forEach(b=>b.disabled=!d.rgb_enabled);
  $('game-rgb-note').textContent=!d.rgb_enabled?'OpenRGB non collegato':d.rgb_color?'Uscendo torna il colore normale':'Le luci restano come sono';
- renderLibrary(animate);renderBoostApps(d);renderHistory(d.history||[]);
+ renderLibrary(animate);renderBoostApps(d);renderHistory(d.history||[]);renderPerf();
  renderGamingLive(current||statusDemo);
 }
 let libSort='recent';try{libSort=localStorage.getItem('nexar.libSort')||'recent';}catch(e){}
-function libHero(g,running){
- // "Continua a giocare": l'ultimo gioco aperto, grande, con il tasto per ripartire subito.
- const h=$('lib-hero');if(!g){h.hidden=true;h.replaceChildren();h._id=null;return;}
- const playing=g.id===running,key=g.id+'|'+playing+'|'+g.last;if(h._id===key&&!h.hidden)return;h._id=key;h.hidden=false;
- h.style.setProperty('--h',hue(g.name));h.style.setProperty('--sc',STORE_COLORS[g.store]||'#94a3b8');h.className='lib-hero';
- const bg=el('div','lh-bg'),body=el('div','lh-body'),txt=el('div','lh-txt');
- txt.append(el('small','',playing?'In gioco ora':'Continua a giocare'),el('b','',g.name),
-  el('span','',[g.store,'ultima volta '+ago(g.last),g.playtime?playtime(g.playtime)+' in tutto':''].filter(Boolean).join(' · ')));
- const go=el('button','btn primary lh-go');go.type='button';go.append(icon('play'),el('span','',playing?'In gioco':'Gioca'));go.disabled=playing;
- go.addEventListener('click',e=>{e.stopPropagation();launchGame(g);});body.append(txt,go);
- const img=u=>{if(!u)return false;const im=el('img');im.alt='';im.onload=()=>h.classList.add('ready');im.src=u;bg.append(im);return true;};
- firstCover(g.id,['hero','header','capsule']).then(u=>img(u)||(g.icon&&coverUrl(g.id,'icon').then(i=>{if(img(i))h.classList.add('icon');})));
- const more=el('button','btn glass lh-more');more.type='button';more.append(icon('sliders'),el('span','','Dettagli'));
- more.addEventListener('click',e=>{e.stopPropagation();openGame(g.id);});body.append(more);
- h.onclick=()=>openGame(g.id);
- h.replaceChildren(bg,el('i','lh-scrim'),body);
+let gxFocus=null;try{gxFocus=sessionStorage.getItem('nexar.gxFocus')||null;}catch(e){}
+function gxGame(id){return (gameData?.games||[]).find(g=>g.id===id)||null;}
+function renderShelf(){
+ // Giochi recenti in fondo alla vetrina: un tocco porta il gioco in primo piano.
+ const box=$('gx-shelf');if(!box||!gameData)return;
+ const games=(gameData.games||[]).filter(g=>!g.hidden);
+ const list=[...games.filter(g=>g.last).sort((a,b)=>b.last-a.last),...games.filter(g=>!g.last).sort((a,b)=>(b.playtime||0)-(a.playtime||0))].slice(0,7);
+ const run=(current?.boost||gameData.boost)?.running?.id,key=list.map(g=>g.id+(g.cv||'')).join('|');
+ if(box._key!==key){box._key=key;box.replaceChildren();
+  list.forEach((g,i)=>{const b=el('button','gx-tile');b.type='button';b.dataset.id=g.id;b.style.setProperty('--h',hue(g.name));b.style.setProperty('--i',i);
+   b.setAttribute('aria-label',g.name);const art=el('span','gx-tile-art');art.append(el('b','',initials(g.name)));
+   firstCover(g.id,['header','hero','capsule']).then(u=>{if(u){art.style.backgroundImage=`url("${u}")`;art.classList.add('img');}});
+   b.append(art,el('span','gx-tile-name',g.name));
+   b.addEventListener('click',()=>{if(gxFocus===g.id&&!run){openGame(g.id);return;}gxFocus=g.id;try{sessionStorage.setItem('nexar.gxFocus',g.id);}catch(e){}renderGamingLive(current||statusDemo);});
+   box.append(b);});}
+ const focus=$('game-hero').dataset.gid||'';
+ box.querySelectorAll('.gx-tile').forEach(b=>{b.classList.toggle('on',b.dataset.id===focus);b.classList.toggle('playing',b.dataset.id===run);});
+ box.hidden=list.length<2;
 }
+function gxPerf(gid,ses,on){
+ // Sotto il titolo: com'è andato questo gioco finora (medie di tutte le partite), o la partita in corso.
+ const box=$('gx-perf'),g=gxGame(gid);box.replaceChildren();
+ const chips=[];
+ if(on&&ses){if(ses.fps_avg!=null)chips.push(['wave',Math.round(ses.fps_avg),'FPS medi ora']);
+  if(ses.cpu_temp_avg!=null)chips.push(['cpu',Math.round(ses.cpu_temp_avg)+'°','CPU media']);
+  if(ses.gpu_temp_avg!=null)chips.push(['gpu',Math.round(ses.gpu_temp_avg)+'°','GPU media']);
+  if(ses.kwh)chips.push(['plug',nf(ses.kwh,2),'kWh partita']);}
+ else if(g){if(g.fps!=null)chips.push(['wave',Math.round(g.fps),'FPS medi']);
+  if(g.fps_low!=null)chips.push(['wave',Math.round(g.fps_low),'FPS minimi']);
+  if(g.gpu_t!=null)chips.push(['gpu',Math.round(g.gpu_t)+'°','GPU media']);else if(g.cpu_t!=null)chips.push(['cpu',Math.round(g.cpu_t)+'°','CPU media']);
+  if(g.playtime)chips.push(['clock',playtime(g.playtime),'giocate']);
+  if(g.sessions)chips.push(['trophy',g.sessions,g.sessions>1?'partite':'partita']);}
+ chips.slice(0,4).forEach(([ic,v,l])=>{const c=el('div','gx-chip');c.append(icon(ic));const t=el('span');t.append(el('b','',String(v)),el('small','',l));c.append(t);box.append(c);});
+ box.hidden=!chips.length;
+}
+function gxHud(s,on,ses,run){
+ const f=typeof s.fps==='number'?s.fps:null,src=gameData?.fps?.source?.state||(demo?'on':'');
+ const n=$('gx-fps-n');if(f!=null)countUp(n,f,v=>String(Math.round(v)));else n.textContent='—';
+ const cap=Math.max(144,f||0),ring=$('gx-fps-ring');ring.style.strokeDashoffset=String(327*(1-Math.min(1,(f||0)/cap)));
+ $('gx-fps').dataset.l=f==null?'':f>=100?'hi':f>=55?'ok':f>=30?'mid':'low';
+ $('gx-fps-sub').textContent=f!=null?(on&&ses?.fps_low!=null?`media ${Math.round(ses.fps_avg)} · minimi ${Math.round(ses.fps_low)}`:'dal vivo, da RivaTuner')
+  :!run?'Nessun gioco aperto':src==='closed'?'Apri RivaTuner per vederli':src==='missing'?'Servono RivaTuner e Afterburner':'In attesa dei frame…';
+}
+function renderPerf(){
+ const d=gameData;if(!d)return;
+ const st=d.fps?.source?.state||'missing',src=$('gx-src');src.dataset.state=st;
+ $('gx-src-title').textContent=st==='on'?'FPS misurati da RivaTuner':st==='closed'?'RivaTuner è chiuso':'Per gli FPS serve RivaTuner';
+ $('gx-src-text').textContent=st==='on'?'Ogni partita in Gaming registra FPS, minimi e i momenti migliori e peggiori.'
+  :st==='closed'?'È installato ma spento: aprilo (o apri MSI Afterburner) e NEXAR leggerà gli FPS di ogni gioco.'
+  :'Si installa insieme a MSI Afterburner, gratis. Senza, NEXAR registra comunque temperature, carico e consumi.';
+ $('gx-src-btn').hidden=st!=='closed';$('gx-src-link').hidden=st!=='missing';
+ const games=(d.games||[]).filter(g=>!g.hidden&&(g.sessions||g.fps!=null||g.cpu_t!=null));
+ const k=gxRank,val=g=>k==='fps'?g.fps??-1:k==='temp'?Math.max(g.gpu_t??0,g.cpu_t??0):g.playtime||0;
+ games.sort((a,b)=>val(b)-val(a));
+ const box=$('gx-rank');box.replaceChildren();
+ document.querySelectorAll('#gx-rank-sort button').forEach(b=>b.classList.toggle('selected',b.dataset.rs===k));
+ $('gx-rank-sub').textContent=games.length?`${games.length} ${games.length>1?'giochi':'gioco'} · medie di tutte le partite in Gaming`:'Medie di tutte le partite giocate in Gaming';
+ if(!games.length){box.append(el('p','muted','Gioca una partita in Gaming: qui vedrai FPS, temperature e ore di ogni gioco, uno accanto all’altro.'));return;}
+ const maxF=Math.max(60,...games.map(g=>g.fps||0)),maxT=Math.max(...games.map(g=>g.playtime||0),1);
+ games.forEach((g,i)=>{
+  const row=el('button','gx-row');row.type='button';row.style.setProperty('--h',hue(g.name));row.style.setProperty('--i',i);
+  const th=el('span','gx-row-art');th.append(el('b','',initials(g.name)));
+  firstCover(g.id,['header','capsule']).then(u=>{if(u){th.style.backgroundImage=`url("${u}")`;th.classList.add('img');}});
+  const name=el('span','gx-row-name');name.append(el('b','',g.name),el('small','',[g.store,g.sessions?`${g.sessions} ${g.sessions>1?'partite':'partita'}`:'',g.playtime?playtime(g.playtime):''].filter(Boolean).join(' · ')));
+  const bar=(cls,v,max,txt,lab)=>{const c=el('span','gx-meter '+cls);const t=el('span','gx-meter-t');t.append(el('b','',txt),el('small','',lab));
+   const tr=el('i');const fl=el('s');fl.style.width=(v==null?0:Math.max(3,Math.min(100,v/max*100)))+'%';tr.append(fl);c.append(t,tr);return c;};
+  row.append(th,name,
+   bar('m-fps',g.fps,maxF,g.fps!=null?Math.round(g.fps)+'':'—','FPS medi'+(g.fps_low!=null?` · min ${Math.round(g.fps_low)}`:'')),
+   bar('m-temp',g.gpu_t??g.cpu_t,100,g.gpu_t!=null?Math.round(g.gpu_t)+'°':g.cpu_t!=null?Math.round(g.cpu_t)+'°':'—',g.gpu_t!=null?'GPU media':'CPU media'),
+   bar('m-time',g.playtime,maxT,g.playtime?playtime(g.playtime):'—','giocate'));
+  row.addEventListener('click',()=>openGame(g.id));box.append(row);
+ });
+}
+let gxRank='fps';try{gxRank=localStorage.getItem('nexar.gxRank')||'fps';}catch(e){}
 function renderLibrary(animate=false){
  const d=gameData;if(!d)return;const games=d.games||[];const q=$('lib-search').value.trim().toLowerCase();
  const stores=[...new Set(games.filter(g=>!g.hidden).map(g=>g.store))];if(libStore&&!stores.includes(libStore))libStore='';
@@ -2018,7 +2093,7 @@ function renderLibrary(animate=false){
  const byName=(a,b)=>a.name.localeCompare(b.name,'it',{sensitivity:'base'});
  list.sort(libSort==='az'?byName:libSort==='time'?(a,b)=>(b.playtime||0)-(a.playtime||0)||byName(a,b):(a,b)=>(b.last||0)-(a.last||0)||byName(a,b));
  document.querySelectorAll('#lib-sort button').forEach(b=>b.classList.toggle('selected',b.dataset.sort===libSort));
- libHero(!q&&!libStore?games.filter(g=>!g.hidden&&g.last).sort((a,b)=>b.last-a.last)[0]:null,(current?.boost||d.boost)?.running?.id);
+ renderShelf();
  const running=(current?.boost||d.boost)?.running?.id;
  $('lib-sub').textContent=games.length?`${games.length-hiddenN} giochi · ${stores.join(', ')}`:'Nessun gioco trovato';
  const lh=$('lib-hidden');lh.hidden=!hiddenN;lh.textContent=showHidden?'Nascondi i programmi esclusi':`Mostra ${hiddenN} ${hiddenN>1?'esclusi':'escluso'}`;
@@ -2043,6 +2118,7 @@ function renderLibrary(animate=false){
   hide.append(icon(g.hidden?'eye':'eye-off'));
   hide.addEventListener('click',e=>{e.stopPropagation();const h=new Set(d.boost?.settings?.hidden||[]);g.hidden?h.delete(g.id):h.add(g.id);saveGaming({hidden:[...h]});});
   art.append(play,hide);if(playing)art.append(el('span','gc-now','IN GIOCO'));
+  if(g.fps!=null){const f=el('span','gc-fps');f.append(el('b','',String(Math.round(g.fps))),document.createTextNode(' FPS'));art.append(f);}
   if(g.custom){const c=el('span','gc-own');c.title='Impostazioni solo per questo gioco';c.append(icon('sliders'));art.append(c);}
   card.tabIndex=0;card.setAttribute('role','button');card.setAttribute('aria-label','Apri '+g.name);
   card.addEventListener('click',()=>openGame(g.id));card.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openGame(g.id);}});
@@ -2675,7 +2751,7 @@ function renderHistory(list){
    el('small','',new Date(h.start*1000).toLocaleString('it-IT',{weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})));
   const chips=el('div','hist-chips');
   [[playtime(h.elapsed),'clock'],h.cpu_temp_max!=null&&[`CPU ${Math.round(h.cpu_temp_max)}°`,'cpu'],h.gpu_temp_max!=null&&[`GPU ${Math.round(h.gpu_temp_max)}°`,'gpu'],
-   h.parts_max?.hotspot!=null&&[`Hot spot ${Math.round(h.parts_max.hotspot)}°`,'temp'],h.parts_max?.vrm!=null&&[`VRM ${Math.round(h.parts_max.vrm)}°`,'grid'],
+   h.fps_avg!=null&&[`${Math.round(h.fps_avg)} FPS`+(h.fps_low!=null?` · min ${Math.round(h.fps_low)}`:''),'wave'],h.parts_max?.hotspot!=null&&[`Hot spot ${Math.round(h.parts_max.hotspot)}°`,'temp'],h.parts_max?.vrm!=null&&[`VRM ${Math.round(h.parts_max.vrm)}°`,'grid'],
    h.parts_max?.ram!=null&&[`RAM ${Math.round(h.parts_max.ram)}°`,'ram'],h.parts_max?.disk!=null&&[`Dischi ${Math.round(h.parts_max.disk)}°`,'disk'],
    h.kwh&&[`${nf(h.kwh,2)} kWh · ${eur(h.cost)}`,'plug']].filter(Boolean)
    .forEach(([txt,ic])=>{const c=el('span');c.append(icon(ic),document.createTextNode(txt));chips.append(c);});
@@ -2701,13 +2777,13 @@ function renderGamingLive(s){
  $('boost-state').textContent=on?'ATTIVE':'SPENTE';$('boost-state').classList.toggle('on',on);
  const live=[on&&b.game&&'⚡ '+b.game+' a priorità alta',...(b.closed||[]).map(n=>'⛔ '+n.replace('.exe','')+' chiusa'),...(b.lowered||[]).map(n=>'🐢 '+n.replace('.exe','')+' rallentata'),...(b.tweaks||[]).map(t=>'✓ '+t)].filter(Boolean);
  $('boost-live').replaceChildren(...(on?live.map(t=>el('span','',t)):[]));
- const last=(gameData?.games||[]).find(g=>!g.hidden&&g.last);
+ const foc=gxFocus&&gxGame(gxFocus),last=foc&&!foc.hidden?foc:(gameData?.games||[]).filter(g=>!g.hidden&&g.last).sort((a,b)=>b.last-a.last)[0];
  let state,title,sub,main,second=null,gid='';
  if(on&&(ses?.game||run)){state='IN GIOCO';title=ses?.game||run.name;gid=ses?.gid||run?.id;sub='Gaming attivo: il gioco ha la precedenza su tutto il resto.';main=['Esci da Gaming','x','exit'];}
  else if(on){state='GAMING ATTIVO';title='Aspetto il gioco';sub='Apri un gioco: gli do la priorità appena parte.';main=['Esci da Gaming','x','exit'];}
  else if(run){state='GIOCO APERTO';title=run.name;gid=run.id;sub='Gaming è spento: attivalo per dare la precedenza al gioco.';main=['Attiva Gaming','game','on'];}
  else if(last){state='PRONTO';title=last.name;gid=last.id;
-  sub=`Ultima partita ${ago(last.last)}`+(last.playtime?` · ${playtime(last.playtime)} con NEXAR`:'')+'. Premi Gioca: NEXAR prepara il PC e apre il gioco.';
+  sub=(last.last?`Ultima partita ${ago(last.last)}`:'Mai giocato con NEXAR')+(last.playtime?` · ${playtime(last.playtime)} in tutto`:'')+'. Premi Gioca: NEXAR prepara il PC e apre il gioco.';
   main=['Gioca','play','launch:'+last.id];second=['Solo Gaming','game','on'];}
  else{state='PRONTO';title='Pronto a giocare';sub='Apri un gioco: NEXAR attiva Gaming da sola e rimette tutto com’era quando lo chiudi.';main=['Attiva Gaming','game','on'];}
  $('game-hero').classList.toggle('live',on);
@@ -2715,6 +2791,8 @@ function renderGamingLive(s){
  $('game-state').lastElementChild.textContent=state;swapIn($('game-title'),title);swapIn($('game-sub'),sub);
  $('game-timer').textContent=on&&ses?'⏱ '+duration(ses.elapsed):'';
  setHeroBtn('game-main',main);setHeroBtn('game-second',second);setHeroArt(gid);
+ $('game-hero').dataset.gid=gid||'';const more=$('gx-more');more.hidden=!gid||!gxGame(gid);more.dataset.gid=gid||'';
+ gxPerf(gid,ses,on);gxHud(s,on,ses,run);renderShelf();
  // statistiche dal vivo (con i massimi della partita in corso)
  const mx=(v,k)=>on&&ses&&ses[k]!=null?` · max ${Math.round(ses[k])}°`:'';
  countUp($('gs-cpu'),s.cpu_temp,deg);$('gs-cpu').closest('.gstat').classList.toggle('hot',(s.cpu_temp||0)>=85);$('gs-cpu-sub').textContent=`${pct(s.cpu)} di carico`+mx(s.cpu_temp,'cpu_temp_max');setBar('gs-cpu-bar',s.cpu_temp);
@@ -2755,6 +2833,10 @@ document.querySelectorAll('#lib-sort button').forEach(b=>b.addEventListener('cli
 $('lib-reload').addEventListener('click',()=>loadGaming(true,true));
 $('lib-hidden').addEventListener('click',()=>{showHidden=!showHidden;renderLibrary();});
 $('boost-reload').addEventListener('click',()=>loadGaming());
+$('gx-more').addEventListener('click',()=>{const id=$('gx-more').dataset.gid;if(id)openGame(id);});
+document.querySelectorAll('#gx-rank-sort button').forEach(b=>b.addEventListener('click',()=>{gxRank=b.dataset.rs;try{localStorage.setItem('nexar.gxRank',gxRank);}catch(e){}renderPerf();}));
+$('gx-src-btn').addEventListener('click',async()=>{if(demo){notify('Anteprima: comando non attivo.');return;}
+ try{notify('✓ '+(await req('/api/gaming/rtss','POST',{})).message);setTimeout(()=>loadGaming(),6000);}catch(ex){notify('⚠ '+ex.message,true);}});
 
 /* ---------- scheda di un gioco ---------- */
 const PROF0={auto:true,fans:'',rgb:null,mouse:null};const demoProf={'steam-367520':{auto:true,fans:'max',rgb:'#a855f7',mouse:null}};
@@ -2765,7 +2847,9 @@ function demoDetail(g){
   steam:g.id.startsWith('steam-'),appid:a,icon:true,verify:g.store==='Steam'?'Steam':g.store==='Epic'?'Epic':null,
   store_url:g.store==='Epic'?'https://store.epicgames.com/it/browse?q='+encodeURIComponent(g.name):a?'https://store.steampowered.com/app/'+a+'/':null,store_name:g.store==='Epic'?'Epic':'Steam',custom_cover:!!coverVer.get(g.id),running:(DEMO_GAMING.boost.running||{}).id===g.id,
   stats:{seconds:g.playtime||0,sessions:g.playtime?hist.length+2:0,kwh:g.playtime?.86:0,cost:g.playtime?.26:0,
-   cpu_temp_max:hist[0]?.cpu_temp_max??null,gpu_temp_max:hist[0]?.gpu_temp_max??null},recent:hist,profile:{...PROF0,...(demoProf[g.id]||{})}};
+   cpu_temp_max:hist[0]?.cpu_temp_max??null,gpu_temp_max:hist[0]?.gpu_temp_max??null,fps_avg:g.fps??null,fps_low:g.fps_low??null,fps_max:g.fps?Math.round(g.fps*1.2):null,
+   cpu_temp_avg:g.cpu_t??null,gpu_temp_avg:g.gpu_t??null},
+  recent:g.fps?[demoRun(Date.now()/1000-90000,72,g.fps,7),demoRun(Date.now()/1000-260000,45,g.fps*.95,3),...hist.slice(2)]:hist,profile:{...PROF0,...(demoProf[g.id]||{})}};
 }
 async function openGame(gid){
  const g=(gameData?.games||[]).find(x=>x.id===gid);if(!g)return;
@@ -2798,10 +2882,13 @@ function paintSheet(){
  // numeri
  const st=d?.stats||{seconds:g.playtime||0,sessions:g.sessions||0};const box=$('gsh-stats');box.replaceChildren();
  [['clock','Tempo di gioco',st.seconds?playtime(st.seconds):'—','#a78bfa'],['trophy','Partite',st.sessions?String(st.sessions):'—','#f472b6'],
-  ['restart','Ultima volta',g.last?ago(g.last):'mai','#60a5fa'],['cpu','CPU massima',st.cpu_temp_max!=null?Math.round(st.cpu_temp_max)+'°':'—','#fb923c'],
-  ['gpu','GPU massima',st.gpu_temp_max!=null?Math.round(st.gpu_temp_max)+'°':'—','#34d399'],['plug','Corrente usata',st.kwh?`${nf(st.kwh,2)} kWh`:'—','#fbbf24',st.cost?eur(st.cost):'']]
+  ['wave','FPS medi',st.fps_avg!=null?String(Math.round(st.fps_avg)):'—','#34d399',st.fps_low!=null?`minimi ${Math.round(st.fps_low)}`+(st.fps_max!=null?` · record ${Math.round(st.fps_max)}`:''):''],
+  ['cpu','CPU media',st.cpu_temp_avg!=null?Math.round(st.cpu_temp_avg)+'°':st.cpu_temp_max!=null?Math.round(st.cpu_temp_max)+'°':'—','#38bdf8',st.cpu_temp_max!=null?`massima ${Math.round(st.cpu_temp_max)}°`:''],
+  ['gpu','GPU media',st.gpu_temp_avg!=null?Math.round(st.gpu_temp_avg)+'°':st.gpu_temp_max!=null?Math.round(st.gpu_temp_max)+'°':'—','#a78bfa',st.gpu_temp_max!=null?`massima ${Math.round(st.gpu_temp_max)}°`:''],
+  ['plug','Corrente usata',st.kwh?`${nf(st.kwh,2)} kWh`:'—','#fbbf24',st.cost?eur(st.cost):'']]
   .forEach(([ic,l,v,c,sub])=>{const t=el('div','gsh-stat');t.style.setProperty('--c',c);const i=el('span','gsh-si');i.append(icon(ic));
    const tx=el('div');tx.append(el('small','',l),el('b','',v));if(sub)tx.append(el('em','',sub));t.append(i,tx);box.append(t);});
+ paintPerf(d);
  // scelte del gioco
  const p=d?.profile||PROF0,gd=gameData||{};
  $('gsh-auto').setAttribute('aria-checked',p.auto?'true':'false');$('gsh-auto').disabled=!d;
@@ -2835,9 +2922,46 @@ function paintSheet(){
   top.append(el('b','',new Date(h.start*1000).toLocaleString('it-IT',{weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})),el('span','',playtime(h.elapsed)));
   const chips=el('div','hist-chips');
   [h.cpu_temp_max!=null&&[`CPU ${Math.round(h.cpu_temp_max)}°`,'cpu'],h.gpu_temp_max!=null&&[`GPU ${Math.round(h.gpu_temp_max)}°`,'gpu'],
-   h.parts_max?.hotspot!=null&&[`Hot spot ${Math.round(h.parts_max.hotspot)}°`,'temp'],h.watts_avg&&[`${h.watts_avg} W medi`,'bolt'],
+   h.fps_avg!=null&&[`${Math.round(h.fps_avg)} FPS`+(h.fps_low!=null?` · min ${Math.round(h.fps_low)}`:''),'wave'],h.parts_max?.hotspot!=null&&[`Hot spot ${Math.round(h.parts_max.hotspot)}°`,'temp'],h.watts_avg&&[`${h.watts_avg} W medi`,'bolt'],
    h.kwh&&[`${nf(h.kwh,2)} kWh · ${eur(h.cost)}`,'plug']].filter(Boolean).forEach(([t,ic])=>{const c=el('span');c.append(icon(ic),document.createTextNode(t));chips.append(c);});
   r.append(top,chips);hl.append(r);});
+}
+function mmss(s){s=Math.max(0,Math.round(s));const h=Math.floor(s/3600),m=Math.floor(s%3600/60);return h?`${h} h ${String(m).padStart(2,'0')}′`:`${m}′ ${String(s%60).padStart(2,'0')}″`;}
+function paintPerf(d){
+ // Com'è andata una partita: FPS e temperature minuto per minuto, il momento migliore e quello più difficile.
+ const box=$('gsh-perf'),runs=(d?.recent||[]).filter(r=>(r.points||[]).length>1);
+ box.hidden=!runs.length;if(!runs.length)return;
+ if(gsh.run==null||gsh.run>=runs.length)gsh.run=0;const r=runs[gsh.run];
+ const pick=$('gsh-runpick');pick.replaceChildren(...runs.map((x,i)=>{const b=el('button',i===gsh.run?'selected':'',i?new Date(x.start*1000).toLocaleDateString('it-IT',{day:'numeric',month:'short'}):'Ultima');
+  b.type='button';b.title=new Date(x.start*1000).toLocaleString('it-IT',{weekday:'long',day:'numeric',month:'long',hour:'2-digit',minute:'2-digit'});
+  b.addEventListener('click',()=>{gsh.run=i;paintPerf(gsh.detail);});return b;}));
+ $('gsh-perf-sub').textContent=new Date(r.start*1000).toLocaleString('it-IT',{weekday:'long',day:'numeric',month:'long',hour:'2-digit',minute:'2-digit'})+' · '+playtime(r.elapsed);
+ const P=r.points,T=P.map(p=>r.start+p[0]),hasFps=P.some(p=>p[1]!=null);
+ const mom=$('gsh-moments');mom.replaceChildren();
+ const card=(cls,ic,lab,val,unit,sub)=>{const c=el('div','gsh-mom '+cls);const i=el('span','gsh-mom-i');i.append(icon(ic));
+  const t=el('div');const v=el('b');v.append(document.createTextNode(val),el('small','',unit));t.append(el('small','',lab),v,el('em','',sub));c.append(i,t);mom.append(c);};
+ if(r.fps_avg!=null)card('avg','wave','FPS medi',String(Math.round(r.fps_avg)),'FPS',[r.fps_low!=null&&`minimi ${Math.round(r.fps_low)}`,r.fps_max!=null&&`picco ${Math.round(r.fps_max)}`].filter(Boolean).join(' · '));
+ if(r.fps_best_at)card('best','trophy','Il momento migliore',String(Math.round(r.fps_best_at.fps)),'FPS',`al minuto ${mmss(r.fps_best_at.t)} di gioco`);
+ if(r.fps_worst_at)card('worst','alert','Il momento più duro',String(Math.round(r.fps_worst_at.fps)),'FPS',`al minuto ${mmss(r.fps_worst_at.t)} di gioco`);
+ if(r.gpu_temp_avg!=null||r.cpu_temp_avg!=null)card('temp','temp','Temperature medie',`${r.cpu_temp_avg!=null?Math.round(r.cpu_temp_avg)+'°':'—'} / ${r.gpu_temp_avg!=null?Math.round(r.gpu_temp_avg)+'°':'—'}`,'',`CPU / GPU · max ${r.cpu_temp_max!=null?Math.round(r.cpu_temp_max)+'°':'—'} / ${r.gpu_temp_max!=null?Math.round(r.gpu_temp_max)+'°':'—'}`);
+ $('gsh-cc-fps').hidden=!hasFps;
+ if(hasFps){const marks=[r.fps_best_at&&{t:r.start+r.fps_best_at.t+30,color:'#34d399',label:'Il migliore'},r.fps_worst_at&&{t:r.start+r.fps_worst_at.t+30,color:'#f87171',label:'Il più duro'}].filter(Boolean);
+  $('gsh-ch-fps-sub').textContent=r.fps_avg!=null?`media ${Math.round(r.fps_avg)} · minimi ${Math.round(r.fps_low)}`:'nel corso della partita';
+  const fmax=Math.max(30,...P.map(p=>p[1]).filter(v=>typeof v==='number'));
+  chart('gsh-ch-fps',[{data:P.map(p=>p[1]),color:'#34d399',name:'FPS'}],Math.ceil(fmax*1.18/20)*20,'',{times:T,marks,avgLine:r.fps_avg});}
+ const temps=[...P.map(p=>p[2]),...P.map(p=>p[3])].filter(v=>typeof v==='number');
+ chart('gsh-ch-temp',[{data:P.map(p=>p[2]),color:COMP.cpu,name:'CPU'},{data:P.map(p=>p[3]),color:COMP.gpu,name:'GPU'}],Math.max(60,Math.ceil((Math.max(0,...temps)+5)/10)*10),'°',{times:T});
+}
+function demoRun(start,mins,base,seed){
+ // Partita di esempio: FPS che respirano, un calo e un picco, temperature che salgono piano.
+ const pts=[];let s=seed;const rnd=()=>{s=(s*9301+49297)%233280;return s/233280;};
+ for(let i=0;i<=mins*2;i++){const t=i*30,k=i/(mins*2);
+  const f=base+Math.sin(i/5)*base*.06+(rnd()-.5)*base*.08-(k>.38&&k<.46?base*.38:0)+(k>.7&&k<.76?base*.16:0);
+  pts.push([t,Math.round(f),Math.round(52+14*(1-Math.exp(-k*5))+rnd()*3),Math.round(48+16*(1-Math.exp(-k*4))+rnd()*3),Math.round(70+rnd()*20),Math.round(260+rnd()*60)]);}
+ const fps=pts.map(p=>p[1]),win=12,avgs=fps.slice(0,-win+1).map((_,i)=>fps.slice(i,i+win).reduce((a,b)=>a+b,0)/win);
+ const bi=avgs.indexOf(Math.max(...avgs)),wi=avgs.indexOf(Math.min(...avgs)),sorted=[...fps].sort((a,b)=>a-b);
+ return {start,elapsed:mins*60,points:pts,fps_avg:fps.reduce((a,b)=>a+b,0)/fps.length,fps_low:sorted[Math.ceil(fps.length*.05)-1],fps_max:sorted[sorted.length-1],
+  fps_best_at:{t:pts[bi][0],fps:avgs[bi]},fps_worst_at:{t:pts[wi][0],fps:avgs[wi]},cpu_temp_avg:62,gpu_temp_avg:59,cpu_temp_max:Math.max(...pts.map(p=>p[2])),gpu_temp_max:Math.max(...pts.map(p=>p[3])),kwh:.34,cost:.1,watts_avg:288};
 }
 async function saveProfile(change){
  if(!gsh?.detail)return;const id=gsh.id;
@@ -2883,7 +3007,7 @@ function gzTab(name){
  try{localStorage.setItem('nexar.gzTab',name);}catch(e){}inkTabs($('gz-tabs'));
 }
 document.querySelectorAll('#gz-tabs [data-gz]').forEach(b=>b.addEventListener('click',()=>gzTab(b.dataset.gz)));
-try{const t=localStorage.getItem('nexar.gzTab');if(t&&t!=='lib')gzTab(t);}catch(e){}
+try{const t=localStorage.getItem('nexar.gzTab');if(['perf','hist','opt'].includes(t))gzTab(t);}catch(e){}
 $('upd-check').addEventListener('click',()=>{updLater='';try{sessionStorage.removeItem('nexar_upd_later');}catch(e){}post('/api/update/check',{});});
 $('upd-install').addEventListener('click',()=>startUpdate());
 $('links-refresh').addEventListener('click',()=>post('/api/discover',{}));
@@ -3015,7 +3139,7 @@ function renderLive(s){
  const box=$('net-spark');const W=300,H=60,top2=Math.max(125000,...live.down,...live.up)*1.15;
  const pts=d=>(d.length>1?d:[0,0]).map((v,i,a)=>[i*W/(a.length-1),H-2-Math.min(1,(v||0)/top2)*(H-6)]);
  const dn=smoothPath(pts(live.down),H),up=smoothPath(pts(live.up),H);
- box.innerHTML=`<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"><defs><linearGradient id="net-g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#38bdf8" stop-opacity=".35"/><stop offset="1" stop-color="#38bdf8" stop-opacity="0"/></linearGradient></defs><path d="${dn} L${W},${H} L0,${H} Z" fill="url(#net-g)"/><path d="${dn}" stroke="#38bdf8" stroke-width="2" fill="none" vector-effect="non-scaling-stroke"/><path d="${up}" stroke="#f472b6" stroke-width="1.6" fill="none" stroke-dasharray="4 3" vector-effect="non-scaling-stroke"/></svg>`;
+ box.innerHTML=`<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"><defs><linearGradient id="net-g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#38bdf8" stop-opacity=".35"/><stop offset="1" stop-color="#38bdf8" stop-opacity="0"/></linearGradient><linearGradient id="net-u" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f472b6" stop-opacity=".18"/><stop offset="1" stop-color="#f472b6" stop-opacity="0"/></linearGradient></defs><path d="${dn} L${W},${H} L0,${H} Z" fill="url(#net-g)"/><path d="${up} L${W},${H} L0,${H} Z" fill="url(#net-u)"/><path d="${dn}" stroke="#38bdf8" stroke-width="2.4" fill="none" vector-effect="non-scaling-stroke" style="filter:drop-shadow(0 0 5px #38bdf8)"/><path d="${up}" stroke="#f472b6" stroke-width="2" fill="none" vector-effect="non-scaling-stroke" style="filter:drop-shadow(0 0 5px #f472b6)"/></svg>`;
 }
 async function loadLiveHistory(){
  try{
@@ -3129,9 +3253,22 @@ function layoutApply(){
  tiles.map(t=>t.dataset.tile).forEach(id=>{if(!order.includes(id))order.push(id);});
  order.forEach(id=>box.append(tiles.find(t=>t.dataset.tile===id)));
  tiles.forEach(t=>t.classList.toggle('tile-off',(l.hidden||DEF_HIDDEN).includes(t.dataset.tile)));
+ requestAnimationFrame(()=>bentoFill(true));
+}
+function bentoFill(force){
+ // Niente buchi nella griglia: se una riga resta corta, l'ultima scheda della riga si allarga fino al bordo.
+ const box=document.querySelector('#page-home .bento');if(!box||!box.offsetWidth)return;
+ if(!force&&box._fw===box.offsetWidth)return;box._fw=box.offsetWidth;
+ const tiles=bentoTiles();tiles.forEach(t=>{if(t.dataset.fill){t.style.gridColumn='';delete t.dataset.fill;}});
+ const cs=getComputedStyle(box),cols=cs.gridTemplateColumns.split(' ').length;if(cols<2)return;
+ const gap=parseFloat(cs.columnGap)||0,cw=(box.clientWidth-gap*(cols-1))/cols,span=r=>Math.max(1,Math.round((r.width+gap)/(cw+gap)));
+ const rows=new Map();
+ tiles.forEach(t=>{if(!t.offsetParent)return;const r=t.getBoundingClientRect(),k=Math.round(r.top);if(!rows.has(k))rows.set(k,[]);rows.get(k).push([t,r]);});
+ rows.forEach(list=>{const used=list.reduce((a,[,r])=>a+span(r),0);if(used>=cols)return;
+  const [t,r]=list.reduce((a,b)=>b[1].right>a[1].right?b:a);t.style.gridColumn=`span ${span(r)+cols-used}`;t.dataset.fill='1';});
 }
 function layoutEdit(on){
- const page=$('page-home');page.classList.toggle('editing',on);$('home-edit').setAttribute('aria-pressed',on?'true':'false');
+ const page=$('page-home');page.classList.toggle('editing',on);requestAnimationFrame(()=>bentoFill(true));$('home-edit').setAttribute('aria-pressed',on?'true':'false');
  $('home-edit').lastChild.textContent=on?'Fatto':'Personalizza';$('home-edit-bar').hidden=!on;
  bentoTiles().forEach(t=>{
   t.querySelector(':scope>.tile-tools')?.remove();if(!on){t.removeAttribute('draggable');return;}
@@ -3160,6 +3297,7 @@ $('home-reset').addEventListener('click',()=>{try{localStorage.removeItem(LAYOUT
  const box=document.querySelector('#page-home .bento');HOME_DEFAULT.forEach(id=>{const t=bentoTiles().find(x=>x.dataset.tile===id);if(t)box.append(t);});layoutApply();layoutEdit(true);});
 const HOME_DEFAULT=currentOrder();
 layoutApply();loadLiveHistory();loadFiles();loadHomeProcs();
+if(window.ResizeObserver){let bt=0;new ResizeObserver(()=>{cancelAnimationFrame(bt);bt=requestAnimationFrame(()=>bentoFill());}).observe(document.querySelector('#page-home .bento'));}
 
 /* ---------- Grafici lunghi: 24 ore, 7 giorni, 30 giorni (medie salvate sul PC) ---------- */
 const RANGE_SUB={'15m':'ultimi 15 minuti','24h':'ultime 24 ore · media di ogni ora','7d':'ultimi 7 giorni · media di ogni ora','30d':'ultimi 30 giorni · media ogni 6 ore'};
@@ -3434,7 +3572,8 @@ function auEq(d,flow){
 let auLvlOn=false,auMic=false;
 function auLvl(p){return p>0?Math.max(0,Math.min(1,1+Math.log10(p)*20/54)):0;}
 function auPaint(L){
- document.querySelectorAll('#page-audio [data-lvl]').forEach(e=>{const k=e.dataset.lvl,p=k==='out'?L.out:k==='in'?L.in:(L.apps||{})[k.slice(4)]||0;e.style.transform=`scaleX(${(1-auLvl(p)).toFixed(3)})`;});
+ document.querySelectorAll('#page-audio [data-lvl]').forEach(e=>{const k=e.dataset.lvl,p=k==='out'?L.out:k==='in'?L.in:(L.apps||{})[k.slice(4)]||0;e.style.setProperty('--lv',(1-auLvl(p)).toFixed(3));});
+ auViz(auLvl(L.out||0));
  if(L.mic_test!==undefined&&L.mic_test!==auMic){auMic=L.mic_test;auMicBtn();}
  if(L.mic_error&&auMic===false&&auMicErr!==L.mic_error){auMicErr=L.mic_error;notify('⚠ '+L.mic_error,true);}
 }
@@ -3450,6 +3589,15 @@ async function auLvlLoop(){
   else{try{L=await req('/api/audio/levels');}catch(e){await new Promise(r=>setTimeout(r,2500));continue;}}
   auPaint(L);await new Promise(r=>setTimeout(r,demo?140:120));
  }}finally{auLvlOn=false;}
+}
+const AU_BARS=36;let auVizT=0;
+function auViz(v){
+ // Lo spettro della vetrina: barre che seguono il volume reale delle cuffie, ognuna con il suo ritmo.
+ const box=$('au-viz');if(!box)return;
+ if(box.childElementCount!==AU_BARS){box.replaceChildren(...Array.from({length:AU_BARS},(_,i)=>{const b=el('i');b.style.setProperty('--i',i);return b;}));}
+ auVizT+=.35;const bars=box.children;
+ for(let i=0;i<AU_BARS;i++){const shape=.35+.65*Math.sin(Math.PI*(i+.5)/AU_BARS),wob=.55+.45*Math.abs(Math.sin(auVizT*(.6+(i%7)*.17)+i*1.3));
+  bars[i].style.setProperty('--v',Math.max(.04,Math.min(1,v*shape*wob*1.35)).toFixed(3));}
 }
 function auMeter(k){const m=el('span','au-meter');const i=el('i');i.dataset.lvl=k;m.append(i);return m;}
 function auOthers(list,flow){
@@ -3472,14 +3620,20 @@ function renderAudio(){
  // app
  const apps=$('au-apps');apps.replaceChildren();
  if(!(i.apps||[]).length)apps.append(el('p','muted','Nessuna app sta usando l\'audio in questo momento.'));
- (i.apps||[]).forEach(a=>{const row=el('div','au-app'+(a.active?' on':'')),ic=el('span','as-ico',a.id==='system'?'':initials(a.name));
-  if(a.id==='system')ic.append(icon('vol'));ic.style.setProperty('--h',hue(a.name));
-  const nm=el('div','au-app-n');nm.append(el('b','',a.name),auMeter('app:'+a.id));
+ (i.apps||[]).forEach(a=>{const row=el('div','au-app'+(a.active?' on':'')+(a.mute?' muted':'')),ic=el('span','as-ico',a.id==='system'?'':initials(a.name));
+  if(a.id==='system')ic.append(icon('vol'));ic.style.setProperty('--h',hue(a.name));row.style.setProperty('--h',hue(a.name));
+  const nm=el('div','au-app-n');nm.append(el('b','',a.name),el('small','',a.mute?'Muto':a.active?'Suona ora':'In silenzio'),auMeter('app:'+a.id));
   const v=el('output','au-val',a.volume+'%'),m=el('button','au-mute'+(a.mute?' on':''));m.type='button';m.setAttribute('aria-label',(a.mute?'Riattiva ':'Muto ')+a.name);m.append(icon(a.mute?'vol-x':'vol'));
   m.addEventListener('click',async()=>{a.mute=!a.mute;renderAudio();await auSend('/api/audio/app',{id:a.id,mute:a.mute},true);});
   const r=auRange(0,100,1,a.volume,{label:'Volume di '+a.name,input:x=>{v.textContent=x+'%';auSend('/api/audio/app',{id:a.id,volume:x},true);},change:x=>{a.volume=x;v.textContent=x+'%';auSend('/api/audio/app',{id:a.id,volume:x},true);}});
-  row.append(ic,nm,m,r,v);apps.append(row);});
+  const fd=el('span','au-fader');fd.append(r);row.append(ic,nm,fd,v,m);apps.append(row);});
  $('au-duck').setAttribute('aria-checked',i.ducking?'false':'true');
+ // vetrina
+ const o=(i.out||[]).find(d=>d.default),mi=(i.in||[]).find(d=>d.default);
+ $('au-now-out').textContent=o?auTitle(o)[0]:'Nessuna uscita audio';
+ $('au-now-sub').textContent=o?(o.mute?'In muto':`Volume ${o.volume}%`+(o.boost?.db>0?` · amplificato +${o.boost.db} dB`:''))+((i.apps||[]).filter(a=>a.active).length?` · ${(i.apps||[]).filter(a=>a.active).map(a=>a.name).slice(0,3).join(', ')} in riproduzione`:''):'Collega cuffie o casse al PC';
+ const pill=(id,d,ic)=>{const p=$(id);p.hidden=!d;if(!d)return;p.querySelector('b').textContent=auTitle(d)[0]+(d.mute?' · muto':` · ${d.volume}%`);p.classList.toggle('off',!!d.mute);p.querySelector('use').setAttribute('href','#i-'+ic);};
+ pill('au-pill-in',mi,'mic');
  renderAmp();
 }
 function renderAmp(){
@@ -3493,6 +3647,8 @@ function renderAmp(){
  else if(!ready){step=s.step==='select'?2:2;title='Ultimo passo: scegli i dispositivi';text='Si apre una finestra sul PC: spunta le cuffie e il microfono, premi OK e riavvia il PC una volta.';label='Scegli cuffie e microfono';}
  else{step=4;title='Amplificatore attivo';text='Alza cuffie e microfono con il cursore Amplifica qui sotto, anche dal telefono.';label='Dispositivi';}
  card.dataset.step=String(step);card.classList.toggle('busy',busy);
+ // amplificatore pronto: la grande scheda lascia il posto a un'etichetta nella vetrina
+ card.hidden=step===4;$('au-pill-amp').hidden=step!==4;
  $('au-amp-title').textContent=title;$('au-amp-text').textContent=text;
  document.querySelectorAll('#au-steps li').forEach(li=>{const n=+li.dataset.s;li.className=n<step?'done':n===step?'now':'';});
  $('au-steps').hidden=step===4;
@@ -3507,6 +3663,7 @@ $('au-amp-btn').addEventListener('click',async()=>{
  if(!apo.installed){const r=await auSend('/api/audio/install',{},true);if(r){auInfo.setup=r.setup;renderAmp();}return;}
  await auSend('/api/audio/selector',{});
 });
+$('au-pill-amp').addEventListener('click',()=>$('au-amp-btn').click());
 $('au-max').addEventListener('click',async()=>{if(await auSend('/api/audio/max',{})){if(demo){[...auInfo.out,...auInfo.in].filter(d=>d.default).forEach(d=>{d.volume=100;d.mute=false;});auInfo.apps.forEach(a=>{a.volume=100;a.mute=false;});renderAudio();}else loadAudio();}});
 $('au-duck').addEventListener('click',async e=>{e.preventDefault();if(!auInfo)return;const off=$('au-duck').getAttribute('aria-checked')==='true';
  if(await auSend('/api/audio/ducking',{enabled:off},true)){auInfo.ducking=off;renderAudio();notify(off?'✓ Durante le chiamate Windows abbassa gli altri suoni':'✓ Volume pieno anche durante le chiamate');}});

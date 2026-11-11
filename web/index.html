@@ -224,7 +224,7 @@
      </section>
 
      <section class="card b-temps" data-tile="temps">
-      <div class="card-head"><div><h3>Temperature</h3><p id="chart-temps-sub">Processore e scheda video, ultimi 15 minuti</p></div><div class="legend-mini"><span class="c-cpu">CPU <b id="tc-now">—</b></span><span class="c-gpu">GPU <b id="tg-now">—</b></span><button class="btn small ghost" type="button" data-view="cooling">Tutte</button></div></div>
+      <div class="card-head"><div><h3>Temperature</h3><p id="chart-temps-sub">Processore e scheda video, ultimi 15 minuti</p></div><div class="head-r"><div class="legend-mini"><span class="c-cpu">CPU <b id="tc-now">—</b></span><span class="c-gpu">GPU <b id="tg-now">—</b></span></div><button class="btn small ghost" type="button" data-view="cooling">Tutte</button></div></div>
       <div class="rchips" data-chart="temps" role="group" aria-label="Periodo del grafico"><button type="button" data-r="15m" class="on">15 min</button><button type="button" data-r="24h">24 ore</button><button type="button" data-r="7d">7 giorni</button><button type="button" data-r="30d">30 giorni</button></div>
       <div class="chart" id="chart-temps"></div>
      </section>
@@ -284,37 +284,49 @@
 
    <!-- GAMING -->
    <section class="page" id="page-gaming">
-    <section class="game-hero" id="game-hero">
+    <section class="game-hero gx-stage" id="game-hero">
      <div class="game-hero-art" id="game-hero-art"></div>
      <div class="game-particles" id="game-particles" aria-hidden="true"></div>
-     <div class="game-hero-body">
-      <div class="game-hero-top"><span class="game-state" id="game-state"><i></i><b class="eq" aria-hidden="true"><s></s><s></s><s></s></b><span>PRONTO</span></span><span class="game-timer" id="game-timer"></span></div>
-      <img class="game-logo" id="game-logo" alt="" hidden>
-      <h2 id="game-title">Pronto a giocare</h2>
-      <p id="game-sub">Apri un gioco: NEXAR attiva Gaming da sola e rimette tutto com'era quando lo chiudi.</p>
-      <div class="boost-live" id="boost-live"></div>
-      <div class="btn-row">
-       <button class="btn primary big-btn" type="button" id="game-main"><svg class="i"><use href="#i-play"/></svg><span id="game-main-label">Attiva Gaming</span></button>
-       <button class="btn big-btn glass" type="button" id="game-second" hidden><svg class="i"><use href="#i-game"/></svg><span id="game-second-label">Attiva Gaming</span></button>
+     <div class="gx-top">
+      <span class="game-state" id="game-state"><i></i><b class="eq" aria-hidden="true"><s></s><s></s><s></s></b><span>PRONTO</span></span>
+      <span class="game-timer" id="game-timer"></span>
+      <label class="gx-auto"><span><b>Gaming automatico</b><small>Si accende con il gioco, si spegne 20 s dopo</small></span><button class="toggle" type="button" data-boost="auto" role="switch" aria-label="Gaming automatico"><span></span></button></label>
+     </div>
+     <div class="gx-main">
+      <div class="game-hero-body gx-info">
+       <img class="game-logo" id="game-logo" alt="" hidden>
+       <h2 id="game-title">Pronto a giocare</h2>
+       <p id="game-sub">Apri un gioco: NEXAR attiva Gaming da sola e rimette tutto com'era quando lo chiudi.</p>
+       <div class="gx-perf" id="gx-perf" hidden></div>
+       <div class="btn-row">
+        <button class="btn primary big-btn" type="button" id="game-main"><svg class="i"><use href="#i-play"/></svg><span id="game-main-label">Attiva Gaming</span></button>
+        <button class="btn big-btn glass" type="button" id="game-second" hidden><svg class="i"><use href="#i-game"/></svg><span id="game-second-label">Attiva Gaming</span></button>
+        <button class="btn big-btn glass gx-more" type="button" id="gx-more" hidden><svg class="i"><use href="#i-sliders"/></svg><span>Dettagli</span></button>
+       </div>
+       <div class="boost-live" id="boost-live"></div>
       </div>
+      <aside class="gx-hud" id="gx-hud" aria-label="Il PC adesso">
+       <div class="gx-fps" id="gx-fps">
+        <svg viewBox="0 0 120 120" aria-hidden="true"><circle class="trk" cx="60" cy="60" r="52"/><circle class="val" id="gx-fps-ring" cx="60" cy="60" r="52"/></svg>
+        <div><b id="gx-fps-n">—</b><small>FPS</small></div>
+       </div>
+       <p class="gx-fps-sub" id="gx-fps-sub">—</p>
+       <div class="gx-meters">
+        <article class="gstat c-cpu"><span class="tile-ico"><svg class="i"><use href="#i-cpu"/></svg></span><div><small>Processore</small><b id="gs-cpu">—</b><span id="gs-cpu-sub">—</span></div><div class="bar"><span id="gs-cpu-bar"></span></div></article>
+        <article class="gstat c-gpu"><span class="tile-ico"><svg class="i"><use href="#i-gpu"/></svg></span><div><small>Scheda video</small><b id="gs-gpu">—</b><span id="gs-gpu-sub">—</span></div><div class="bar"><span id="gs-gpu-bar"></span></div></article>
+        <article class="gstat c-power"><span class="tile-ico"><svg class="i"><use href="#i-plug"/></svg></span><div><small>Consumo</small><b id="gs-power">—</b><span id="gs-power-sub">—</span></div><div class="bar"><span id="gs-power-bar"></span></div></article>
+        <article class="gstat c-fan"><span class="tile-ico"><svg class="i"><use href="#i-fan"/></svg></span><div><small>Ventole</small><b id="gs-fan">—</b><span id="gs-fan-sub">—</span></div><div class="bar"><span id="gs-fan-bar"></span></div></article>
+       </div>
+      </aside>
      </div>
-     <div class="game-auto">
-      <div><b>Gaming automatico</b><small>Si accende quando apri un gioco, si spegne 20 s dopo che lo chiudi</small></div>
-      <button class="toggle" type="button" data-boost="auto" role="switch" aria-label="Gaming automatico"><span></span></button>
-     </div>
+     <div class="gx-shelf" id="gx-shelf" aria-label="Giochi recenti"></div>
     </section>
-
-    <div class="game-stats">
-     <article class="gstat c-cpu"><span class="tile-ico"><svg class="i"><use href="#i-cpu"/></svg></span><div><small>Processore</small><b id="gs-cpu">—</b><span id="gs-cpu-sub">—</span></div><div class="bar"><span id="gs-cpu-bar"></span></div></article>
-     <article class="gstat c-gpu"><span class="tile-ico"><svg class="i"><use href="#i-gpu"/></svg></span><div><small>Scheda video</small><b id="gs-gpu">—</b><span id="gs-gpu-sub">—</span></div><div class="bar"><span id="gs-gpu-bar"></span></div></article>
-     <article class="gstat c-power"><span class="tile-ico"><svg class="i"><use href="#i-plug"/></svg></span><div><small>Consumo</small><b id="gs-power">—</b><span id="gs-power-sub">—</span></div><div class="bar"><span id="gs-power-bar"></span></div></article>
-     <article class="gstat c-fan"><span class="tile-ico"><svg class="i"><use href="#i-fan"/></svg></span><div><small>Ventole</small><b id="gs-fan">—</b><span id="gs-fan-sub">—</span></div><div class="bar"><span id="gs-fan-bar"></span></div></article>
-    </div>
 
     <div class="tabs gz-tabs" id="gz-tabs" role="tablist">
      <button class="selected" type="button" role="tab" data-gz="lib"><svg class="i"><use href="#i-grid"/></svg>Libreria<em id="gz-lib-n"></em></button>
-     <button type="button" role="tab" data-gz="opt"><svg class="i"><use href="#i-bolt"/></svg>Ottimizzazioni</button>
+     <button type="button" role="tab" data-gz="perf"><svg class="i"><use href="#i-wave"/></svg>Prestazioni</button>
      <button type="button" role="tab" data-gz="hist"><svg class="i"><use href="#i-trophy"/></svg>Partite<em id="gz-hist-n"></em></button>
+     <button type="button" role="tab" data-gz="opt"><svg class="i"><use href="#i-bolt"/></svg>Ottimizzazioni</button>
     </div>
 
     <section class="card gz-panel lib-card" data-gz="lib">
@@ -327,9 +339,27 @@
        <button class="icon-btn" type="button" id="lib-reload" aria-label="Aggiorna libreria"><svg class="i"><use href="#i-refresh"/></svg></button>
       </div>
      </div>
-     <div class="lib-hero" id="lib-hero" hidden></div>
      <div class="game-grid" id="game-grid"><p class="muted">Cerco i giochi…</p></div>
      <button class="link-btn" type="button" id="lib-hidden" hidden></button>
+    </section>
+
+    <section class="gz-panel gx-perfpanel" data-gz="perf" hidden>
+     <div class="gx-src" id="gx-src" data-state="missing">
+      <span class="gx-src-ico"><svg class="i"><use href="#i-wave"/></svg></span>
+      <div><b id="gx-src-title">FPS dei giochi</b><small id="gx-src-text">—</small></div>
+      <button class="btn small" type="button" id="gx-src-btn" hidden>Apri RivaTuner</button>
+      <a class="btn small" id="gx-src-link" href="https://www.msi.com/Landing/afterburner/graphics-cards" target="_blank" rel="noopener noreferrer" hidden>Scarica Afterburner</a>
+     </div>
+     <section class="card">
+      <div class="card-head"><div><h3>I tuoi giochi a confronto</h3><p id="gx-rank-sub">Medie di tutte le partite giocate in Gaming</p></div>
+       <div class="seg3" id="gx-rank-sort" role="group" aria-label="Ordina"><button type="button" data-rs="fps" class="selected">FPS</button><button type="button" data-rs="temp">Temperatura</button><button type="button" data-rs="time">Ore</button></div></div>
+      <div class="gx-rank" id="gx-rank"></div>
+     </section>
+    </section>
+
+    <section class="card gz-panel" data-gz="hist" hidden>
+     <div class="card-head"><div><h3>Ultime partite</h3><p id="hist-sub">Durata, FPS, temperature e consumo di ogni sessione</p></div></div>
+     <div class="history" id="game-history"><p class="muted">Ancora nessuna partita: la prima comparirà qui.</p></div>
     </section>
 
     <div class="two-col gz-panel" data-gz="opt" hidden>
@@ -364,10 +394,6 @@
      </section>
     </div>
 
-    <section class="card gz-panel" data-gz="hist" hidden>
-     <div class="card-head"><div><h3>Ultime partite</h3><p id="hist-sub">Durata, temperature massime e consumo di ogni sessione</p></div></div>
-     <div class="history" id="game-history"><p class="muted">Ancora nessuna partita: la prima comparirà qui.</p></div>
-    </section>
    </section>
 
    <!-- CONSUMI -->
@@ -611,7 +637,6 @@
       </div>
      </div>
      <div class="opt-side">
-      <div class="os-stat os-a"><span class="os-ico"><svg class="i"><use href="#i-clean"/></svg></span><div><small>Da liberare adesso</small><b id="opt-side-free">—</b></div></div>
       <div class="os-stat os-b"><span class="os-ico"><svg class="i"><use href="#i-check"/></svg></span><div><small>Liberati con NEXAR</small><b id="opt-freed">—</b></div></div>
       <div class="os-stat os-c"><span class="os-ico"><svg class="i"><use href="#i-clock"/></svg></span><div><small id="opt-auto-lbl">Pulizia automatica</small><b id="opt-freed-sub">—</b></div></div>
      </div>
@@ -818,7 +843,7 @@
       <section class="card set-panel" data-set="updates" hidden>
        <div class="card-head"><div><h3>Aggiornamenti</h3><p id="upd-text">—</p></div><span class="tag" id="upd-version">v—</span></div>
        <div class="set-group">
-        <div class="set-row"><div><b>Decidi tu quando aggiornare</b><small>NEXAR controlla ogni 6 ore e ti avvisa in alto: scarica e installa solo quando premi Aggiorna</small></div></div>
+        <div class="set-row"><div><b>Decidi tu quando aggiornare</b><small>NEXAR controlla ogni 30 minuti e ti avvisa in alto: scarica e installa solo quando premi Aggiorna</small></div></div>
        </div>
        <div class="btn-row"><button class="btn" type="button" id="upd-check"><svg class="i"><use href="#i-refresh"/></svg>Controlla ora</button><button class="btn primary" type="button" id="upd-install" hidden>Aggiorna</button></div>
       </section>
@@ -839,26 +864,39 @@
    <!-- AUDIO -->
    <section class="page" id="page-audio">
     <div class="au">
-     <div class="au-top">
-      <section class="card au-amp" id="au-amp" data-step="none">
-       <div class="au-amp-ico" aria-hidden="true"><i></i><i></i><i></i><svg class="i"><use href="#i-vol"/></svg></div>
-       <div class="au-amp-t">
-        <small>Amplificatore</small><h3 id="au-amp-title">Più forte del 100%</h3><p id="au-amp-text">Cuffie e microfono fino a +18 dB.</p>
-        <ol class="au-steps" id="au-steps"><li data-s="1"><b>1</b>Installa</li><li data-s="2"><b>2</b>Scegli cuffie e microfono</li><li data-s="3"><b>3</b>Riavvia il PC</li></ol>
-        <div class="au-bar" id="au-bar" hidden><i id="au-bar-fill"></i></div>
+     <section class="au-stage" id="au-stage">
+      <div class="au-stage-bg" aria-hidden="true"></div>
+      <div class="au-stage-main">
+       <div class="au-now">
+        <small class="au-kicker"><i></i>Suono dal vivo</small>
+        <h2 id="au-now-out">—</h2>
+        <p id="au-now-sub">—</p>
+        <div class="au-now-devs">
+         <span class="au-pill" id="au-pill-in"><svg class="i"><use href="#i-mic"/></svg><b>—</b></span>
+         <button class="au-pill amp" type="button" id="au-pill-amp" title="Scegli su quali dispositivi agisce" hidden><svg class="i"><use href="#i-bolt"/></svg><b>Amplificatore attivo</b></button>
+        </div>
        </div>
-       <button class="btn primary au-amp-btn" type="button" id="au-amp-btn">Installa l'amplificatore</button>
-      </section>
-      <div class="au-quick">
-       <button class="card au-q" type="button" id="au-max"><span class="opt-ico c-amber"><svg class="i"><use href="#i-bolt"/></svg></span><span><b>Tutto al 100%</b><small>Cuffie, microfono e ogni app, senza muto</small></span></button>
-       <label class="card au-q"><span class="opt-ico c-violet"><svg class="i"><use href="#i-send"/></svg></span><span><b>Volume pieno in chiamata</b><small>Di serie Windows abbassa tutto quando parli su Discord o Teams</small></span><button class="toggle" type="button" id="au-duck" role="switch" aria-label="Non abbassare il volume durante le chiamate"><span></span></button></label>
+       <div class="au-viz" id="au-viz" aria-hidden="true"></div>
       </div>
-     </div>
+      <div class="au-stage-acts">
+       <button class="au-act" type="button" id="au-max"><span class="opt-ico c-amber"><svg class="i"><use href="#i-bolt"/></svg></span><span><b>Tutto al 100%</b><small>Cuffie, microfono e ogni app, senza muto</small></span></button>
+       <label class="au-act"><span class="opt-ico c-violet"><svg class="i"><use href="#i-send"/></svg></span><span><b>Volume pieno in chiamata</b><small>Windows non abbassa tutto quando parli su Discord o Teams</small></span><button class="toggle" type="button" id="au-duck" role="switch" aria-label="Non abbassare il volume durante le chiamate"><span></span></button></label>
+      </div>
+     </section>
+     <section class="card au-amp" id="au-amp" data-step="none">
+      <div class="au-amp-ico" aria-hidden="true"><i></i><i></i><i></i><svg class="i"><use href="#i-vol"/></svg></div>
+      <div class="au-amp-t">
+       <small>Amplificatore</small><h3 id="au-amp-title">Più forte del 100%</h3><p id="au-amp-text">Cuffie e microfono fino a +18 dB.</p>
+       <ol class="au-steps" id="au-steps"><li data-s="1"><b>1</b>Installa</li><li data-s="2"><b>2</b>Scegli cuffie e microfono</li><li data-s="3"><b>3</b>Riavvia il PC</li></ol>
+       <div class="au-bar" id="au-bar" hidden><i id="au-bar-fill"></i></div>
+      </div>
+      <button class="btn primary au-amp-btn" type="button" id="au-amp-btn">Installa l'amplificatore</button>
+     </section>
      <div class="au-devs">
-      <section class="card au-card"><div class="card-head"><div><h3>Cuffie e casse</h3><p>Da dove esce l'audio del PC</p></div></div><div id="au-out"><p class="muted">Caricamento…</p></div></section>
-      <section class="card au-card"><div class="card-head"><div><h3>Microfono</h3><p>Quello che sentono Discord, giochi e chiamate</p></div></div><div id="au-in"><p class="muted">Caricamento…</p></div></section>
+      <section class="card au-card out"><div class="card-head"><div><h3>Cuffie e casse</h3><p>Da dove esce l'audio del PC</p></div></div><div id="au-out"><p class="muted">Caricamento…</p></div></section>
+      <section class="card au-card in"><div class="card-head"><div><h3>Microfono</h3><p>Quello che sentono Discord, giochi e chiamate</p></div></div><div id="au-in"><p class="muted">Caricamento…</p></div></section>
      </div>
-     <section class="card au-apps"><div class="card-head"><div><h3>Volume delle app</h3><p>I programmi che stanno usando l'audio adesso</p></div></div><div class="au-app-list" id="au-apps"></div></section>
+     <section class="card au-apps"><div class="card-head"><div><h3>Mixer delle app</h3><p>Ogni programma che sta usando l'audio, con il suo volume</p></div></div><div class="au-mixer" id="au-apps"></div></section>
     </div>
    </section>
 
@@ -1028,6 +1066,14 @@
  </div>
  <div class="gsh-body">
   <div class="gsh-stats" id="gsh-stats"></div>
+  <section class="gsh-perf" id="gsh-perf" hidden>
+   <div class="gsh-perf-head"><div class="gsh-sec-head"><h3>Com'è andata</h3><p id="gsh-perf-sub">—</p></div><div class="gsh-runpick" id="gsh-runpick" role="group" aria-label="Partita"></div></div>
+   <div class="gsh-moments" id="gsh-moments"></div>
+   <div class="gsh-charts">
+    <div class="gsh-chart-card" id="gsh-cc-fps"><div class="gsh-ch-h"><b>FPS</b><small id="gsh-ch-fps-sub">nel corso della partita</small></div><div class="chart" id="gsh-ch-fps"></div></div>
+    <div class="gsh-chart-card"><div class="gsh-ch-h"><b>Temperature</b><small>processore e scheda video</small></div><div class="chart" id="gsh-ch-temp"></div></div>
+   </div>
+  </section>
   <div class="gsh-cols">
    <section class="gsh-sec">
     <div class="gsh-sec-head"><h3>Solo per questo gioco</h3><p>Quando ci giochi valgono queste scelte; il resto segue le impostazioni di Gaming</p></div>

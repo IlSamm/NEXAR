@@ -22,6 +22,7 @@ from urllib.request import urlopen
 import psutil
 import energy_model
 import gaming_boost
+import fps as fps_meter
 import pc_power
 import procstop
 import apps_remote
@@ -66,6 +67,18 @@ FAN_OFF_LIMIT = 75      # ventole tutte spente: oltre questa temperatura tornano
 FAN_GUARD_SECONDS = 2
 logging.basicConfig(filename=LOG_FILE, level=logging.INFO,
     format='%(asctime)s %(levelname)s %(message)s', encoding='utf-8')
+
+def weighted(played, key):
+    """Media di tutte le partite di un gioco, pesata sulla durata (None se non c'è ancora)."""
+    tot, secs = ((played or {}).get('w_' + key) or [0, 0])[:2]
+    return round(tot / secs, 1) if secs else None
+
+def start_rtss():
+    """Apre RivaTuner (chiede lui il permesso di Windows): da lì arrivano gli FPS dei giochi."""
+    exe = fps_meter.rtss_exe()
+    if not exe: raise ValueError('RivaTuner non è installato: arriva insieme a MSI Afterburner')
+    os.startfile(str(exe))
+    return 'RivaTuner si apre: conferma la richiesta di Windows'
 
 def epic_ref(game):
     """Riferimento del gioco nel launcher Epic (namespace:item:app), preso dal suo indirizzo di avvio."""
@@ -243,6 +256,7 @@ class Control:
         self.covers = game_covers.Covers(DATA_DIR / 'covers', online=lambda: bool(self.booster.settings().get('covers_online', True)),
                                          local=gaming_boost.steam_image)
         self.game_applied = None       # gioco a cui è già stato applicato il suo profilo in questa partita
+        self.live_fps = None           # FPS del gioco adesso (da RivaTuner), None se non misurati
         self.stopper = procstop.Stopper()
         self.ai_watch = ai_watch.AiWatch()
         import admin_helper
@@ -430,7 +444,11 @@ class Control:
                 if gaming and not self.booster.active: self.booster.start()
                 elif not gaming and self.booster.active: self.booster.stop()
                 game = self.booster.tick() if os.name == 'nt' else None
-                if self.booster.active: self.booster.sample(self.telemetry())
+                if self.booster.active:
+                    t = dict(self.telemetry())
+                    t['fps'] = self.live_fps = fps_meter.game_fps(self.booster.game_pids, self.booster.fg_pid) if game else None
+                    self.booster.sample(t)
+                else: self.live_fps = None
                 if self.booster.active and game and game.get('id') != self.game_applied:
                     self.game_applied = game['id']
                     try: self.apply_game_profile(game)
@@ -811,9 +829,13 @@ class Control:
     def gaming_view(self, force=False):
         cfg = self.config
         per = self.booster.settings().get('per_game') or {}
+        played = self.state.get('games') or {}
         return {'boost': self.booster.info(), 'games': [dict({k: g[k] for k in ('id', 'name', 'store', 'size', 'last', 'playtime', 'sessions', 'cover', 'hidden')},
-                                                             icon=bool(g.get('exe')), cv=self.covers.version(g['id']), custom=g['id'] in per)
+                                                             icon=bool(g.get('exe')), cv=self.covers.version(g['id']), custom=g['id'] in per,
+                                                             fps=weighted(played.get(g['id']), 'fps_avg'), fps_low=weighted(played.get(g['id']), 'fps_low'),
+                                                             cpu_t=weighted(played.get(g['id']), 'cpu_temp_avg'), gpu_t=weighted(played.get(g['id']), 'gpu_temp_avg'))
                                                         for g in self.booster.games(force)],
+                'fps': {'source': fps_meter.status(), 'live': getattr(self, 'live_fps', None)},
                 'history': self.booster.history()[:12], 'apps': gaming_boost.user_apps()[:40],
                 'fans': cfg.get('fans', {}).get('gaming_level', 'normal'), 'fans_enabled': bool(cfg.get('fans', {}).get('enabled')),
                 'rgb_color': cfg.get('rgb', {}).get('gaming_color', ''), 'rgb_enabled': bool(cfg.get('rgb', {}).get('enabled')),
@@ -856,7 +878,12 @@ class Control:
                 'stats': {'seconds': g.get('playtime') or 0, 'sessions': int(played.get('sessions') or len(recent)),
                           'kwh': played.get('kwh') or round(sum(h.get('kwh') or 0 for h in recent), 3),
                           'cost': played.get('cost') or round(sum(h.get('cost') or 0 for h in recent), 2),
-                          'cpu_temp_max': tmax('cpu_temp_max'), 'gpu_temp_max': tmax('gpu_temp_max')},
+                          'cpu_temp_max': tmax('cpu_temp_max'), 'gpu_temp_max': tmax('gpu_temp_max'),
+                          'fps_avg': weighted(played, 'fps_avg'), 'fps_low': weighted(played, 'fps_low'), 'fps_max': played.get('fps_max'),
+                          'fps_best': played.get('fps_best'), 'cpu_temp_avg': weighted(played, 'cpu_temp_avg'),
+                          'gpu_temp_avg': weighted(played, 'gpu_temp_avg'), 'gpu_avg': weighted(played, 'gpu_avg'),
+                          'watts_avg': weighted(played, 'watts_avg')},
+                'fps_source': fps_meter.status()['state'],
                 'recent': recent[:15], 'profile': self.booster.game_profile(gid)}
 
     def save_game_profile(self, gid, new):
@@ -1784,7 +1811,7 @@ class Control:
             'rgb_brightness':int(self.config.get('rgb',{}).get('brightness',100)),
             'rgb_off':bool(self.state.get('rgb_off')),
             'rgb_palette':self.rgb_palette(),
-            'boost':self.booster.info(),
+            'boost':self.booster.info(),'fps':self.live_fps,
             'anim_style':self.config.get('ui',{}).get('anim_style','liquid'),
             'rgb_excluded':list(self.rgb_excluded()),
             'fans_eco':bool(self.state.get('fans_eco')),

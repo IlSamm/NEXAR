@@ -352,6 +352,8 @@ class Booster:
         self.game = ''
         self.running = None        # gioco aperto adesso (anche fuori da Gaming)
         self.seen_fg = set()       # PID passati in primo piano: un gioco vero lo è, un programma di sfondo no
+        self.game_pids = set()     # processi del gioco aperto: servono a leggere i suoi FPS
+        self.fg_pid = None
         self.session = None
 
     # ---------- impostazioni ----------
@@ -449,7 +451,12 @@ class Booster:
                     'lowered': sorted({n for n, _ in self.lowered.values()}), 'closed': [c['name'] for c in self.closed],
                     'tweaks': [TWEAKS[k][0] for k in self.saved_tweaks] + (['Mouse senza accelerazione'] if self.saved_mouse else []),
                     'running': {k: self.running[k] for k in ('id', 'name', 'store')} if self.running else None,
-                    'session': self.session_view(), 'settings': self.settings()}
+                    'session': self._live_session(), 'settings': self.settings()}
+
+    def _live_session(self):
+        v = self.session_view()
+        if v: v.pop('points', None)       # l'andamento completo serve solo a fine partita
+        return v
 
     # ---------- avvio / stop ----------
     def start(self):
@@ -511,7 +518,7 @@ class Booster:
         if fg: self.seen_fg.add(fg)
         fg = fg if full_screen else None
         lower = {n for n, act in s['apps'].items() if act == 'lower'}
-        found, alive = None, set()
+        found, alive, cands = None, set(), []
         for p in psutil.process_iter(['name', 'exe']):
             try:
                 alive.add(p.pid)
@@ -523,6 +530,7 @@ class Booster:
                 # Conta solo se è passato in primo piano: i programmi di sfondo nelle cartelle dei giochi no.
                 game = p.pid in self.seen_fg and (lib is not None or (is_game(exe, name) and not any(path.startswith(d) for d in hidden_dirs)))
                 if not game: lib = None
+                else: cands.append((p.pid, lib['id'] if lib else 'proc-' + name[:-4]))
                 if game and (found is None or (lib and not found.get('store'))):
                     found = ({k: lib[k] for k in ('id', 'name', 'store')} if lib else {'id': 'proc-' + name[:-4], 'name': pretty(name), 'store': ''})
                 if not active: continue
@@ -538,6 +546,8 @@ class Booster:
         self.seen_fg &= alive
         with self.lock:
             self.running = found
+            self.game_pids = {pid for pid, gid in cands if found and gid == found['id']}
+            self.fg_pid = fg
             if active and found:
                 self.game = found['name']
                 if self.session is not None and not self.session['gid']:
@@ -551,13 +561,19 @@ class Booster:
             s = self.session
             if s is None: return
             now = time.time(); dt = min(30.0, max(0.0, now - s['last'])); s['last'] = now
-            for k in ('cpu_temp', 'gpu_temp', 'cpu', 'gpu'):
+            for k in ('cpu_temp', 'gpu_temp', 'cpu', 'gpu', 'fps'):
                 v = t.get(k)
                 if isinstance(v, (int, float)):
                     s['sum_' + k] = s.get('sum_' + k, 0.0) + v; s['n_' + k] = s.get('n_' + k, 0) + 1
                     s['max_' + k] = max(s.get('max_' + k, v), v)
             w = (t.get('power') or {}).get('total')
             if isinstance(w, (int, float)): s['wh'] += w * dt / 3600
+            # Andamento della partita: un punto ogni campione, ridotto a fine partita.
+            num = lambda v: round(float(v), 1) if isinstance(v, (int, float)) else None
+            pts = s.setdefault('points', [])
+            if len(pts) < 20000:
+                pts.append([int(now - s['start']), num(t.get('fps')), num(t.get('cpu_temp')), num(t.get('gpu_temp')),
+                            num(t.get('gpu')), num(w)])
             parts = s.setdefault('parts', {})
             for key, val in _part_maxima(t.get('temps')).items():
                 parts[key] = max(parts.get(key, val), val)
@@ -571,7 +587,8 @@ class Booster:
                 'cpu_temp_max': s.get('max_cpu_temp'), 'gpu_temp_max': s.get('max_gpu_temp'),
                 'parts_max': dict(s.get('parts') or {}),
                 'cpu_temp_avg': avg('cpu_temp'), 'gpu_temp_avg': avg('gpu_temp'), 'cpu_avg': avg('cpu'), 'gpu_avg': avg('gpu'),
-                'kwh': round(s['wh'] / 1000, 3), 'watts_avg': round(s['wh'] * 3600 / elapsed) if elapsed > 30 and s['wh'] else None}
+                'kwh': round(s['wh'] / 1000, 3), 'watts_avg': round(s['wh'] * 3600 / elapsed) if elapsed > 30 and s['wh'] else None,
+                **fps_summary(s.get('points') or [])}
 
     def finish_session(self):
         with self.lock:
@@ -580,15 +597,27 @@ class Booster:
         if not v or v['elapsed'] < 60: return None
         price = float(self.config.get('energy', {}).get('price_eur_kwh', 0.30))
         v['cost'] = round(v['kwh'] * price, 2)
+        points = v.pop('points', None)
         self.state['gaming_history'] = ([v] + list(self.state.get('gaming_history') or []))[:30]
         if v['gid']:
             g = self.state.setdefault('games', {}).setdefault(v['gid'], {'seconds': 0, 'last': 0})
             g['seconds'] = int(g.get('seconds', 0)) + v['elapsed']; g['last'] = int(time.time())
             g['sessions'] = int(g.get('sessions', 0)) + 1
             g['kwh'] = round(float(g.get('kwh', 0)) + v['kwh'], 3); g['cost'] = round(float(g.get('cost', 0)) + v['cost'], 2)
-            for k in ('cpu_temp_max', 'gpu_temp_max'):
+            for k in ('cpu_temp_max', 'gpu_temp_max', 'fps_max'):
                 if v.get(k) is not None: g[k] = max(g.get(k) or 0, v[k])
-            g['recent'] = ([{k: v[k] for k in v if k not in ('game', 'gid')}] + list(g.get('recent') or []))[:15]
+            # Medie di tutte le partite, pesate sulla durata.
+            for k in ('fps_avg', 'fps_low', 'cpu_temp_avg', 'gpu_temp_avg', 'gpu_avg', 'watts_avg'):
+                if v.get(k) is not None:
+                    tot, secs = (g.get('w_' + k) or [0.0, 0])
+                    g['w_' + k] = [round(tot + v[k] * v['elapsed'], 1), secs + v['elapsed']]
+            if v.get('fps_avg') is not None and v['fps_avg'] > ((g.get('fps_best') or {}).get('fps') or 0):
+                g['fps_best'] = {'fps': v['fps_avg'], 'at': v['start']}
+            mine = {k: v[k] for k in v if k not in ('game', 'gid')}
+            if points: mine['points'] = points
+            recent = [mine] + list(g.get('recent') or [])
+            for old in recent[5:]: old.pop('points', None)      # l'andamento si tiene per le ultime 5
+            g['recent'] = recent[:15]
         self.save()
         if v['game'] and v['elapsed'] >= 120:
             temps = ' · '.join(f'{n} max {v[k]:.0f}°C' for n, k in (('CPU', 'cpu_temp_max'), ('GPU', 'gpu_temp_max')) if v[k] is not None)
@@ -630,6 +659,36 @@ class Booster:
         msg = 'Gaming Boost spento: tutto come prima' + (' · riaperte ' + ', '.join(reopened) if reopened else '')
         self.log(msg)
         return msg
+
+def downsample(points, limit=120):
+    """Riduce l'andamento a `limit` punti: media di ogni tratto (None se nel tratto non c'è il valore)."""
+    if len(points) <= limit: return [list(p) for p in points]
+    out, step = [], len(points) / limit
+    for i in range(limit):
+        chunk = points[int(i * step):max(int((i + 1) * step), int(i * step) + 1)]
+        row = [chunk[0][0]]
+        for c in range(1, len(chunk[0])):
+            vals = [p[c] for p in chunk if p[c] is not None]
+            row.append(round(sum(vals) / len(vals), 1) if vals else None)
+        out.append(row)
+    return out
+
+
+def fps_summary(points, window=12):
+    """FPS della partita: media, minimi (il 5% peggiore), massimo, e il minuto migliore e peggiore."""
+    fps = [(p[0], p[1]) for p in points if p[1] is not None and p[1] > 0]
+    out = {'fps_avg': None, 'fps_low': None, 'fps_max': None, 'fps_best_at': None, 'fps_worst_at': None,
+           'points': downsample(points) if points else []}
+    if not fps: return out
+    vals = sorted(v for _, v in fps)
+    out.update(fps_avg=round(sum(vals) / len(vals), 1), fps_low=round(vals[max(0, -(-len(vals) * 5 // 100) - 1)], 1), fps_max=round(vals[-1], 1))
+    if len(fps) >= window:
+        sums = [sum(v for _, v in fps[i:i + window]) / window for i in range(len(fps) - window + 1)]
+        best, worst = max(range(len(sums)), key=sums.__getitem__), min(range(len(sums)), key=sums.__getitem__)
+        out['fps_best_at'] = {'t': fps[best][0], 'fps': round(sums[best], 1)}
+        out['fps_worst_at'] = {'t': fps[worst][0], 'fps': round(sums[worst], 1)}
+    return out
+
 
 def _part_maxima(groups):
     """Dalle temperature del momento: il valore più alto di punto caldo GPU, VRM, RAM e dischi."""

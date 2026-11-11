@@ -37,4 +37,4 @@ py -m pytest -q
 .\release.ps1 1.0.1 "Cosa cambia"               # test, exe, zip + hash, tag e release GitHub
 ```
 
-`release.ps1` pubblica lo zip e il file `.sha256`: le app installate lo trovano entro 6 ore (oppure subito con *Controlla ora* o `/aggiorna` su Telegram).
+`release.ps1` pubblica lo zip e il file `.sha256`: le app installate lo trovano entro 30 minuti (oppure subito con *Controlla ora* o `/aggiorna` su Telegram).
