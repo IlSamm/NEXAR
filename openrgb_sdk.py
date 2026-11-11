@@ -163,23 +163,44 @@ def restore(c: Client, ctl: dict, snap: dict, fallback: int):
     if snap.get('colors') and len(snap['colors']) == len(ctl['colors']) and (snap.get('mode') or {}).get('color_mode') == COLOR_PER_LED:
         c.set_colors(ctl['index'], snap['colors'])
 
-def key(ctl): return f"{ctl['index']}:{ctl['name']}"
+def legacy_key(ctl): return f"{ctl['index']}:{ctl['name']}"
+
+def keys(ctls: list[dict]) -> list[str]:
+    """Chiave stabile di ogni controller: il nome, con #2, #3… per i doppioni (due banchi di RAM).
+    L'indice di OpenRGB cambia quando un pad o una tastiera senza fili compare o sparisce."""
+    seen, out = {}, []
+    for x in ctls:
+        n = seen[x['name']] = seen.get(x['name'], 0) + 1
+        out.append(x['name'] if n == 1 else f"{x['name']}#{n}")
+    return out
+
+def key(ctl, ctls=None):
+    """Chiave di un controller; senza l'elenco completo vale solo per il primo con quel nome."""
+    return keys(ctls)[ctls.index(ctl)] if ctls else ctl['name']
+
+def lookup(d: dict, k: str, ctl: dict):
+    """Valore salvato per un controller: chiave nuova, oppure quella vecchia "indice:nome"."""
+    return d[k] if k in d else d.get(legacy_key(ctl))
 
 def all_off(saved: dict | None, skip=(), exclude=()) -> tuple[dict, list[str]]:
-    """Restituisce (stato salvato, dispositivi spenti). Non risalva se i LED sono già spenti.
-    exclude: nomi di controller lasciati al loro firmware (es. schede madri che OpenRGB spegne ma non riaccende)."""
+    """Restituisce (stato salvato, dispositivi spenti). Con LED già spenti tiene lo stato salvato
+    e aggiunge solo i dispositivi comparsi dopo. exclude: controller lasciati ad altri programmi."""
     with Client() as c:
-        ctls = [x for x in c.controllers() if x['type'] not in skip and x['name'] not in exclude]
-        snaps = saved or {key(x): snapshot(x) for x in ctls}
-        done = [x['name'] for x in ctls if leds_set(c, x, 0)]
+        allc = c.controllers()
+        ctls = [(k, x) for k, x in zip(keys(allc), allc) if x['type'] not in skip and x['name'] not in exclude]
+        snaps = dict(saved or {})
+        for k, x in ctls:
+            if lookup(snaps, k, x) is None: snaps[k] = snapshot(x)
+        done = [x['name'] for _, x in ctls if leds_set(c, x, 0)]
         c.controllers()  # andata e ritorno: garantisce che i comandi siano stati elaborati
     return snaps, done
 
 def all_restore(saved: dict, fallback='#ffffff', exclude=()) -> list[str]:
     with Client() as c:
         done = []
-        for x in c.controllers():
-            snap = None if x['name'] in exclude else saved.get(key(x))
+        allc = c.controllers()
+        for k, x in zip(keys(allc), allc):
+            snap = None if x['name'] in exclude else lookup(saved, k, x)
             if snap: restore(c, x, snap, color(fallback)); done.append(x['name'])
         c.controllers()
     return done

@@ -843,7 +843,9 @@ async function loadRgbDevices(){
    b.addEventListener('click',()=>applyColor(c.value,d.key));
    row.append(t,sw,b);box.append(row);
   });
-  (current?.rgb_excluded||[]).forEach(n=>box.append(el('p','fineprint',`${n}: lasciata al firmware della scheda madre (effetto del BIOS), non si spegne con AI ECO.`)));
+  (current?.rgb_excluded||[]).forEach(n=>box.append(el('p','fineprint',/mystic|msi/i.test(n)
+   ?`${n}: attacchi ARGB della scheda madre (qui c'è l'ARCTIC). Li comanda MSI Center → Mystic Light, che riapplica il suo effetto a ogni avvio e quando lo schermo si riaccende: NEXAR non può spegnerli. Per tenerli spenti scegli "Spento" su quegli attacchi in MSI Center.`
+   :`${n}: lasciata al suo programma, non si spegne con AI ECO.`)));
  }catch(ex){box.replaceChildren(el('p','muted','Dispositivi non disponibili: '+ex.message));}
 }
 $('rgb-color').addEventListener('input',()=>{rgbTouched=true;paintOrb(false);});
