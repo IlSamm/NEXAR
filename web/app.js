@@ -2762,7 +2762,8 @@ function authHeaders(){return tgInit?{'X-TG-Init-Data':tgInit}:{'X-PC-ECO-Key':k
 function demoDetail(g){
  const hist=(DEMO_GAMING.history||[]).filter(h=>h.gid===g.id),a=g.id.startsWith('steam-')?g.id.slice(6):DEMO_STEAM[g.id]||null;
  return {...g,dir:(g.store==='Steam'?'D:\\SteamLibrary\\steamapps\\common\\':'C:\\Program Files\\'+g.store+' Games\\')+g.name.replace(/[^\w ]/g,''),
-  steam:g.id.startsWith('steam-'),appid:a,icon:true,custom_cover:!!coverVer.get(g.id),running:(DEMO_GAMING.boost.running||{}).id===g.id,
+  steam:g.id.startsWith('steam-'),appid:a,icon:true,verify:g.store==='Steam'?'Steam':g.store==='Epic'?'Epic':null,
+  store_url:g.store==='Epic'?'https://store.epicgames.com/it/browse?q='+encodeURIComponent(g.name):a?'https://store.steampowered.com/app/'+a+'/':null,store_name:g.store==='Epic'?'Epic':'Steam',custom_cover:!!coverVer.get(g.id),running:(DEMO_GAMING.boost.running||{}).id===g.id,
   stats:{seconds:g.playtime||0,sessions:g.playtime?hist.length+2:0,kwh:g.playtime?.86:0,cost:g.playtime?.26:0,
    cpu_temp_max:hist[0]?.cpu_temp_max??null,gpu_temp_max:hist[0]?.gpu_temp_max??null},recent:hist,profile:{...PROF0,...(demoProf[g.id]||{})}};
 }
@@ -2818,8 +2819,10 @@ function paintSheet(){
  $('gsh-rgb-sub').textContent=!gd.rgb_enabled?'OpenRGB non collegato':p.rgb==null?(gd.rgb_color?'Come in Gaming':'Come in Gaming: non cambiano'):p.rgb===''?'Restano come sono':'Colore '+p.rgb.toUpperCase();
  // strumenti
  $('gsh-path').textContent=d?.dir?d.dir:'—';
- $('gsh-folder').hidden=!!current?.remote||!d?.dir;$('gsh-verify').hidden=!d?.steam;
- const store=$('gsh-store');store.hidden=!d?.appid;if(d?.appid)store.href='https://store.steampowered.com/app/'+encodeURIComponent(d.appid)+'/';
+ $('gsh-folder').hidden=!!current?.remote||!d?.dir;$('gsh-verify').hidden=!d?.verify;
+ if(d?.verify)$('gsh-verify').querySelector('small').textContent=d.verify==='Epic'?'Il launcher Epic ripara quelli rovinati':'Steam ripara quelli rovinati';
+ const store=$('gsh-store'),surl=/^https:\/\/store\.(steampowered|epicgames)\.com\//.test(d?.store_url||'')?d.store_url:'';store.hidden=!surl;
+ if(surl){store.href=surl;store.querySelector('b').textContent='Pagina su '+d.store_name;}
  $('gsh-cover-reset').hidden=!(d?.custom_cover||coverVer.get(id));
  const hide=$('gsh-hide');hide.querySelector('b').textContent=g.hidden?'Rimetti tra i giochi':'Non è un gioco';
  hide.querySelector('small').textContent=g.hidden?'Torna nella libreria e in Gaming':'Escludilo da Gaming';hide.querySelector('use').setAttribute('href','#i-'+(g.hidden?'eye':'eye-off'));
@@ -2858,7 +2861,7 @@ document.querySelectorAll('#gsh-mouse button').forEach(b=>b.addEventListener('cl
 $('gsh-folder').addEventListener('click',async()=>{if(!gsh)return;if(demo){notify('Anteprima: comando non attivo.');return;}
  try{notify('✓ '+(await req('/api/gaming/game/'+encodeURIComponent(gsh.id)+'/folder','POST',{})).message);}catch(ex){notify('⚠ '+ex.message,true);}});
 $('gsh-verify').addEventListener('click',async()=>{if(!gsh)return;if(demo){notify('Anteprima: comando non attivo.');return;}
- if(!await ask('Controllare i file del gioco?','Steam confronta i file con quelli originali e riscarica quelli rovinati. Può metterci qualche minuto.',{danger:false,ico:'check',yes:'Controlla'}))return;
+ if(!await ask('Controllare i file del gioco?',(gsh.detail?.verify==='Epic'?'Il launcher Epic':'Steam')+' confronta i file con quelli originali e riscarica quelli rovinati. Può metterci qualche minuto.',{danger:false,ico:'check',yes:'Controlla'}))return;
  try{notify('✓ '+(await req('/api/gaming/game/'+encodeURIComponent(gsh.id)+'/verify','POST',{})).message);}catch(ex){notify('⚠ '+ex.message,true);}});
 $('gsh-hide').addEventListener('click',()=>{if(!gsh)return;const g=gsh.base,h=new Set(gameData?.boost?.settings?.hidden||[]);g.hidden?h.delete(g.id):h.add(g.id);saveGaming({hidden:[...h]});});
 $('gsh-cover-file').addEventListener('change',async e=>{

@@ -95,3 +95,16 @@ def test_loop_never_installs(monkeypatch, tmp_path):
             Stop.n += 1; return Stop.n > 2
     u.loop(Stop())
     assert u.info()['available'] and len(c.notes) == 1 and 'Aggiorna' in c.notes[0]
+
+
+def test_cleanup_removes_old_updates(tmp_path):
+    w = tmp_path / 'updates'; (w / 'staging' / 'NEXAR' / '_internal').mkdir(parents=True); (w / 'manual130').mkdir()
+    for n in ('NEXAR-1.0.1-win64.zip', 'NEXAR-1.0.61-win64.zip', 'NEXAR-1.0.61-win64.zip.sha256', 'manual130/NEXAR-1.0.30-win64.zip', 'staging/NEXAR/NEXAR.exe'):
+        (w / n).write_bytes(b'x' * 1000)
+    (w / 'swap.cmd').write_text('rem'); (w / 'altro.zip').write_bytes(b'y')
+    u = updater.Updater(Ctrl(), tmp_path, tmp_path, True)
+    assert u.cleanup() == 5000
+    assert sorted(p.name for p in w.iterdir()) == ['altro.zip', 'swap.cmd']
+    u.set_status('downloading')
+    (w / 'NEXAR-1.0.62-win64.zip').write_bytes(b'z')
+    assert u.cleanup() == 0 and (w / 'NEXAR-1.0.62-win64.zip').exists()

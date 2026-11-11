@@ -17,6 +17,7 @@ import threading
 import time
 import sys
 from collections import deque
+import urllib.parse
 from urllib.request import urlopen
 import psutil
 import energy_model
@@ -65,6 +66,19 @@ FAN_OFF_LIMIT = 75      # ventole tutte spente: oltre questa temperatura tornano
 FAN_GUARD_SECONDS = 2
 logging.basicConfig(filename=LOG_FILE, level=logging.INFO,
     format='%(asctime)s %(levelname)s %(message)s', encoding='utf-8')
+
+def epic_ref(game):
+    """Riferimento del gioco nel launcher Epic (namespace:item:app), preso dal suo indirizzo di avvio."""
+    m = re.match(r'com\.epicgames\.launcher://apps/([A-Za-z0-9%_.-]{1,200})\?', str((game or {}).get('launch') or ''))
+    return m.group(1) if m else None
+
+def store_page(gid, name, appid):
+    """Pagina del gioco nel suo negozio: Steam per i giochi Steam (o trovati su Steam), Epic per quelli Epic."""
+    if gid.startswith('epic-'):
+        return {'store_url': 'https://store.epicgames.com/it/browse?' + urllib.parse.urlencode({'q': name, 'sortBy': 'relevancy', 'sortDir': 'DESC'}),
+                'store_name': 'Epic'}
+    if appid: return {'store_url': f'https://store.steampowered.com/app/{int(appid)}/', 'store_name': 'Steam'}
+    return {'store_url': None, 'store_name': None}
 
 def json_load(path: Path, default):
     try: return json.loads(path.read_text(encoding='utf-8-sig'))
@@ -836,6 +850,8 @@ class Control:
         return {'id': gid, 'name': g['name'], 'store': g['store'], 'size': g.get('size') or 0, 'dir': lib.get('dir', ''),
                 'last': g.get('last') or 0, 'hidden': g['hidden'], 'running': running, 'icon': bool(lib.get('exe')),
                 'appid': appid, 'steam': gid.startswith('steam-'), 'cv': self.covers.version(gid),
+                'verify': 'Steam' if gid.startswith('steam-') else 'Epic' if epic_ref(lib) else None,
+                **store_page(gid, g['name'], appid),
                 'custom_cover': self.covers.custom(gid).is_file(),
                 'stats': {'seconds': g.get('playtime') or 0, 'sessions': int(played.get('sessions') or len(recent)),
                           'kwh': played.get('kwh') or round(sum(h.get('kwh') or 0 for h in recent), 3),
@@ -858,9 +874,14 @@ class Control:
         return 'Cartella di ' + g['name'] + ' aperta sul PC'
 
     def game_verify(self, gid):
+        g = self.booster.find(gid)
         m = re.fullmatch(r'steam-(\d{1,10})', str(gid))
-        g = self.booster.find(gid) if m else None
-        if not g: raise ValueError('Il controllo dei file si fa solo per i giochi di Steam')
+        ref = epic_ref(g) if g and not m else None
+        if not g or not (m or ref): raise ValueError('Il controllo dei file si fa per i giochi di Steam ed Epic')
+        if ref:
+            os.startfile(f'com.epicgames.launcher://apps/{ref}?action=verify')
+            self.log_event('Epic controlla i file di ' + g['name'])
+            return 'Il launcher Epic controlla i file di ' + g['name'] + ': guarda la sua finestra sul PC'
         os.startfile('steam://validate/' + m.group(1))
         self.log_event('Steam controlla i file di ' + g['name'])
         return 'Steam controlla i file di ' + g['name'] + ': guarda la finestra di Steam sul PC'

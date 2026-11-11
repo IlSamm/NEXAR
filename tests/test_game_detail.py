@@ -134,3 +134,20 @@ def test_epic_cover_from_launcher_catalog(tmp_path):
     assert c.path(game, 'header') and '%20' in calls[-1]
     assert not any('evil' in u for u in calls)
     assert game_covers.epic_catalog(tmp_path / 'nessuno.bin') == {}
+
+
+def test_epic_game_verify_and_store_page(tmp_path, monkeypatch):
+    import core
+    c = _controller(tmp_path, monkeypatch)
+    lib = [{'id': 'epic-Sugar', 'name': 'Rocket League®', 'store': 'Epic', 'dir': str(tmp_path), 'size': 5, 'last': 0, 'cover': False,
+            'launch': 'com.epicgames.launcher://apps/9773aa%3A530145%3ASugar?action=launch&silent=true', 'epic': ['530145']}]
+    monkeypatch.setattr(gaming_boost, 'library', lambda force=False: list(lib))
+    d = c.game_detail('epic-Sugar')
+    assert d['verify'] == 'Epic' and d['store_name'] == 'Epic'
+    assert d['store_url'].startswith('https://store.epicgames.com/it/browse?q=Rocket+League')
+    opened = []; monkeypatch.setattr(core.os, 'startfile', opened.append, raising=False)
+    assert 'Epic' in c.game_verify('epic-Sugar')
+    assert opened == ['com.epicgames.launcher://apps/9773aa%3A530145%3ASugar?action=verify']
+    lib[0]['launch'] = 'cmd.exe /c calc'
+    with pytest.raises(ValueError): c.game_verify('epic-Sugar')
+    assert c.game_detail('epic-Sugar')['verify'] is None

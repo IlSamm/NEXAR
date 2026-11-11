@@ -173,6 +173,25 @@ class Updater:
     def info(self):
         with self.lock: return dict(self.info_state, supported=self.frozen)
 
+    def cleanup(self):
+        """Gli zip delle versioni già installate e la cartella di appoggio non servono più: si tolgono all'avvio."""
+        work = self.data_dir / 'updates'
+        if not work.is_dir() or self.info()['status'] in ('downloading', 'installing', 'restarting'): return 0
+        freed = 0
+        for f in list(work.rglob('NEXAR-*-win64.zip*')):
+            name = f.name[:-7] if f.name.endswith('.sha256') else f.name
+            if not f.is_file() or not ASSET.match(name): continue
+            try: size = f.stat().st_size; f.unlink(); freed += size
+            except OSError: pass
+        for d in [work / 'staging', *work.glob('manual*')]:
+            if not d.is_dir(): continue
+            try:
+                freed += sum(x.stat().st_size for x in d.rglob('*') if x.is_file())
+                shutil.rmtree(d)
+            except OSError: pass
+        if freed > 1_000_000: logging.info('Aggiornamenti vecchi tolti: %d MB liberati', freed // 1_000_000)
+        return freed
+
     def set_status(self, status, message='', progress=None):
         with self.lock: self.info_state.update(status=status, message=message, progress=progress)
 
@@ -238,6 +257,8 @@ class Updater:
     def loop(self, stop: threading.Event):
         # Solo controllo e avviso: l'installazione parte quando l'utente preme Aggiorna nella dashboard.
         if stop.wait(20) or not self.frozen: return
+        try: self.cleanup()
+        except Exception: logging.exception('Pulizia aggiornamenti')
         while True:
             try:
                 info = self.check()
