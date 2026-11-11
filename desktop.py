@@ -10,6 +10,9 @@ import sys
 import threading
 import time
 
+import unblock
+UNBLOCKED = unblock.unblock_app()  # prima di caricare WebView2/.NET: con file marcati la finestra non parte
+
 import pystray
 import uvicorn
 import webview
