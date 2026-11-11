@@ -119,7 +119,7 @@
      <button class="tl t-temp" type="button" id="tl-temp" data-view="cooling" title="Temperatura del processore"><svg class="i"><use href="#i-temp"/></svg><b>—</b></button>
      <button class="tl t-watt" type="button" id="tl-watt" data-view="energy" title="Consumo alla presa"><svg class="i"><use href="#i-bolt"/></svg><b>—</b></button>
     </div>
-    <button class="icon-btn search-btn" type="button" data-palette aria-label="Cerca (Ctrl+K)"><svg class="i"><use href="#i-search"/></svg><span class="sb-txt">Cerca</span><kbd>Ctrl K</kbd></button>
+    <button class="icon-btn search-btn" type="button" data-palette aria-label="Cerca"><svg class="i"><use href="#i-search"/></svg><span class="sb-txt">Cerca</span></button>
     <span class="mode-pill" id="mode-pill"><i class="dot"></i><span>—</span></span>
     <button class="icon-btn power-btn" data-view="power" aria-label="Accensione e spegnimento"><svg class="i"><use href="#i-power"/></svg></button>
    </div>
@@ -507,7 +507,7 @@
 
    <!-- ACCENSIONE -->
    <section class="page" id="page-power">
-    <section class="phero ph-power" id="pw-hero">
+    <section class="phero ph-power pw-hero" id="pw-hero">
      <div class="hm-glow" aria-hidden="true"></div>
      <div class="ph-main">
       <span class="ph-tag"><i><svg class="i"><use href="#i-power"/></svg></i>Accensione</span>
@@ -516,6 +516,11 @@
       <div class="pending" id="pw-pending" hidden>
        <svg class="i"><use href="#i-clock"/></svg><div><b id="pw-pending-title">—</b><small id="pw-pending-sub">—</small></div>
        <button class="btn danger" type="button" data-power="cancel">Annulla</button>
+      </div>
+      <div class="pw-facts">
+       <button class="pwf f-sch" type="button" data-go="sch-card"><span class="pwf-ico"><svg class="i"><use href="#i-clock"/></svg></span><span class="pwf-t"><small>Prossima azione</small><b id="pwf-next">Nessuna</b></span></button>
+       <button class="pwf f-wol" type="button" data-go="wol-card"><span class="pwf-ico"><svg class="i"><use href="#i-wave"/></svg></span><span class="pwf-t"><small>Accensione a distanza</small><b id="pwf-wol">—</b></span></button>
+       <button class="pwf f-app" type="button" data-go="rapps-card"><span class="pwf-ico"><svg class="i"><use href="#i-grid"/></svg></span><span class="pwf-t"><small>App sul PC</small><b id="pwf-apps">—</b></span></button>
       </div>
      </div>
      <div class="pw-orb" aria-hidden="true"><i></i><i></i><i></i><span><svg class="i"><use href="#i-power"/></svg></span></div>
@@ -527,12 +532,12 @@
      <button class="pact pa-hibernate" data-power="hibernate" id="pw-hibernate" hidden><span class="pa-ico"><svg class="i"><use href="#i-disk"/></svg></span><b>Iberna</b><small>0 W, riprende da dove eri</small></button>
      <button class="pact pa-lock" data-power="lock"><span class="pa-ico"><svg class="i"><use href="#i-lock"/></svg></span><b>Blocca</b><small>Schermata di accesso</small></button>
     </div>
-    <section class="card rapps-card">
+    <section class="card rapps-card" id="rapps-card">
      <div class="card-head"><div><h3>App sul PC</h3><p id="rapps-sub">Aprile da qui, anche da Telegram fuori casa</p></div><button class="btn small" type="button" id="rapps-add"><svg class="i"><use href="#i-sliders"/></svg>Modifica</button></div>
      <div class="rapps" id="rapps"><p class="muted">Caricamento…</p></div>
     </section>
     <div class="two-col pw-cols">
-    <section class="card">
+    <section class="card timer-card">
      <div class="card-head"><div><h3>Timer</h3><p>Il PC si spegne da solo fra un po', anche se chiudi l'app</p></div></div>
      <div class="seg-ink kind-seg" id="sched-kind"><i class="si-ink" aria-hidden="true"></i><button data-kind="shutdown" class="selected"><svg class="i"><use href="#i-power"/></svg><span>Spegni</span></button><button data-kind="sleep"><svg class="i"><use href="#i-moon"/></svg><span>Sospendi</span></button></div>
      <div class="tchips" id="sched-chips">
@@ -540,22 +545,22 @@
      </div>
      <button class="wide-opt" type="button" id="sched-ai"><svg class="i"><use href="#i-bot"/></svg><div><b>Quando Codex e Claude hanno finito</b><small>2 minuti dopo che l'ultimo si chiude</small></div><svg class="i chev"><use href="#i-chev"/></svg></button>
     </section>
-    <section class="card">
-     <div class="card-head"><div><h3>Accensione a distanza</h3><p>Dal telefono o dal Mac, anche quando il PC è spento</p></div><span class="tag">WAKE-ON-LAN</span></div>
-     <ol class="steps" id="wol-steps">
-      <li id="wol-net"><i class="step-dot"></i><div><b>Scheda di rete via cavo</b><small id="wol-net-text">—</small></div></li>
-      <li id="wol-win"><i class="step-dot"></i><div><b>Wake-on-LAN in Windows</b><small id="wol-win-text">—</small></div><button class="btn small" type="button" id="wol-enable" hidden>Attiva</button></li>
-      <li class="manual"><i class="step-dot"></i><div><b>BIOS MSI (una volta sola)</b><small>Canc all'avvio → Settings → Advanced → Power Management: <em>ErP Ready</em> = Disabled. Poi Wake Up Event Setup: <em>Resume By PCI-E Device</em> = Enabled.</small></div></li>
-      <li class="manual" id="umbrel-step"><i class="step-dot"></i><div><b>App NEXAR su Umbrel</b><small id="umbrel-text">Installala dal tuo store su Umbrel (una volta sola): resta accesa in casa e sveglia il PC quando lo chiedi dal Mac, dal link o da Telegram.</small></div><button class="btn small primary" type="button" id="umbrel-link">Collega Umbrel</button></li>
+    <section class="card wol-card" id="wol-card">
+     <div class="card-head"><div><h3>Accensione a distanza</h3><p id="wol-sub">Accendi il PC dal telefono o dal Mac, anche quando è spento</p></div><span class="tag" id="wol-tag">WAKE-ON-LAN</span></div>
+     <ol class="steps wol-checks" id="wol-steps">
+      <li id="wol-net"><i class="step-dot"></i><div><b>Rete via cavo</b><small id="wol-net-text">—</small></div></li>
+      <li id="wol-win"><i class="step-dot"></i><div><b>Windows</b><small id="wol-win-text">—</small></div><button class="btn small" type="button" id="wol-enable" hidden>Attiva</button></li>
+      <li class="manual" id="wol-bios"><i class="step-dot"></i><div><b>BIOS</b><small>Da controllare una volta sola</small></div>
+       <details class="how"><summary>Come si fa</summary><p>Canc all'avvio → Settings → Advanced → Power Management: <em>ErP Ready</em> = Disabled. Poi in Wake Up Event Setup: <em>Resume By PCI-E Device</em> = Enabled.</p></details></li>
+      <li class="manual" id="umbrel-step"><i class="step-dot"></i><div><b>Umbrel</b><small id="umbrel-text">Resta acceso in casa e sveglia il PC quando lo chiedi</small></div><button class="btn small primary" type="button" id="umbrel-link">Collega</button></li>
      </ol>
      <div class="relay ulink" id="umbrel-box" hidden><div class="relay-head"><b>Codice per Umbrel</b><button class="btn small" type="button" id="umbrel-copy"><svg class="i"><use href="#i-copy"/></svg>Copia</button></div><pre id="umbrel-code"></pre><div class="btn-row"><a class="btn small primary" id="umbrel-open" href="#" target="_blank" rel="noopener noreferrer">Apri NEXAR su Umbrel</a><button class="btn small ghost" type="button" id="relay-show">Configurazione manuale</button></div><p class="fineprint warn-text">Incollalo solo nell'app NEXAR del tuo Umbrel: contiene la chiave di accensione e l'accesso al PC. Se l'app è già aperta sul collegamento si fa da solo.</p></div>
      <div class="relay" id="relay-box" hidden><div class="relay-head"><b>docker-compose per Umbrel</b><button class="btn small" type="button" id="relay-copy"><svg class="i"><use href="#i-copy"/></svg>Copia</button></div><pre id="relay-text"></pre><p class="fineprint warn-text" id="relay-warn">Contiene la chiave di accensione: incollalo solo nel tuo Umbrel.</p></div>
      <div class="wlink" id="wlink">
-      <div class="wlink-head"><span class="wlink-ico"><svg class="i"><use href="#i-power"/></svg></span><div><b>Link di accensione</b><small>Un tocco dal telefono e il PC si accende. Niente Telegram, niente app.</small></div></div>
+      <div class="wlink-head"><span class="wlink-ico"><svg class="i"><use href="#i-power"/></svg></span><div><b>Link di accensione</b><small>Un tocco dal telefono e il PC si accende</small></div></div>
       <div class="wlink-row"><code id="wlink-url">—</code><button class="btn small" type="button" id="wlink-copy"><svg class="i"><use href="#i-copy"/></svg>Copia</button><button class="btn small" type="button" id="wlink-share" hidden>Condividi</button></div>
-      <p class="fineprint">Sul telefono: Comandi Rapidi → nuovo comando → <em>Apri URL</em> con questo link → Aggiungi alla schermata Home (oppure salvalo nei Preferiti). Funziona con l'app NEXAR su Umbrel. Non incollarlo in una chat: l'anteprima del link accenderebbe il PC.</p>
+      <details class="how"><summary>Come metterlo sul telefono</summary><p>Comandi Rapidi → nuovo comando → <em>Apri URL</em> con questo link → Aggiungi alla schermata Home (oppure salvalo nei Preferiti). Funziona con l'app NEXAR su Umbrel. Non incollarlo in una chat: l'anteprima del link accenderebbe il PC.</p><p id="wol-phone"></p></details>
      </div>
-     <p class="fineprint" id="wol-phone">—</p>
     </section>
     </div>
     <section class="card sch-card" id="sch-card">
@@ -681,40 +686,44 @@
 
    <!-- COLLEGAMENTI -->
    <section class="page" id="page-links">
-    <section class="phero ph-links" id="links-hero">
+    <section class="phero ph-links lk-hero" id="links-hero">
      <div class="hm-glow" aria-hidden="true"></div>
      <div class="ph-main">
       <span class="ph-tag"><i><svg class="i"><use href="#i-link"/></svg></i>Collegamenti</span>
       <h2 class="ph-title" id="links-title">Controllo i programmi…</h2>
-      <p class="ph-sub">NEXAR cerca da solo i programmi che gli servono; quelli mancanti si installano con un clic.</p>
+      <p class="ph-sub">NEXAR trova da solo i programmi che gli servono e li tiene collegati. Quelli mancanti si installano con un clic.</p>
+      <div class="lk-facts" id="lk-facts"></div>
       <div class="ph-actions"><button class="btn glass" type="button" id="links-refresh"><svg class="i"><use href="#i-refresh"/></svg>Cerca di nuovo</button></div>
      </div>
      <div class="ring-stat"><svg viewBox="0 0 120 120" aria-hidden="true"><circle class="rs-track" cx="60" cy="60" r="50" pathLength="100"/><circle class="rs-fill" id="links-ring" cx="60" cy="60" r="50" pathLength="100"/></svg><div><b id="links-count">—</b><small>collegati</small></div></div>
     </section>
-    <div class="link-grid" id="links-list"><p class="muted">Ricerca in corso…</p></div>
-    <section class="card" id="gw-card">
-     <div class="card-head"><div><h3>App per Mac</h3><p>NEXAR sul MacBook ovunque tu sia, in una finestra sua: niente Tailscale, niente configurazioni. Il Mac ritrova il PC da solo anche quando cambia indirizzo.</p></div><span class="tag" id="gw-state">—</span></div>
-     <ol class="gw-steps" id="gw-steps">
-      <li id="gw-s0"><div><b>Scarica l'app sul Mac</b><p>Apri lo zip e trascina <em>NEXAR</em> in Applicazioni. La prima volta macOS dice che non può verificarla: <em>Impostazioni di Sistema → Privacy e sicurezza → Apri comunque</em>.</p>
-       <div class="gw-row"><a class="btn small primary" id="gw-download" href="https://github.com/IlSamm/NEXAR/releases/latest/download/NEXAR-Mac.zip" target="_blank" rel="noopener noreferrer"><svg class="i"><use href="#i-download"/></svg>Scarica NEXAR per Mac</a></div></div></li>
-      <li id="gw-s6"><div><b>Collega il Mac</b><p>Genera il codice e scrivilo nell'app sul Mac (vale 10 minuti, una volta sola).</p>
-       <div class="gw-row"><button class="btn small primary" type="button" id="gw-code-btn">Genera codice</button><span class="gw-code" id="gw-code" hidden></span><small class="muted" id="gw-code-left"></small></div></div></li>
-     </ol>
-     <div class="gw-devs-wrap" id="gw-devs-wrap" hidden><b class="gw-devs-title">Dispositivi collegati</b><div id="gw-devs"></div></div>
-     <p class="fineprint">Per comandare il PC serve sempre questo codice: l'indirizzo viaggia cifrato e da solo non basta. Da lontano le operazioni delicate chiedono il PIN del controllo remoto. Con il PC spento l'app per Mac lo accende da sola: in casa direttamente, da fuori tramite il relay su Umbrel.</p>
-     <details class="gw-adv">
-      <summary>Avanzate: in casa tramite Umbrel e Tailscale</summary>
-      <ol class="gw-steps">
-       <li id="gw-s1"><div><b>Tailscale su Umbrel</b><p>Umbrel → App Store → <em>Tailscale</em> → Installa, poi accedi con il tuo account.</p></div></li>
-       <li id="gw-s2"><div><b>Ponte sul PC</b><p id="gw-s2-text">Indirizzo di Umbrel nella rete di casa: il PC risponderà solo a lui.</p>
-        <div class="gw-row local-only"><input id="gw-ip" inputmode="decimal" placeholder="192.168.0.50" autocomplete="off" spellcheck="false" aria-label="Indirizzo di Umbrel"><button class="btn small" type="button" id="gw-guess">Trova</button><button class="btn small primary" type="button" id="gw-on">Attiva ponte</button><button class="btn small ghost" type="button" id="gw-off" hidden>Spegni</button></div></div></li>
-       <li id="gw-s3"><div><b>Stack su Umbrel</b><p>Portainer → Stacks → il tuo stack NEXAR → Editor → incolla → Update the stack.</p>
-        <div class="gw-row local-only"><button class="btn small" type="button" id="gw-compose"><svg class="i"><use href="#i-copy"/></svg>Copia configurazione</button></div></div></li>
-       <li id="gw-s4"><div><b>Dal Mac con Tailscale</b><p>Apri in Safari <span class="gw-url" id="gw-url">http://sam:8790</span></p></div></li>
+    <div class="two-col wide-left lk-cols">
+     <div class="lk-groups" id="links-list"><p class="muted">Ricerca in corso…</p></div>
+     <section class="card mac-card" id="gw-card">
+      <div class="card-head"><div><h3>App per Mac</h3><p>NEXAR sul MacBook ovunque tu sia, senza configurare niente</p></div><span class="tag" id="gw-state">—</span></div>
+      <div class="gw-devs" id="gw-devs-wrap" hidden><div id="gw-devs"></div></div>
+      <ol class="gw-steps" id="gw-steps">
+       <li id="gw-s0"><div><b>Scarica l'app sul Mac</b><p>Apri lo zip e trascina <em>NEXAR</em> in Applicazioni. Se macOS la blocca: <em>Impostazioni di Sistema → Privacy e sicurezza → Apri comunque</em>.</p>
+        <div class="gw-row"><a class="btn small primary" id="gw-download" href="https://github.com/IlSamm/NEXAR/releases/latest/download/NEXAR-Mac.zip" target="_blank" rel="noopener noreferrer"><svg class="i"><use href="#i-download"/></svg>Scarica per Mac</a></div></div></li>
+       <li id="gw-s6"><div><b>Collega il Mac</b><p>Genera il codice e scrivilo nell'app sul Mac (vale 10 minuti, una volta sola).</p>
+        <div class="gw-row"><button class="btn small primary" type="button" id="gw-code-btn">Genera codice</button><span class="gw-code" id="gw-code" hidden></span><small class="muted" id="gw-code-left"></small></div></div></li>
       </ol>
-     </details>
-    </section>
-    <p class="fineprint">Installazioni e conferme da amministratore sono possibili solo dall'app sul PC.</p>
+      <div class="gw-more" id="gw-more" hidden><button class="btn small" type="button" id="gw-add"><svg class="i"><use href="#i-plug"/></svg>Collega un altro Mac</button><a class="btn small ghost" href="https://github.com/IlSamm/NEXAR/releases/latest/download/NEXAR-Mac.zip" target="_blank" rel="noopener noreferrer"><svg class="i"><use href="#i-download"/></svg>Scarica l'app</a></div>
+      <p class="fineprint">Il Mac ritrova il PC da solo anche quando cambia indirizzo, e lo accende se è spento. Senza il codice nessuno può collegarsi; da lontano le operazioni delicate chiedono il PIN.</p>
+      <details class="gw-adv" id="gw-adv" hidden>
+       <summary>Ponte Umbrel (vecchio metodo, ancora acceso)</summary>
+       <ol class="gw-steps">
+        <li id="gw-s1"><div><b>Tailscale su Umbrel</b><p>Umbrel → App Store → <em>Tailscale</em> → Installa, poi accedi con il tuo account.</p></div></li>
+        <li id="gw-s2"><div><b>Ponte sul PC</b><p id="gw-s2-text">Indirizzo di Umbrel nella rete di casa: il PC risponderà solo a lui.</p>
+         <div class="gw-row local-only"><input id="gw-ip" inputmode="decimal" placeholder="192.168.0.50" autocomplete="off" spellcheck="false" aria-label="Indirizzo di Umbrel"><button class="btn small" type="button" id="gw-guess">Trova</button><button class="btn small primary" type="button" id="gw-on">Attiva ponte</button><button class="btn small ghost" type="button" id="gw-off" hidden>Spegni</button></div></div></li>
+        <li id="gw-s3"><div><b>Stack su Umbrel</b><p>Portainer → Stacks → il tuo stack NEXAR → Editor → incolla → Update the stack.</p>
+         <div class="gw-row local-only"><button class="btn small" type="button" id="gw-compose"><svg class="i"><use href="#i-copy"/></svg>Copia configurazione</button></div></div></li>
+        <li id="gw-s4"><div><b>Dal Mac con Tailscale</b><p>Apri in Safari <span class="gw-url" id="gw-url">http://sam:8790</span></p></div></li>
+       </ol>
+      </details>
+     </section>
+    </div>
+    <p class="fineprint lk-remote" id="lk-remote" hidden>Installazioni e conferme da amministratore sono possibili solo dall'app sul PC.</p>
    </section>
 
    <!-- IMPOSTAZIONI -->

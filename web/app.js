@@ -69,7 +69,7 @@ const statusDemo={connected:true,version:'1.0.0',update:new URLSearchParams(loca
  energy:{today_kwh:1.42,month_kwh:12.3,price_eur_kwh:.3,today_cost:.43,month_cost:3.69,forecast_kwh:74,forecast_cost:22.2},
  pc:{uptime_s:11200,pending:null,hibernate:false,net:{name:'Ethernet 2',desc:'Realtek PCIe 5GbE',mac:'34:5A:60:77:D4:8D',ip:'192.168.0.128',broadcast:'192.168.0.255',wol_magic:true,wol_shutdown:true}},
  live:{t:0,down:6.4e5,up:7.2e4},
- integrations:[{key:'rgb',name:'OpenRGB',level:'ok',detail:'ECO spegne tutti i LED'},{key:'fans',name:'Fan Control',level:'ok',detail:'Profili NEXAR'}],jobs:{}};
+ integrations:[{key:'rgb',name:'OpenRGB',level:'ok',detail:'ECO spegne tutti i LED (RAM, GPU, scheda madre, ventole), Normale li riaccende'},{key:'fans',name:'Fan Control',level:'ok',detail:'ECO: NEXAR ECO · Normale: NEXAR Normale'},{key:'sensors',name:'Sensori CPU (LibreHardwareMonitor)',level:'ok',detail:'Temperature e RPM collegati'},{key:'gpu',name:'GPU NVIDIA',level:'ok',detail:'Temperatura e watt GPU collegati'},{key:'ai',name:'Codex / Claude',level:'ok',detail:'Rilevamento automatico: codex.exe, claude.exe'},{key:'tunnel',name:'App Telegram',level:'ok',detail:'Pulsante "Apri app" nel bot, funziona anche fuori casa'},{key:'autostart',name:'Avvio con Windows',level:'warn',detail:'Parte 1–2 minuti dopo l\'accesso: premi Avvio veloce (una conferma amministratore)',fast:true}],jobs:{}};
 
 /* ---------- utilità ---------- */
 const nf=(v,d=0)=>typeof v==='number'&&Number.isFinite(v)?v.toLocaleString('it-IT',{minimumFractionDigits:d,maximumFractionDigits:d}):'—';
@@ -663,7 +663,9 @@ function renderPower(p,e){
  }
 }
 function renderPc(pc){
- $('pw-uptime').textContent=typeof pc.uptime_s==='number'?`da ${duration(pc.uptime_s)}`:'—';
+ if(typeof pc.uptime_s==='number'){const on=new Date(Date.now()-pc.uptime_s*1000),today=on.toDateString()===new Date().toDateString();
+  $('pw-uptime').textContent=`Acceso da ${duration(pc.uptime_s)} · ${today?'oggi':on.toLocaleDateString('it-IT',{weekday:'long',day:'numeric'})} alle ${on.toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'})}`;}
+ else $('pw-uptime').textContent='—';
  $('pw-hibernate').hidden=!pc.hibernate;
  const plan=pc.pending,box=$('pw-pending');box.hidden=!plan;
  $('pw-hero').classList.toggle('armed',!!plan);$('pw-title').textContent=plan?(plan.label||'Programmato'):'PC acceso';
@@ -674,11 +676,14 @@ function renderPc(pc){
  const n=pc.net;
  const setStep=(id,ok)=>{$(id).classList.toggle('ok',ok===true);$(id).classList.toggle('bad',ok===false);};
  setStep('wol-net',!!n);
- $('wol-net-text').textContent=n?`${n.desc} · ${n.mac} · ${n.ip}`:'Nessuna scheda via cavo collegata: il Wi-Fi quasi mai accende un PC spento.';
+ $('wol-net-text').textContent=n?`${n.desc.replace(/\s*(Family )?Controller$/i,'')} · ${n.ip}`:'Nessun cavo di rete: col solo Wi-Fi il PC spento non si accende.';
  const winOk=!!n&&n.wol_magic!==false&&n.wol_shutdown!==false;setStep('wol-win',n?winOk:null);
- $('wol-win-text').textContent=!n?'—':winOk?'Attivo, anche da spento':'Da attivare (una conferma da amministratore)';
+ $('wol-win-text').textContent=!n?'—':winOk?'Attivo, anche da spento':'Da attivare (una conferma)';
  $('wol-enable').hidden=!n||winOk||!!current?.remote;
- $('wol-phone').textContent=n?`Alternativa senza Umbrel: un'app Wake-on-LAN sul telefono collegato al Wi-Fi di casa, con MAC ${n.mac} e indirizzo ${n.broadcast}.`:'';
+ $('wol-phone').textContent=n?`Senza Umbrel: un'app Wake-on-LAN sul telefono collegato al Wi-Fi di casa, con MAC ${n.mac} e indirizzo ${n.broadcast}.`:'';
+ const ready=!!n&&winOk;
+ $('wol-tag').textContent=ready?'PRONTA':'DA COMPLETARE';$('wol-tag').className='tag '+(ready?'on':'warn');
+ $('pwf-wol').textContent=ready?'Pronta':n?'Da attivare':'Serve il cavo';$('pwf-wol').closest('.pwf').dataset.lv=ready?'ok':'warn';
 }
 
 /* ---------- collegamenti ---------- */
@@ -696,6 +701,9 @@ function linkAction(r,jobs){
  if(r.key==='autostart')return {label:r.level==='ok'?'Disattiva':'Attiva',run:()=>post('/api/autostart',{enabled:r.level!=='ok'})};
  return null;
 }
+const LINK_GROUPS=[['Hardware','Leggono e comandano i componenti del PC',['sensors','gpu','fans','rgb']],['NEXAR','Come parte e da dove lo usi',['autostart','tunnel','ai']]];
+const LINK_NAME={sensors:'LibreHardwareMonitor',gpu:'Driver NVIDIA',ai:'Codex e Claude',tunnel:'App dentro Telegram'};
+const LINK_WHAT={sensors:'Temperature e ventole',gpu:'Scheda video',fans:'Ventole',rgb:'Luci',autostart:'Avvio',tunnel:'Fuori casa',ai:'Timer AI'};
 function renderLinks(items,jobs){
  const todo=items.filter(r=>r.level!=='ok').length;const badge=$('links-badge');badge.hidden=!todo;badge.textContent=todo;
  $('more-links').textContent=todo?`${todo} da completare`:'Tutto collegato';
@@ -708,15 +716,29 @@ function renderLinks(items,jobs){
  $('links-title').textContent=todo?(todo===1?'1 collegamento da completare':`${todo} collegamenti da completare`):'Tutto collegato';
  $('links-hero').classList.toggle('todo',!!todo);
  const box=$('links-list');const sig=JSON.stringify([items,jobs,current?.remote]);if(box._sig===sig)return;const first=!box._sig;box._sig=sig;box.replaceChildren();box.classList.toggle('fresh',first);
- items.forEach((r,i)=>{
-  const [word,cls]=LEVELS[r.level]||LEVELS.missing;
-  const card=el('article','lcard '+cls);card.style.setProperty('--lc',LINK_COL[r.key]||'#38bdf8');card.style.setProperty('--i',i);
-  const head=el('div','lc-head');const ico=el('span','lc-ico');ico.append(icon(LINK_ICONS[r.key]||'link'));
-  const st=el('span','lc-state '+cls);st.append(el('i'),document.createTextNode(word));head.append(ico,st);
-  card.append(head,el('b','lc-name',r.name),el('small','lc-detail',r.detail));
-  const a=current?.remote?null:linkAction(r,jobs);
-  if(a){const b=el('button','btn small '+(a.primary?'primary':'glass'),a.running?'In corso…':a.label);b.type='button';b.disabled=!!a.running;b.addEventListener('click',a.run);card.append(b);}
-  box.append(card);
+ $('lk-remote').hidden=!current?.remote;
+ const facts=$('lk-facts');facts.replaceChildren();
+ items.forEach(r=>{const [,cls]=LEVELS[r.level]||LEVELS.missing;const f=el('span','lk-fact '+cls);f.style.setProperty('--lc',LINK_COL[r.key]||'#38bdf8');
+  f.append(icon(LINK_ICONS[r.key]||'link'),el('span','',LINK_WHAT[r.key]||r.name));f.title=r.name+': '+r.detail;facts.append(f);});
+ const known=new Set(LINK_GROUPS.flatMap(g=>g[2]));let n=0;
+ LINK_GROUPS.map((g,gi)=>gi===LINK_GROUPS.length-1?[g[0],g[1],[...g[2],...items.map(r=>r.key).filter(k=>!known.has(k))]]:g).forEach(([title,sub,keys])=>{
+  const rows=keys.map(k=>items.find(r=>r.key===k)).filter(Boolean);if(!rows.length)return;
+  const sec=el('section','card lk-group');const ok=rows.filter(r=>r.level==='ok').length;
+  const head=el('div','lk-ghead');const ht=el('div');ht.append(el('h3','',title),el('p','',sub));
+  head.append(ht,el('span','tag '+(ok===rows.length?'on':'warn'),ok===rows.length?'TUTTO OK':`${rows.length-ok} DA SISTEMARE`));sec.append(head);
+  const list=el('div','lk-list');
+  rows.forEach(r=>{
+   const [word,cls]=LEVELS[r.level]||LEVELS.missing;
+   const row=el('div','lk-row '+cls);row.style.setProperty('--lc',LINK_COL[r.key]||'#38bdf8');row.style.setProperty('--i',n++);
+   const ico=el('span','lc-ico');ico.append(icon(LINK_ICONS[r.key]||'link'));
+   const txt=el('div','lk-txt');txt.append(el('b','',LINK_NAME[r.key]||r.name),el('small','',r.detail));
+   const st=el('span','lc-state '+cls);st.append(el('i'),document.createTextNode(word));
+   row.append(ico,txt,st);
+   const a=current?.remote?null:linkAction(r,jobs);
+   if(a){const b=el('button','btn small '+(a.primary?'primary':''),a.running?'In corso…':a.label);b.type='button';b.disabled=!!a.running;b.addEventListener('click',a.run);row.append(b);}
+   list.append(row);
+  });
+  sec.append(list);box.append(sec);
  });
 }
 
@@ -2069,6 +2091,7 @@ async function loadApps(all=false){
 }
 function renderApps(){
  const box=$('rapps'),list=rapps?.pinned||[];box.replaceChildren();
+ $('pwf-apps').textContent=list.length?`${list.filter(a=>a.running).length} aperte su ${list.length}`:'Nessuna scelta';
  $('rapps-sub').textContent=list.length?`${list.filter(a=>a.running).length} aperte su ${list.length} · tocca per aprire, anche da Telegram`:'Aggiungi le app che vuoi aprire da qui';
  list.forEach((a,i)=>{
   const t=el('div','rapp'+(a.running?' on':'')+(a.missing?' missing':''));t.style.setProperty('--i',i);
@@ -2729,7 +2752,7 @@ $('logout').addEventListener('click',()=>{
 /* ---------- App sul Mac: ponte Umbrel + dispositivi ---------- */
 const gwDemo={enabled:false,umbrel_ip:'',pc_ip:'192.168.0.128',pc_port:8767,port:8790,firewall:false,wol:true,running:false,error:'',local:true,
  devices:[{id:'a1b2',name:'Mac',added:'2026-11-06T10:12',last:'2026-11-06T18:40'}]};
-let gwInfo=null,gwTimer=0;
+let gwInfo=null,gwTimer=0,gwAdding=false;
 async function loadGateway(){
  try{gwInfo=demo?gwDemo:await req('/api/gateway');renderGateway();}catch(ex){$('gw-state').textContent='—';}
 }
@@ -2750,7 +2773,10 @@ function renderGateway(){
  const devs=g.devices||[];
  $('gw-s6').classList.toggle('done',devs.length>0);
  $('gw-devs-wrap').hidden=!devs.length;
- $('gw-devs').innerHTML=devs.map(d=>'<div class="gw-dev"><span><b>'+gwEsc(d.name)+'</b><small>Collegato '+fmtWhen(d.added)+(d.last?' · ultimo uso '+fmtWhen(d.last):'')+
+ $('gw-adv').hidden=!g.enabled;
+ if(!devs.length)gwAdding=false;
+ $('gw-steps').hidden=devs.length>0&&!gwAdding;$('gw-more').hidden=!devs.length||gwAdding;
+ $('gw-devs').innerHTML=devs.map(d=>'<div class="gw-dev"><i class="gw-dev-ico"><svg class="i"><use href="#i-monitor"/></svg></i><span><b>'+gwEsc(d.name)+'</b><small>Collegato '+fmtWhen(d.added)+(d.last?' · ultimo uso '+fmtWhen(d.last):'')+
   '</small></span><button class="btn small ghost" type="button" data-dev="'+gwEsc(d.id)+'">Scollega</button></div>').join('');
 }
 $('gw-devs').addEventListener('click',async e=>{
@@ -2774,6 +2800,8 @@ async function gwSet(enabled){
   notify('✓ '+r.message);gwInfo={...r.gateway,local:true};renderGateway();setTimeout(loadGateway,4000);}
  catch(ex){notify('⚠ '+ex.message,true);}finally{b.disabled=false;}
 }
+$('gw-add').addEventListener('click',()=>{gwAdding=true;renderGateway();$('gw-steps').scrollIntoView({behavior:'smooth',block:'nearest'});});
+document.querySelectorAll('.pwf[data-go]').forEach(b=>b.addEventListener('click',()=>$(b.dataset.go)?.scrollIntoView({behavior:'smooth',block:'center'})));
 $('gw-on').addEventListener('click',()=>gwSet(true));
 $('gw-off').addEventListener('click',()=>gwSet(false));
 $('gw-compose').addEventListener('click',async()=>{
@@ -3069,6 +3097,8 @@ function renderSchedules(){
  const box=$('sch-list');box.replaceChildren();
  $('sch-empty').hidden=!!schRules.length||!$('sch-form').hidden;
  const on=schRules.filter(r=>r.enabled).length;$('sch-count').textContent=schRules.length?on+' attiv'+(on===1?'a':'e'):'';$('sch-count').hidden=!schRules.length;
+ const nextR=schRules.filter(r=>r.enabled).map(r=>[r,schNext(r)]).filter(x=>x[1]).sort((a,b)=>a[1]-b[1])[0];
+ $('pwf-next').textContent=nextR?`${SCH_LABEL[nextR[0].action]||nextR[0].action} · ${schWhen(nextR[1])}`:'Nessuna';
  const order=schRules.map((r,i)=>[r,i]).sort((a,b)=>((a[0].enabled?schNext(a[0]):null)?.getTime()??9e15)-((b[0].enabled?schNext(b[0]):null)?.getTime()??9e15));
  order.forEach(([r,idx],pos)=>{
   const nx=r.enabled?schNext(r):null;
