@@ -580,6 +580,7 @@ class BoostSettings(BaseModel):
     stop_junk: bool | None = None
     eco_throttle: bool | None = None
     hidden: list[str] | None = None
+    covers_online: bool | None = None
     fans: str | None = None
     rgb_color: str | None = None
 @app.post('/api/gaming/settings',dependencies=[Depends(authorized)])
@@ -774,10 +775,53 @@ def gaming_cover(gid: str, kind: str):
             except Exception: logging.exception('Icona del gioco'); ok = None
             if not ok: raise HTTPException(404,'Nessuna immagine')
         return FileResponse(dest, media_type='image/png', headers={'Cache-Control':'private, max-age=86400'})
-    m = re.fullmatch(r'steam-(\d{1,10})', gid)
-    path = gaming_boost.steam_image(m.group(1), kind) if m and kind in gaming_boost.COVER_KINDS else None
+    # Copertina scelta dall'utente, cache di Steam sul PC o immagine ufficiale di Steam scaricata una volta.
+    if not re.fullmatch(r'[a-z]+-[A-Za-z0-9_-]{1,70}', gid) or kind not in gaming_boost.COVER_KINDS: raise HTTPException(404,'Nessuna immagine')
+    try: path = controller.game_cover(gid, kind)
+    except Exception: logging.exception('Copertina del gioco'); path = None
     if not path: raise HTTPException(404,'Nessuna immagine')
-    return FileResponse(path, media_type='image/png' if kind == 'logo' else 'image/jpeg', headers={'Cache-Control':'private, max-age=86400'})
+    media = 'image/png' if str(path).lower().endswith('.png') else 'image/jpeg'
+    return FileResponse(path, media_type=media, headers={'Cache-Control':'private, max-age=86400'})
+
+@app.post('/api/gaming/cover/{gid}',dependencies=[Depends(authorized)])
+async def gaming_cover_set(gid: str, request: Request):
+    data = await request.body()
+    if len(data) > 12_000_000: raise HTTPException(413,'Immagine troppo grande (massimo 12 MB)')
+    if not controller.booster.find(gid): raise HTTPException(404,'Gioco non trovato')
+    try: controller.covers.set_custom(gid, data)
+    except ValueError as ex: raise HTTPException(400,str(ex))
+    return {'ok':True,'message':'Copertina cambiata','cv':controller.covers.version(gid)}
+
+@app.delete('/api/gaming/cover/{gid}',dependencies=[Depends(authorized)])
+def gaming_cover_reset(gid: str):
+    try: controller.covers.remove_custom(gid)
+    except ValueError as ex: raise HTTPException(400,str(ex))
+    return {'ok':True,'message':'Copertina originale','cv':0}
+
+@app.get('/api/gaming/game/{gid}',dependencies=[Depends(authorized)])
+def gaming_game(gid: str):
+    try: return controller.game_detail(gid)
+    except ValueError as ex: raise HTTPException(404,str(ex))
+
+class GameProfile(BaseModel):
+    auto: bool | None = None
+    fans: str | None = None
+    rgb: str | None = None
+    mouse: bool | None = None
+@app.post('/api/gaming/game/{gid}/profile',dependencies=[Depends(authorized)])
+def gaming_game_profile(gid: str, data: GameProfile):
+    try: return {'ok':True,'message':'Salvato per questo gioco','profile':controller.save_game_profile(gid, data.model_dump(exclude_unset=True))}
+    except ValueError as ex: raise HTTPException(400,str(ex))
+
+@app.post('/api/gaming/game/{gid}/folder',dependencies=[Depends(authorized)])
+def gaming_game_folder(gid: str):
+    try: return {'ok':True,'message':controller.game_folder(gid)}
+    except (ValueError,OSError) as ex: raise HTTPException(400,str(ex))
+
+@app.post('/api/gaming/game/{gid}/verify',dependencies=[Depends(authorized)])
+def gaming_game_verify(gid: str):
+    try: return {'ok':True,'message':controller.game_verify(gid)}
+    except (ValueError,OSError) as ex: raise HTTPException(400,str(ex))
 
 @app.get('/api/eco',dependencies=[Depends(authorized)])
 def eco_info():

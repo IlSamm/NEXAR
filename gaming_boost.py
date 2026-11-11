@@ -45,9 +45,12 @@ TWEAKS = {
     'no_dvr': ('Registrazione Xbox in background spenta', 'HKCU', r'System\GameConfigStore', 'GameDVR_Enabled', 0, 'no_dvr'),
     'no_capture': ('Acquisizione Game Bar spenta', 'HKCU', r'Software\Microsoft\Windows\CurrentVersion\GameDVR', 'AppCaptureEnabled', 0, 'no_dvr'),
 }
-OPTIONS = ('game_priority', 'game_mode', 'no_dvr', 'reopen', 'auto', 'mouse', 'stop_junk', 'eco_throttle')
+OPTIONS = ('game_priority', 'game_mode', 'no_dvr', 'reopen', 'auto', 'mouse', 'stop_junk', 'eco_throttle', 'covers_online')
 DEFAULTS = {'game_priority': True, 'game_mode': True, 'no_dvr': True, 'reopen': True, 'auto': True, 'mouse': False, 'apps': {}, 'hidden': [],
-            'eco_apps': {}, 'stop_junk': True, 'eco_throttle': True}
+            'eco_apps': {}, 'stop_junk': True, 'eco_throttle': True, 'covers_online': True, 'per_game': {}}
+# Scelte di un singolo gioco. None = come le impostazioni generali di Gaming; per le luci '' = non cambiarle.
+PROFILE_DEFAULT = {'auto': True, 'fans': '', 'rgb': None, 'mouse': None}
+GAME_ID = re.compile(r'[a-z]+-[A-Za-z0-9_-]{1,70}')
 HIGH, BELOW = (psutil.HIGH_PRIORITY_CLASS, psutil.BELOW_NORMAL_PRIORITY_CLASS) if os.name == 'nt' else (-5, 5)
 PROGRAMDATA = Path(os.environ.get('PROGRAMDATA', r'C:\ProgramData'))
 
@@ -385,8 +388,53 @@ class Booster:
         for g in library(force):
             p = played.get(g['id']) or {}
             out.append({**g, 'playtime': int(p.get('seconds', 0)), 'last': max(int(p.get('last', 0)), g['last']),
-                        'hidden': g['id'] in hidden})
+                        'sessions': int(p.get('sessions', 0)), 'hidden': g['id'] in hidden})
         return sorted(out, key=lambda g: (-g['last'], g['name'].lower()))
+
+    # ---------- un gioco alla volta ----------
+    def game_profile(self, gid):
+        p = (self.settings().get('per_game') or {}).get(gid) or {}
+        return {k: p.get(k, v) for k, v in PROFILE_DEFAULT.items()}
+
+    def set_game_profile(self, gid, new: dict):
+        if not isinstance(gid, str) or not GAME_ID.fullmatch(gid): raise ValueError('Gioco non valido')
+        cur = self.game_profile(gid)
+        if 'auto' in new:
+            if type(new['auto']) is not bool: raise ValueError('auto: true/false')
+            cur['auto'] = new['auto']
+        if 'fans' in new:
+            if new['fans'] not in ('', 'normal', 'max', None): raise ValueError('Ventole: normali o massimo')
+            cur['fans'] = new['fans'] or ''
+        if 'rgb' in new:
+            v = new['rgb']
+            if v is not None and v != '' and not re.fullmatch(r'#[0-9a-fA-F]{6}', str(v)): raise ValueError('Colore non valido')
+            cur['rgb'] = v.lower() if v else v
+        if 'mouse' in new:
+            if new['mouse'] is not None and type(new['mouse']) is not bool: raise ValueError('mouse: true/false')
+            cur['mouse'] = new['mouse']
+        clean = {k: v for k, v in cur.items() if v != PROFILE_DEFAULT[k]}
+        per = self.config.setdefault('gaming_boost', {}).setdefault('per_game', {})
+        if clean: per[gid] = clean
+        else: per.pop(gid, None)
+        if len(per) > 300: raise ValueError('Troppi giochi personalizzati')
+        return self.game_profile(gid)
+
+    def game_mouse(self, want):
+        """Mira precisa scelta per il gioco aperto: True la accende, False la toglie, None lascia la scelta generale."""
+        if os.name != 'nt' or want is None: return ''
+        with self.lock:
+            if not self.active: return ''
+            try:
+                if want and not self.saved_mouse:
+                    self.saved_mouse = mouse_accel(); mouse_accel([0, 0, 0]); note = 'mouse 1:1'
+                elif not want and self.saved_mouse:
+                    mouse_accel(self.saved_mouse); self.saved_mouse = None; note = 'mouse come sempre'
+                else: return ''
+            except OSError as ex:
+                logging.warning('Mouse del gioco: %s', ex); return ''
+            self.state['boost_saved'] = {**(self.state.get('boost_saved') or {}), 'mouse': self.saved_mouse}
+        self.save()
+        return note
 
     def find(self, gid):
         return next((g for g in library() if g['id'] == gid), None)
@@ -535,6 +583,11 @@ class Booster:
         if v['gid']:
             g = self.state.setdefault('games', {}).setdefault(v['gid'], {'seconds': 0, 'last': 0})
             g['seconds'] = int(g.get('seconds', 0)) + v['elapsed']; g['last'] = int(time.time())
+            g['sessions'] = int(g.get('sessions', 0)) + 1
+            g['kwh'] = round(float(g.get('kwh', 0)) + v['kwh'], 3); g['cost'] = round(float(g.get('cost', 0)) + v['cost'], 2)
+            for k in ('cpu_temp_max', 'gpu_temp_max'):
+                if v.get(k) is not None: g[k] = max(g.get(k) or 0, v[k])
+            g['recent'] = ([{k: v[k] for k in v if k not in ('game', 'gid')}] + list(g.get('recent') or []))[:15]
         self.save()
         if v['game'] and v['elapsed'] >= 120:
             temps = ' · '.join(f'{n} max {v[k]:.0f}°C' for n, k in (('CPU', 'cpu_temp_max'), ('GPU', 'gpu_temp_max')) if v[k] is not None)

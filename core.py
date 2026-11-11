@@ -225,6 +225,10 @@ class Control:
         self.power_plan = None
         self.booster = gaming_boost.Booster(config, state=self.state, save=self.save_state,
                                             notify=lambda m: self.notify(m), log=lambda m: self.log_event(m))
+        import game_covers
+        self.covers = game_covers.Covers(DATA_DIR / 'covers', online=lambda: bool(self.booster.settings().get('covers_online', True)),
+                                         local=gaming_boost.steam_image)
+        self.game_applied = None       # gioco a cui è già stato applicato il suo profilo in questa partita
         self.stopper = procstop.Stopper()
         self.ai_watch = ai_watch.AiWatch()
         import admin_helper
@@ -413,6 +417,11 @@ class Control:
                 elif not gaming and self.booster.active: self.booster.stop()
                 game = self.booster.tick() if os.name == 'nt' else None
                 if self.booster.active: self.booster.sample(self.telemetry())
+                if self.booster.active and game and game.get('id') != self.game_applied:
+                    self.game_applied = game['id']
+                    try: self.apply_game_profile(game)
+                    except Exception: logging.exception('Profilo del gioco')
+                elif not self.booster.active: self.game_applied = None
                 self.auto_gaming(game, gaming)
             except Exception: logging.exception('Gaming Boost')
             try: self.stopper_tick()
@@ -422,7 +431,8 @@ class Control:
         now = time.monotonic()
         if game:
             self.game_gone = None
-            if (self.booster.settings()['auto'] and not gaming and not self.gaming_owned and not self.gaming_declined):
+            if (self.booster.settings()['auto'] and self.booster.game_profile(game.get('id', ''))['auto']
+                    and not gaming and not self.gaming_owned and not self.gaming_declined):
                 self.gaming_prev = self.mode() or 'normal'
                 self.gaming_owned = True
                 self.set_mode('gaming', manual=False, reason=game['name'])
@@ -786,14 +796,78 @@ class Control:
 
     def gaming_view(self, force=False):
         cfg = self.config
-        return {'boost': self.booster.info(), 'games': [dict({k: g[k] for k in ('id', 'name', 'store', 'size', 'last', 'playtime', 'cover', 'hidden')},
-                                                             icon=bool(g.get('exe')))
+        per = self.booster.settings().get('per_game') or {}
+        return {'boost': self.booster.info(), 'games': [dict({k: g[k] for k in ('id', 'name', 'store', 'size', 'last', 'playtime', 'sessions', 'cover', 'hidden')},
+                                                             icon=bool(g.get('exe')), cv=self.covers.version(g['id']), custom=g['id'] in per)
                                                         for g in self.booster.games(force)],
                 'history': self.booster.history()[:12], 'apps': gaming_boost.user_apps()[:40],
                 'fans': cfg.get('fans', {}).get('gaming_level', 'normal'), 'fans_enabled': bool(cfg.get('fans', {}).get('enabled')),
                 'rgb_color': cfg.get('rgb', {}).get('gaming_color', ''), 'rgb_enabled': bool(cfg.get('rgb', {}).get('enabled')),
                 'palette': self.rgb_palette(), 'junk': procstop.JUNK, 'stopper': self.stopper.info(),
                 'startup_junk': self.startup_junk()}
+
+    # ---------- un gioco alla volta: scheda, profilo, copertina ----------
+    def apply_game_profile(self, game):
+        """Quando parte un gioco in Gaming: ventole, luci e mouse scelti solo per lui."""
+        p = self.booster.game_profile(game['id']); notes = []
+        fans = self.config.get('fans', {})
+        if p['fans'] and fans.get('enabled') and p['fans'] != fans.get('gaming_level', 'normal'):
+            notes.append(self.fans_level(p['fans']))
+        rgb = self.config.get('rgb', {})
+        if rgb.get('enabled') and p['rgb']:
+            notes.append(self.rgb_color(p['rgb'], int(rgb.get('brightness', 100)), remember=False))
+            self.state['rgb_gaming'] = True; self.save_state()
+        elif rgb.get('enabled') and p['rgb'] == '' and self.state.get('rgb_gaming'):
+            notes.append(self.rgb_mode('normal'))
+        notes.append(self.booster.game_mouse(p['mouse']))
+        notes = [n for n in notes if n]
+        if notes: self.log_event(f"Profilo di {game['name']}: " + ' · '.join(notes))
+        return notes
+
+    def game_detail(self, gid):
+        g = next((x for x in self.booster.games() if x['id'] == gid), None)
+        if not g: raise ValueError('Gioco non trovato: aggiorna la libreria')
+        lib = self.booster.find(gid) or {}
+        played = (self.state.get('games') or {}).get(gid) or {}
+        recent = played.get('recent') or [h for h in self.booster.history() if h.get('gid') == gid]
+        appid = gid[6:] if gid.startswith('steam-') else (self.covers.meta()['appids'].get(gid) or None)
+        running = (self.booster.running or {}).get('id') == gid
+        tmax = lambda k: played.get(k) or max((h[k] for h in recent if h.get(k) is not None), default=None)
+        return {'id': gid, 'name': g['name'], 'store': g['store'], 'size': g.get('size') or 0, 'dir': lib.get('dir', ''),
+                'last': g.get('last') or 0, 'hidden': g['hidden'], 'running': running, 'icon': bool(lib.get('exe')),
+                'appid': appid, 'steam': gid.startswith('steam-'), 'cv': self.covers.version(gid),
+                'custom_cover': self.covers.custom(gid).is_file(),
+                'stats': {'seconds': g.get('playtime') or 0, 'sessions': int(played.get('sessions') or len(recent)),
+                          'kwh': played.get('kwh') or round(sum(h.get('kwh') or 0 for h in recent), 3),
+                          'cost': played.get('cost') or round(sum(h.get('cost') or 0 for h in recent), 2),
+                          'cpu_temp_max': tmax('cpu_temp_max'), 'gpu_temp_max': tmax('gpu_temp_max')},
+                'recent': recent[:15], 'profile': self.booster.game_profile(gid)}
+
+    def save_game_profile(self, gid, new):
+        with self.lock:
+            p = self.booster.set_game_profile(gid, new)
+            json_save(CONFIG_FILE, self.config)
+        if self.booster.active and (self.booster.running or {}).get('id') == gid:
+            self.game_applied = None   # si riapplica al prossimo giro, anche a partita in corso
+        return p
+
+    def game_folder(self, gid):
+        g = self.booster.find(gid)
+        if not g or not Path(g.get('dir') or '').is_dir(): raise ValueError('Cartella del gioco non trovata')
+        os.startfile(g['dir'])
+        return 'Cartella di ' + g['name'] + ' aperta sul PC'
+
+    def game_verify(self, gid):
+        m = re.fullmatch(r'steam-(\d{1,10})', str(gid))
+        g = self.booster.find(gid) if m else None
+        if not g: raise ValueError('Il controllo dei file si fa solo per i giochi di Steam')
+        os.startfile('steam://validate/' + m.group(1))
+        self.log_event('Steam controlla i file di ' + g['name'])
+        return 'Steam controlla i file di ' + g['name'] + ': guarda la finestra di Steam sul PC'
+
+    def game_cover(self, gid, kind):
+        g = self.booster.find(gid)
+        return self.covers.path(g, kind) if g else None
 
     def save_boost_settings(self, new):
         new = dict(new)

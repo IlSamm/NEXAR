@@ -1926,7 +1926,7 @@ function renderDayBars(){
 document.querySelectorAll('#st-metric button').forEach(b=>b.addEventListener('click',()=>{statMetric=b.dataset.m;document.querySelectorAll('#st-metric button').forEach(x=>x.classList.toggle('selected',x===b));renderDayBars();}));
 setInterval(()=>{if(!document.hidden&&$('page-energy').classList.contains('active'))loadStats();},60000);
 /* ---------- gaming ---------- */
-let gameData=null,libStore='',showHidden=false,heroArt=null;const covers=new Map();
+let gameData=null,libStore='',showHidden=false,heroArt=null,gsh=null;const covers=new Map();
 const STORE_COLORS={Steam:'#66c0f4',Epic:'#e5e7eb',Riot:'#ff6b75',GOG:'#c79cff'};
 const FAN_NAMES={off:'Spente',off_pump:'Spente',eco:'Silenziose',normal:'Normali',max:'Massimo'};
 const FAN_BAR={off:0,off_pump:8,eco:35,normal:60,max:100};
@@ -1955,11 +1955,16 @@ function initials(n){return n.replace(/[^\p{L}\p{N} ]/gu,'').split(/\s+/).filter
 function playtime(s){if(!s)return '';const m=Math.max(1,Math.round(s/60)),h=Math.floor(m/60);return h?`${h} h ${m%60?m%60+' min':''}`.trim():`${m} min`;}
 function ago(ts){if(!ts)return '';const d=(Date.now()/1000-ts)/86400;
  return d<1?'oggi':d<2?'ieri':d<30?`${Math.floor(d)} giorni fa`:new Date(ts*1000).toLocaleDateString('it-IT',{day:'numeric',month:'short',year:'numeric'});}
+const coverVer=new Map(),DEMO_STEAM={'epic-Sugar':'252950'};
+const DEMO_FILES={capsule:'library_600x900.jpg',header:'header.jpg',hero:'library_hero.jpg',logo:'logo.png'};
 function coverUrl(id,kind){
- // Le immagini arrivano dalla cache di Steam sul PC, con la stessa chiave della API.
- const k=id+'/'+kind;if(covers.has(k))return covers.get(k);
- const p=(async()=>{if(demo||(kind!=='icon'&&!id.startsWith('steam-')))return '';
-  try{const r=await fetch(`/api/gaming/cover/${encodeURIComponent(id)}/${kind}`,{headers:tgInit?{'X-TG-Init-Data':tgInit}:{'X-PC-ECO-Key':key}});
+ // Copertina scelta dall'utente, cache di Steam sul PC o immagine ufficiale scaricata una volta dal PC.
+ const v=coverVer.get(id)||0,k=id+'/'+kind+'/'+v;if(covers.has(k))return covers.get(k);
+ const p=(async()=>{
+  if(demo){const a=id.startsWith('steam-')?id.slice(6):DEMO_STEAM[id];if(!a||!DEMO_FILES[kind])return '';
+   const u=`https://cdn.cloudflare.steamstatic.com/steam/apps/${a}/${DEMO_FILES[kind]}`;
+   return new Promise(res=>{const im=new Image();im.onload=()=>res(u);im.onerror=()=>res('');im.src=u;});}
+  try{const r=await fetch(`/api/gaming/cover/${encodeURIComponent(id)}/${kind}${v?'?v='+v:''}`,{headers:authHeaders()});
    return r.ok?URL.createObjectURL(await r.blob()):'';}catch(e){return '';}})();
  covers.set(k,p);return p;
 }
@@ -1969,6 +1974,9 @@ async function loadGaming(refresh=false,animate=false){
 }
 function renderGaming(d,animate=false){
  gameData=d;const s=d.boost?.settings||{};
+ (d.games||[]).forEach(g=>{if(g.cv)coverVer.set(g.id,g.cv);else coverVer.delete(g.id);});
+ $('gz-lib-n').textContent=(d.games||[]).filter(g=>!g.hidden).length||'';$('gz-hist-n').textContent=(d.history||[]).length||'';
+ if(gsh){const g=(d.games||[]).find(x=>x.id===gsh.id);if(g){gsh.base=g;paintSheet();}}
  document.querySelectorAll('[data-boost]').forEach(t=>t.setAttribute('aria-checked',s[t.dataset.boost]?'true':'false'));
  document.querySelectorAll('#game-fans [data-fans]').forEach(b=>{b.classList.toggle('selected',b.dataset.fans===d.fans);b.disabled=!d.fans_enabled;});
  const sw=$('game-rgb');sw.replaceChildren();
@@ -1991,10 +1999,12 @@ function libHero(g,running){
  txt.append(el('small','',playing?'In gioco ora':'Continua a giocare'),el('b','',g.name),
   el('span','',[g.store,'ultima volta '+ago(g.last),g.playtime?playtime(g.playtime)+' in tutto':''].filter(Boolean).join(' · ')));
  const go=el('button','btn primary lh-go');go.type='button';go.append(icon('play'),el('span','',playing?'In gioco':'Gioca'));go.disabled=playing;
- go.addEventListener('click',()=>launchGame(g));body.append(txt,go);
+ go.addEventListener('click',e=>{e.stopPropagation();launchGame(g);});body.append(txt,go);
  const img=u=>{if(!u)return false;const im=el('img');im.alt='';im.onload=()=>h.classList.add('ready');im.src=u;bg.append(im);return true;};
- if(g.cover)coverUrl(g.id,'header').then(u=>img(u)||coverUrl(g.id,'capsule').then(img));
- else if(g.icon)coverUrl(g.id,'icon').then(u=>{if(img(u))h.classList.add('icon');});
+ firstCover(g.id,['hero','header','capsule']).then(u=>img(u)||(g.icon&&coverUrl(g.id,'icon').then(i=>{if(img(i))h.classList.add('icon');})));
+ const more=el('button','btn glass lh-more');more.type='button';more.append(icon('sliders'),el('span','','Dettagli'));
+ more.addEventListener('click',e=>{e.stopPropagation();openGame(g.id);});body.append(more);
+ h.onclick=()=>openGame(g.id);
  h.replaceChildren(bg,el('i','lh-scrim'),body);
 }
 function renderLibrary(animate=false){
@@ -2025,8 +2035,7 @@ function renderLibrary(animate=false){
   const cover=u=>{if(!u)return false;const im=el('img','cov');im.alt='';im.onload=()=>art.classList.add('ready');im.src=u;art.prepend(im);return true;};
   const iconArt=u=>{if(!u)return;const bg=el('img','ia-bg'),fg=el('img','ia-fg');bg.alt=fg.alt='';bg.src=fg.src=u;
    fg.onload=()=>{art.classList.add('icon','ready');};art.append(bg,fg,el('span','ia-name',g.name));};
-  if(g.cover)coverUrl(g.id,'capsule').then(u=>cover(u)||coverUrl(g.id,'header').then(h=>{if(cover(h))art.classList.add('wide');}));
-  else if(g.icon)coverUrl(g.id,'icon').then(iconArt);
+  coverUrl(g.id,'capsule').then(u=>cover(u)||coverUrl(g.id,'header').then(h=>{if(cover(h))art.classList.add('wide');else if(g.icon)coverUrl(g.id,'icon').then(iconArt);}));
   art.append(el('i','scrim'));
   const play=el('button','gc-play');play.type='button';play.append(icon('play'));play.setAttribute('aria-label',(playing?'In gioco: ':'Gioca a ')+g.name);
   play.disabled=playing||g.hidden;play.addEventListener('click',e=>{e.stopPropagation();launchGame(g);});
@@ -2034,6 +2043,9 @@ function renderLibrary(animate=false){
   hide.append(icon(g.hidden?'eye':'eye-off'));
   hide.addEventListener('click',e=>{e.stopPropagation();const h=new Set(d.boost?.settings?.hidden||[]);g.hidden?h.delete(g.id):h.add(g.id);saveGaming({hidden:[...h]});});
   art.append(play,hide);if(playing)art.append(el('span','gc-now','IN GIOCO'));
+  if(g.custom){const c=el('span','gc-own');c.title='Impostazioni solo per questo gioco';c.append(icon('sliders'));art.append(c);}
+  card.tabIndex=0;card.setAttribute('role','button');card.setAttribute('aria-label','Apri '+g.name);
+  card.addEventListener('click',()=>openGame(g.id));card.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openGame(g.id);}});
   const cap=el('div','gc-cap');const meta=el('div','gc-meta');meta.append(el('i'),el('span','',[g.store,g.playtime?playtime(g.playtime):'',g.last?ago(g.last):'mai giocato'].filter(Boolean).join(' · ')));
   cap.append(el('b','',g.name),meta);
   card.append(art,cap);tilt(art);
@@ -2657,7 +2669,8 @@ function renderHistory(list){
  list.forEach(h=>{
   const row=el('div','hist-row');const name=h.game||'Gaming';
   const ico=el('span','hist-ico',initials(name));ico.style.setProperty('--h',hue(name));
-  if(h.gid?.startsWith('steam-'))coverUrl(h.gid,'header').then(u=>{if(u){ico.style.backgroundImage=`url("${u}")`;ico.textContent='';}});
+  if(h.gid)firstCover(h.gid,['header','capsule']).then(u=>{if(u){ico.style.backgroundImage=`url("${u}")`;ico.textContent='';}});
+  if(h.gid&&(gameData?.games||[]).some(g=>g.id===h.gid)){row.classList.add('link');row.tabIndex=0;row.addEventListener('click',()=>openGame(h.gid));}
   const t=el('div');t.append(el('b','',h.game||'Gaming senza gioco riconosciuto'),
    el('small','',new Date(h.start*1000).toLocaleString('it-IT',{weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})));
   const chips=el('div','hist-chips');
@@ -2674,9 +2687,9 @@ function setHeroArt(gid){
  const art=$('game-hero-art'),logo=$('game-logo'),hero=$('game-hero');
  art.style.backgroundImage='';art.classList.remove('img');logo.hidden=true;hero.classList.remove('with-logo');
  art.style.setProperty('--h',hue(gid||'nexar'));
- if(!gid?.startsWith('steam-'))return;
- coverUrl(gid,'hero').then(u=>{if(u&&heroArt===gid){art.style.backgroundImage=`url("${u}")`;art.classList.add('img');}});
- coverUrl(gid,'logo').then(u=>{if(u&&heroArt===gid){logo.onload=()=>{logo.hidden=false;hero.classList.add('with-logo');logo.classList.remove('swap');void logo.offsetWidth;logo.classList.add('swap');};logo.src=u;}});
+ if(!gid)return;
+ firstCover(gid,['hero','header']).then(u=>{if(u&&heroArt===gid){art.style.backgroundImage=`url("${u}")`;art.classList.add('img');}});
+ if(!coverVer.get(gid))coverUrl(gid,'logo').then(u=>{if(u&&heroArt===gid){logo.onload=()=>{logo.hidden=false;hero.classList.add('with-logo');logo.classList.remove('swap');void logo.offsetWidth;logo.classList.add('swap');};logo.src=u;}});
 }
 function setHeroBtn(id,spec){
  const b=$(id);b.hidden=!spec;if(!spec)return;const [label,ic,act]=spec;
@@ -2716,7 +2729,7 @@ function renderGamingLive(s){
 }
 async function launchGame(g){
  fxQuiet=Date.now()+15000;
- fx('launch','AVVIO',g.name,g.cover?await coverUrl(g.id,'hero'):'');
+ fx('launch','AVVIO',g.name,await firstCover(g.id,['hero','header']));
  if(demo){notify('Anteprima: comando non attivo.');return;}
  try{const r=await req('/api/gaming/launch','POST',{id:g.id});notify('🎮 '+r.message);await refresh();}catch(ex){notify('⚠ '+ex.message,true);}
 }
@@ -2742,6 +2755,132 @@ document.querySelectorAll('#lib-sort button').forEach(b=>b.addEventListener('cli
 $('lib-reload').addEventListener('click',()=>loadGaming(true,true));
 $('lib-hidden').addEventListener('click',()=>{showHidden=!showHidden;renderLibrary();});
 $('boost-reload').addEventListener('click',()=>loadGaming());
+
+/* ---------- scheda di un gioco ---------- */
+const PROF0={auto:true,fans:'',rgb:null,mouse:null};const demoProf={'steam-367520':{auto:true,fans:'max',rgb:'#a855f7',mouse:null}};
+function authHeaders(){return tgInit?{'X-TG-Init-Data':tgInit}:{'X-PC-ECO-Key':key};}
+function demoDetail(g){
+ const hist=(DEMO_GAMING.history||[]).filter(h=>h.gid===g.id),a=g.id.startsWith('steam-')?g.id.slice(6):DEMO_STEAM[g.id]||null;
+ return {...g,dir:(g.store==='Steam'?'D:\\SteamLibrary\\steamapps\\common\\':'C:\\Program Files\\'+g.store+' Games\\')+g.name.replace(/[^\w ]/g,''),
+  steam:g.id.startsWith('steam-'),appid:a,icon:true,custom_cover:!!coverVer.get(g.id),running:(DEMO_GAMING.boost.running||{}).id===g.id,
+  stats:{seconds:g.playtime||0,sessions:g.playtime?hist.length+2:0,kwh:g.playtime?.86:0,cost:g.playtime?.26:0,
+   cpu_temp_max:hist[0]?.cpu_temp_max??null,gpu_temp_max:hist[0]?.gpu_temp_max??null},recent:hist,profile:{...PROF0,...(demoProf[g.id]||{})}};
+}
+async function openGame(gid){
+ const g=(gameData?.games||[]).find(x=>x.id===gid);if(!g)return;
+ gsh={id:gid,base:g,detail:null,art:''};paintSheet();const d=$('gsheet');if(!d.open)d.showModal();d.scrollTop=0;
+ try{const det=demo?demoDetail(g):await req('/api/gaming/game/'+encodeURIComponent(gid));if(gsh?.id===gid){gsh.detail=det;paintSheet();}}
+ catch(ex){notify('⚠ '+ex.message,true);}
+}
+function firstCover(id,kinds){return kinds.reduce((p,k)=>p.then(u=>u||coverUrl(id,k)),Promise.resolve(''));}
+function paintSheet(){
+ if(!gsh)return;const g=gsh.base,d=gsh.detail,id=g.id,sh=$('gsheet');
+ const running=d?d.running:(current?.boost||gameData?.boost)?.running?.id===id;
+ sh.style.setProperty('--h',hue(g.name));sh.style.setProperty('--sc',STORE_COLORS[g.store]||'#94a3b8');
+ $('gsh-name').textContent=g.name;$('gsh-cover-txt').textContent=initials(g.name);
+ const tags=$('gsh-tags');tags.replaceChildren();
+ const tag=(t,c)=>tags.append(el('span','gsh-tag'+(c?' '+c:''),t));
+ tag(g.store,'store');if(running)tag('IN GIOCO','live');if(g.size)tag(bytes(g.size));if(g.hidden)tag('ESCLUSO','off');
+ const artKey=id+'|'+(coverVer.get(id)||0);
+ if(gsh.art!==artKey){gsh.art=artKey;
+  const art=$('gsh-art'),cov=$('gsh-cover'),logo=$('gsh-logo');art.style.backgroundImage='';art.className='gsh-art';cov.style.backgroundImage='';cov.classList.remove('img','icon');
+  logo.hidden=true;sh.classList.remove('with-logo');
+  firstCover(id,['hero','header','capsule']).then(u=>{if(gsh?.art!==artKey)return;
+   if(u){art.style.backgroundImage=`url("${u}")`;art.classList.add('img');}
+   else coverUrl(id,'icon').then(i=>{if(i&&gsh?.art===artKey){art.style.backgroundImage=`url("${i}")`;art.classList.add('icon');}});});
+  firstCover(id,['capsule','header']).then(u=>{if(gsh?.art!==artKey)return;
+   if(u){cov.style.backgroundImage=`url("${u}")`;cov.classList.add('img');}
+   else coverUrl(id,'icon').then(i=>{if(i&&gsh?.art===artKey){cov.style.backgroundImage=`url("${i}")`;cov.classList.add('img','icon');}});});
+  if(!coverVer.get(id))coverUrl(id,'logo').then(u=>{if(u&&gsh?.art===artKey){logo.onload=()=>{logo.hidden=false;sh.classList.add('with-logo');};logo.src=u;}});
+ }
+ const play=$('gsh-play');play.disabled=running||g.hidden;play.querySelector('span').textContent=running?'In gioco':'Gioca';
+ // numeri
+ const st=d?.stats||{seconds:g.playtime||0,sessions:g.sessions||0};const box=$('gsh-stats');box.replaceChildren();
+ [['clock','Tempo di gioco',st.seconds?playtime(st.seconds):'—','#a78bfa'],['trophy','Partite',st.sessions?String(st.sessions):'—','#f472b6'],
+  ['restart','Ultima volta',g.last?ago(g.last):'mai','#60a5fa'],['cpu','CPU massima',st.cpu_temp_max!=null?Math.round(st.cpu_temp_max)+'°':'—','#fb923c'],
+  ['gpu','GPU massima',st.gpu_temp_max!=null?Math.round(st.gpu_temp_max)+'°':'—','#34d399'],['plug','Corrente usata',st.kwh?`${nf(st.kwh,2)} kWh`:'—','#fbbf24',st.cost?eur(st.cost):'']]
+  .forEach(([ic,l,v,c,sub])=>{const t=el('div','gsh-stat');t.style.setProperty('--c',c);const i=el('span','gsh-si');i.append(icon(ic));
+   const tx=el('div');tx.append(el('small','',l),el('b','',v));if(sub)tx.append(el('em','',sub));t.append(i,tx);box.append(t);});
+ // scelte del gioco
+ const p=d?.profile||PROF0,gd=gameData||{};
+ $('gsh-auto').setAttribute('aria-checked',p.auto?'true':'false');$('gsh-auto').disabled=!d;
+ document.querySelectorAll('#gsh-fans button').forEach(b=>{b.classList.toggle('selected',b.dataset.v===(p.fans||''));b.disabled=!d||!gd.fans_enabled;});
+ $('gsh-fans-sub').textContent=!gd.fans_enabled?'Fan Control non collegato':p.fans?(p.fans==='max'?'Al massimo mentre giochi':'Normali mentre giochi'):`Come in Gaming (${gd.fans==='max'?'massimo':'normali'})`;
+ const mv=p.mouse==null?'':p.mouse?'on':'off';document.querySelectorAll('#gsh-mouse button').forEach(b=>{b.classList.toggle('selected',b.dataset.v===mv);b.disabled=!d;});
+ const sw=$('gsh-rgb');sw.replaceChildren();
+ const same=el('button','swatch same'+(p.rgb==null?' selected':''));same.type='button';same.title='Come in Gaming';same.append(el('span','','G'));
+ if(gd.rgb_color)same.style.background=gd.rgb_color;same.addEventListener('click',()=>saveProfile({rgb:null}));sw.append(same);
+ const none=el('button','swatch none'+(p.rgb===''?' selected':''));none.type='button';none.title='Non cambiarle';none.append(icon('x'));
+ none.addEventListener('click',()=>saveProfile({rgb:''}));sw.append(none);
+ (gd.palette||[]).forEach(c=>{const b=el('button','swatch'+(c===p.rgb?' selected':''));b.type='button';b.style.background=c;b.title=c.toUpperCase();
+  b.addEventListener('click',()=>saveProfile({rgb:c}));sw.append(b);});
+ sw.querySelectorAll('button').forEach(b=>b.disabled=!d||!gd.rgb_enabled);
+ $('gsh-rgb-sub').textContent=!gd.rgb_enabled?'OpenRGB non collegato':p.rgb==null?(gd.rgb_color?'Come in Gaming':'Come in Gaming: non cambiano'):p.rgb===''?'Restano come sono':'Colore '+p.rgb.toUpperCase();
+ // strumenti
+ $('gsh-path').textContent=d?.dir?d.dir:'—';
+ $('gsh-folder').hidden=!!current?.remote||!d?.dir;$('gsh-verify').hidden=!d?.steam;
+ const store=$('gsh-store');store.hidden=!d?.appid;if(d?.appid)store.href='https://store.steampowered.com/app/'+encodeURIComponent(d.appid)+'/';
+ $('gsh-cover-reset').hidden=!(d?.custom_cover||coverVer.get(id));
+ const hide=$('gsh-hide');hide.querySelector('b').textContent=g.hidden?'Rimetti tra i giochi':'Non è un gioco';
+ hide.querySelector('small').textContent=g.hidden?'Torna nella libreria e in Gaming':'Escludilo da Gaming';hide.querySelector('use').setAttribute('href','#i-'+(g.hidden?'eye':'eye-off'));
+ // partite
+ const hl=$('gsh-hist');hl.replaceChildren();const rec=d?.recent||[];
+ $('gsh-hist-sub').textContent=rec.length>1?`Le ultime ${rec.length} con NEXAR`:rec.length?"L'ultima con NEXAR":'Le sessioni giocate con NEXAR';
+ if(!d)hl.append(el('p','muted','Carico…'));
+ else if(!rec.length)hl.append(el('p','muted','Ancora nessuna partita registrata: la prima comparirà qui quando giochi in Gaming.'));
+ rec.forEach(h=>{const r=el('div','gsh-run');const top=el('div','gsh-run-top');
+  top.append(el('b','',new Date(h.start*1000).toLocaleString('it-IT',{weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})),el('span','',playtime(h.elapsed)));
+  const chips=el('div','hist-chips');
+  [h.cpu_temp_max!=null&&[`CPU ${Math.round(h.cpu_temp_max)}°`,'cpu'],h.gpu_temp_max!=null&&[`GPU ${Math.round(h.gpu_temp_max)}°`,'gpu'],
+   h.parts_max?.hotspot!=null&&[`Hot spot ${Math.round(h.parts_max.hotspot)}°`,'temp'],h.watts_avg&&[`${h.watts_avg} W medi`,'bolt'],
+   h.kwh&&[`${nf(h.kwh,2)} kWh · ${eur(h.cost)}`,'plug']].filter(Boolean).forEach(([t,ic])=>{const c=el('span');c.append(icon(ic),document.createTextNode(t));chips.append(c);});
+  r.append(top,chips);hl.append(r);});
+}
+async function saveProfile(change){
+ if(!gsh?.detail)return;const id=gsh.id;
+ if(demo){demoProf[id]={...gsh.detail.profile,...change};gsh.detail.profile=demoProf[id];paintSheet();markCustom(id,demoProf[id]);notify('Anteprima: salvato solo qui.');return;}
+ try{const r=await req('/api/gaming/game/'+encodeURIComponent(id)+'/profile','POST',change);if(gsh?.id===id){gsh.detail.profile=r.profile;paintSheet();}markCustom(id,r.profile);notify('✓ '+r.message);}
+ catch(ex){notify('⚠ '+ex.message,true);}
+}
+function markCustom(id,p){const g=(gameData?.games||[]).find(x=>x.id===id);if(!g)return;g.custom=Object.keys(PROF0).some(k=>p[k]!==PROF0[k]);renderLibrary();}
+function setCoverVer(id,v,url){
+ coverVer.set(id,v);if(url)['capsule','header','hero'].forEach(k=>covers.set(id+'/'+k+'/'+v,Promise.resolve(url)));
+ const g=(gameData?.games||[]).find(x=>x.id===id);if(g)g.cv=v;if(gsh?.id===id){if(gsh.detail)gsh.detail.custom_cover=!!v;gsh.art='';paintSheet();}
+ renderLibrary();if(heroArt===id){heroArt=null;renderGamingLive(current||statusDemo);}
+}
+$('gsh-close').addEventListener('click',()=>$('gsheet').close());
+$('gsheet').addEventListener('click',e=>{if(e.target===e.currentTarget)e.currentTarget.close();});
+$('gsheet').addEventListener('close',()=>{gsh=null;});
+$('gsh-play').addEventListener('click',()=>{if(!gsh)return;const g=gsh.base;$('gsheet').close();launchGame(g);});
+$('gsh-auto').addEventListener('click',()=>saveProfile({auto:$('gsh-auto').getAttribute('aria-checked')!=='true'}));
+document.querySelectorAll('#gsh-fans button').forEach(b=>b.addEventListener('click',()=>saveProfile({fans:b.dataset.v})));
+document.querySelectorAll('#gsh-mouse button').forEach(b=>b.addEventListener('click',()=>saveProfile({mouse:b.dataset.v===''?null:b.dataset.v==='on'})));
+$('gsh-folder').addEventListener('click',async()=>{if(!gsh)return;if(demo){notify('Anteprima: comando non attivo.');return;}
+ try{notify('✓ '+(await req('/api/gaming/game/'+encodeURIComponent(gsh.id)+'/folder','POST',{})).message);}catch(ex){notify('⚠ '+ex.message,true);}});
+$('gsh-verify').addEventListener('click',async()=>{if(!gsh)return;if(demo){notify('Anteprima: comando non attivo.');return;}
+ if(!await ask('Controllare i file del gioco?','Steam confronta i file con quelli originali e riscarica quelli rovinati. Può metterci qualche minuto.',{danger:false,ico:'check',yes:'Controlla'}))return;
+ try{notify('✓ '+(await req('/api/gaming/game/'+encodeURIComponent(gsh.id)+'/verify','POST',{})).message);}catch(ex){notify('⚠ '+ex.message,true);}});
+$('gsh-hide').addEventListener('click',()=>{if(!gsh)return;const g=gsh.base,h=new Set(gameData?.boost?.settings?.hidden||[]);g.hidden?h.delete(g.id):h.add(g.id);saveGaming({hidden:[...h]});});
+$('gsh-cover-file').addEventListener('change',async e=>{
+ const f=e.target.files[0];e.target.value='';if(!f||!gsh)return;const id=gsh.id;
+ if(f.size>12e6){notify('Immagine troppo grande (massimo 12 MB)',true);return;}
+ if(demo){setCoverVer(id,Date.now(),URL.createObjectURL(f));notify('Anteprima: copertina cambiata solo qui.');return;}
+ notify('Carico la copertina…');
+ try{const r=await fetch('/api/gaming/cover/'+encodeURIComponent(id),{method:'POST',headers:{...authHeaders(),'Content-Type':f.type||'application/octet-stream'},body:f});
+  const o=await r.json().catch(()=>({}));if(!r.ok)throw new Error(o.detail||'Copertina non salvata');setCoverVer(id,o.cv);notify('✓ '+o.message);}
+ catch(ex){notify('⚠ '+ex.message,true);}
+});
+$('gsh-cover-reset').addEventListener('click',async()=>{if(!gsh)return;const id=gsh.id;
+ if(demo){setCoverVer(id,0);return;}
+ try{const r=await req('/api/gaming/cover/'+encodeURIComponent(id),'DELETE');setCoverVer(id,0);notify('✓ '+r.message);}catch(ex){notify('⚠ '+ex.message,true);}});
+/* schede della pagina Gaming */
+function gzTab(name){
+ document.querySelectorAll('#gz-tabs [data-gz]').forEach(b=>b.classList.toggle('selected',b.dataset.gz===name));
+ document.querySelectorAll('#page-gaming .gz-panel').forEach(p=>p.hidden=p.dataset.gz!==name);
+ try{localStorage.setItem('nexar.gzTab',name);}catch(e){}inkTabs($('gz-tabs'));
+}
+document.querySelectorAll('#gz-tabs [data-gz]').forEach(b=>b.addEventListener('click',()=>gzTab(b.dataset.gz)));
+try{const t=localStorage.getItem('nexar.gzTab');if(t&&t!=='lib')gzTab(t);}catch(e){}
 $('upd-check').addEventListener('click',()=>{updLater='';try{sessionStorage.removeItem('nexar_upd_later');}catch(e){}post('/api/update/check',{});});
 $('upd-install').addEventListener('click',()=>startUpdate());
 $('links-refresh').addEventListener('click',()=>post('/api/discover',{}));

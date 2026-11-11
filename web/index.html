@@ -311,7 +311,13 @@
      <article class="gstat c-fan"><span class="tile-ico"><svg class="i"><use href="#i-fan"/></svg></span><div><small>Ventole</small><b id="gs-fan">—</b><span id="gs-fan-sub">—</span></div><div class="bar"><span id="gs-fan-bar"></span></div></article>
     </div>
 
-    <section class="card">
+    <div class="tabs gz-tabs" id="gz-tabs" role="tablist">
+     <button class="selected" type="button" role="tab" data-gz="lib"><svg class="i"><use href="#i-grid"/></svg>Libreria<em id="gz-lib-n"></em></button>
+     <button type="button" role="tab" data-gz="opt"><svg class="i"><use href="#i-bolt"/></svg>Ottimizzazioni</button>
+     <button type="button" role="tab" data-gz="hist"><svg class="i"><use href="#i-trophy"/></svg>Partite<em id="gz-hist-n"></em></button>
+    </div>
+
+    <section class="card gz-panel lib-card" data-gz="lib">
      <div class="card-head lib-head">
       <div><h3>La tua libreria</h3><p id="lib-sub">Giochi installati sul PC</p></div>
       <div class="lib-tools">
@@ -326,7 +332,7 @@
      <button class="link-btn" type="button" id="lib-hidden" hidden></button>
     </section>
 
-    <div class="two-col">
+    <div class="two-col gz-panel" data-gz="opt" hidden>
      <section class="card">
       <div class="card-head"><div><h3>Ottimizzazioni in Gaming</h3><p>Si attivano entrando e si tolgono uscendo</p></div><span class="tag" id="boost-state">SPENTO</span></div>
       <div class="boost-opts one">
@@ -335,6 +341,7 @@
        <label class="switch-row"><span class="opt-ico c-red"><svg class="i"><use href="#i-monitor"/></svg></span><div><b>Niente registrazione Xbox</b><small>La Game Bar non registra in background: più FPS</small></div><button class="toggle" type="button" data-boost="no_dvr" role="switch"><span></span></button></label>
        <label class="switch-row"><span class="opt-ico c-teal"><svg class="i"><use href="#i-mouse"/></svg></span><div><b>Mira precisa</b><small>Mouse senza accelerazione (movimento 1:1)</small></div><button class="toggle" type="button" data-boost="mouse" role="switch"><span></span></button></label>
        <label class="switch-row"><span class="opt-ico c-amber"><svg class="i"><use href="#i-restart"/></svg></span><div><b>Riapri le app chiuse</b><small>Quando esci da Gaming</small></div><button class="toggle" type="button" data-boost="reopen" role="switch"><span></span></button></label>
+       <label class="switch-row"><span class="opt-ico c-violet"><svg class="i"><use href="#i-download"/></svg></span><div><b>Copertine da Steam</b><small>Le immagini ufficiali dei giochi, scaricate una volta e tenute sul PC</small></div><button class="toggle" type="button" data-boost="covers_online" role="switch"><span></span></button></label>
       </div>
       <div class="sub-head"><b>Ventole in Gaming</b></div>
       <div class="seg3 wide" id="game-fans">
@@ -357,7 +364,7 @@
      </section>
     </div>
 
-    <section class="card">
+    <section class="card gz-panel" data-gz="hist" hidden>
      <div class="card-head"><div><h3>Ultime partite</h3><p id="hist-sub">Durata, temperature massime e consumo di ogni sessione</p></div></div>
      <div class="history" id="game-history"><p class="muted">Ancora nessuna partita: la prima comparirà qui.</p></div>
     </section>
@@ -1004,6 +1011,48 @@
  </div>
  <div class="fs-setup" id="fs-setup" hidden><span class="fs-setup-ico"><svg class="i"><use href="#i-lock"/></svg></span><p id="fs-setup-text"></p></div>
  <div class="sheet-actions"><button class="btn" type="button" id="fs-cancel">Chiudi</button><button class="btn primary" type="button" id="fs-apply">Applica</button></div>
+</dialog>
+<dialog class="gsheet" id="gsheet" aria-labelledby="gsh-name">
+ <div class="gsh-hero" id="gsh-hero">
+  <div class="gsh-art" id="gsh-art"></div><i class="gsh-scrim" aria-hidden="true"></i>
+  <button class="gsh-x" type="button" id="gsh-close" aria-label="Chiudi"><svg class="i"><use href="#i-x"/></svg></button>
+  <div class="gsh-head">
+   <div class="gsh-cover" id="gsh-cover"><b id="gsh-cover-txt"></b></div>
+   <div class="gsh-title">
+    <img class="gsh-logo" id="gsh-logo" alt="" hidden>
+    <h2 id="gsh-name">—</h2>
+    <div class="gsh-tags" id="gsh-tags"></div>
+   </div>
+   <button class="btn primary gsh-play" type="button" id="gsh-play"><svg class="i"><use href="#i-play"/></svg><span>Gioca</span></button>
+  </div>
+ </div>
+ <div class="gsh-body">
+  <div class="gsh-stats" id="gsh-stats"></div>
+  <div class="gsh-cols">
+   <section class="gsh-sec">
+    <div class="gsh-sec-head"><h3>Solo per questo gioco</h3><p>Quando ci giochi valgono queste scelte; il resto segue le impostazioni di Gaming</p></div>
+    <div class="set-group gsh-set">
+     <div class="set-row"><div><b>Gaming automatico</b><small>Si accende da solo quando apri il gioco</small></div><button class="toggle" type="button" id="gsh-auto" role="switch" aria-label="Gaming automatico per questo gioco"><span></span></button></div>
+     <div class="set-row gsh-choice"><div><b>Ventole</b><small id="gsh-fans-sub">Come in Gaming</small></div><div class="seg3" id="gsh-fans"><button type="button" data-v="">Come Gaming</button><button type="button" data-v="normal">Normali</button><button type="button" data-v="max">Massimo</button></div></div>
+     <div class="set-row gsh-choice"><div><b>Mira precisa</b><small>Mouse senza accelerazione</small></div><div class="seg3" id="gsh-mouse"><button type="button" data-v="">Come Gaming</button><button type="button" data-v="on">Sì</button><button type="button" data-v="off">No</button></div></div>
+     <div class="set-row gsh-choice gsh-rgb-row"><div><b>Luci</b><small id="gsh-rgb-sub">Come in Gaming</small></div><div class="swatches gsh-swatches" id="gsh-rgb"></div></div>
+    </div>
+    <div class="gsh-sec-head"><h3>Gioco</h3><p id="gsh-path">—</p></div>
+    <div class="gsh-tools">
+     <button class="gsh-tool" type="button" id="gsh-folder"><svg class="i"><use href="#i-disk"/></svg><span><b>Apri la cartella</b><small>Sul PC, in Esplora file</small></span></button>
+     <button class="gsh-tool" type="button" id="gsh-verify"><svg class="i"><use href="#i-check"/></svg><span><b>Controlla i file</b><small>Steam ripara quelli rovinati</small></span></button>
+     <a class="gsh-tool" id="gsh-store" href="#" target="_blank" rel="noopener noreferrer"><svg class="i"><use href="#i-link"/></svg><span><b>Pagina su Steam</b><small>Novità, aggiornamenti, recensioni</small></span></a>
+     <label class="gsh-tool" id="gsh-cover-pick"><svg class="i"><use href="#i-upload"/></svg><span><b>Cambia copertina</b><small>Scegli una foto</small></span><input type="file" id="gsh-cover-file" accept="image/png,image/jpeg,image/webp" hidden></label>
+     <button class="gsh-tool" type="button" id="gsh-cover-reset" hidden><svg class="i"><use href="#i-restart"/></svg><span><b>Copertina originale</b><small>Torna a quella di prima</small></span></button>
+     <button class="gsh-tool" type="button" id="gsh-hide"><svg class="i"><use href="#i-eye-off"/></svg><span><b>Non è un gioco</b><small>Escludilo da Gaming</small></span></button>
+    </div>
+   </section>
+   <section class="gsh-sec">
+    <div class="gsh-sec-head"><h3>Partite</h3><p id="gsh-hist-sub">Le ultime sessioni con NEXAR</p></div>
+    <div class="gsh-hist" id="gsh-hist"></div>
+   </section>
+  </div>
+ </div>
 </dialog>
 <dialog class="sheet" id="confirm">
  <form method="dialog">
