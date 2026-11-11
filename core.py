@@ -208,6 +208,9 @@ class Control:
         self.started = datetime.now().isoformat(timespec='seconds')
         self.notify = lambda message: None
         self.events = deque(maxlen=80)
+        self.temp_hist = deque(maxlen=1440)   # una fotografia di tutte le temperature al minuto, ultime 24 ore
+        self.temp_hist_at = 0.0
+        self.temp_alert = {}
         self.cache_time = 0.0
         self.cached_telemetry = None
         self.auto_previous_enabled = False
@@ -1236,7 +1239,10 @@ class Control:
         name = str(target.get('NickName') or 'Ventola')
         if percent is not None and discovery.is_pump(name, ident) and percent < discovery.PUMP_MIN_PERCENT:
             raise ValueError(f'La pompa non scende sotto il {discovery.PUMP_MIN_PERCENT}%: raffredda il processore')
-        if curve is not None: curve = discovery.fan_curve_clean(curve, discovery.is_pump(name, ident))
+        if curve is not None:
+            curve = discovery.fan_curve_clean(curve, discovery.is_pump(name, ident))
+            if curve['src'] not in ('cpu', 'gpu') and self.sensor_name(curve['src']) == curve['src']:
+                raise ValueError('Sensore non trovato: serve LibreHardwareMonitor acceso')
         custom = {k: v for k, v in (self.state.get('fans_custom') or {}).items() if isinstance(v, (int, dict))}
         value = curve if curve is not None else percent
         if value is None: custom.pop(ident, None)
@@ -1250,7 +1256,7 @@ class Control:
             self.state.update(fans_custom=custom, fans_slot=slot); json_save(STATE_FILE, self.state)
         nice = name.replace('CPU Fan', 'Radiatore').replace('Pump Fan', 'Pompa').replace('System Fan', 'Ventola case')
         msg = f'{nice}: ' + (f'{percent}% fisso' if percent is not None else
-                             f"curva sulla temperatura {curve['src'].upper()}" if curve is not None else 'torna al profilo ' + FAN_LEVEL_NAMES.get(level, level))
+                             f"curva sulla temperatura {self.sensor_name(curve['src'])}" if curve is not None else 'torna al profilo ' + FAN_LEVEL_NAMES.get(level, level))
         self.log_event('Ventole · ' + msg)
         return msg
 
@@ -1514,6 +1520,52 @@ class Control:
         self.events.appendleft(record)
         logging.info('%s', message)
 
+    # ---------- tutte le temperature: nome, storico, avvisi ----------
+    def sensor_name(self, sid):
+        if sid in ('cpu', 'gpu'): return sid.upper()
+        import temps
+        for g, r in temps.all_rows((self.cached_telemetry or {}).get('temps') or self.telemetry().get('temps')):
+            if r['id'] == sid:
+                short = {'cpu': 'CPU', 'gpu': 'GPU', 'board': 'scheda madre', 'ram': 'RAM', 'disk': ''}.get(g['kind'], '')
+                return f"{r['name']} ({short})" if short and short not in r['name'] else r['name']
+        return sid
+
+    def temps_track(self, t, now=None):
+        """Una volta al minuto mette da parte tutte le temperature (24 ore, solo in memoria)."""
+        import temps
+        now = time.time() if now is None else now
+        if now - self.temp_hist_at < 55: return
+        snap = {r['id']: r['value'] for _, r in temps.all_rows(t.get('temps'))}
+        if not snap: return
+        self.temp_hist_at = now
+        self.temp_hist.append((int(now), snap))
+
+    def temps_history(self, ids=None):
+        hist = list(self.temp_hist)
+        keys = list(ids) if ids else sorted({k for _, s in hist for k in s})
+        return {'t': [ts for ts, _ in hist], 's': {k: [s.get(k) for _, s in hist] for k in keys[:40]}}
+
+    def temps_alerts(self, t):
+        """Avviso su Telegram se un sensore qualsiasi (dischi, VRM, punto più caldo della GPU…) supera il suo limite.
+        CPU e GPU principali hanno già le loro soglie, qui non si ripetono."""
+        import temps
+        if not self.config.get('alerts', {}).get('sensors', True): self.temp_alert.clear(); return
+        for g, r in temps.all_rows(t.get('temps')):
+            if (g['kind'] == 'cpu' and r['name'] == 'Processore') or (g['kind'] == 'gpu' and r['name'] == 'Chip' and g['name'] != 'Grafica integrata'):
+                continue
+            a = self.temp_alert.setdefault(r['id'], {'on': False, 'at': 0.0})
+            label = r['name'] if g['kind'] == 'disk' else f"{g['name']} · {r['name']}"
+            if r['value'] >= r['crit'] and not a['on']:
+                a['on'] = True
+                if time.monotonic() - a['at'] > 1200:
+                    a['at'] = time.monotonic()
+                    msg = f"⚠️ Temperatura alta: {label} {r['value']:.0f}°C (limite {r['crit']:.0f}°C)."
+                    self.log_event(msg); self.notify(msg)
+            elif r['value'] <= r['crit'] - 6 and a['on']:
+                a['on'] = False
+                msg = f"✅ {label} rientrata: {r['value']:.0f}°C."
+                self.log_event(msg); self.notify(msg)
+
     def get_events(self):
         with self.lock:
             return list(self.events)
@@ -1526,6 +1578,7 @@ class Control:
                 'auto_enabled':bool(self.config.get('auto_detect',{}).get('enabled')),
                 'restore_delay_seconds':int(self.config.get('auto_detect',{}).get('restore_delay_seconds',180)),
                 'alerts_enabled':bool(self.config.get('alerts',{}).get('enabled',True)),
+                'alerts_sensors':bool(self.config.get('alerts',{}).get('sensors',True)),
                 'cpu_temp_alert':int(self.config.get('alerts',{}).get('cpu_temp',87)),
                 'gpu_temp_alert':int(self.config.get('alerts',{}).get('gpu_temp',82)),
                 'energy_price_cents':round(float(self.config.get('energy',{}).get('price_eur_kwh',0.30))*100),
@@ -1559,13 +1612,14 @@ class Control:
             raise ValueError('Animazioni: liquid, discreet o off')
         if 'psu_class' in new and new['psu_class'] not in energy_model.PSU_CLASSES:
             raise ValueError('psu_class: ' + ', '.join(energy_model.PSU_CLASSES))
-        if 'alerts_enabled' in new and type(new['alerts_enabled']) is not bool:
-            raise ValueError('alerts_enabled deve essere true/false')
+        for flag in ('alerts_enabled', 'alerts_sensors'):
+            if flag in new and type(new[flag]) is not bool: raise ValueError(f'{flag} deve essere true/false')
         with self.lock:
             if 'eco_cpu_max_percent' in new: self.config['eco_cpu_max_percent']=new['eco_cpu_max_percent']
             if 'monitor_timeout_seconds' in new: self.config['monitor_timeout_seconds']=new['monitor_timeout_seconds']
             if 'restore_delay_seconds' in new: self.config.setdefault('auto_detect',{})['restore_delay_seconds']=new['restore_delay_seconds']
             if 'alerts_enabled' in new: self.config.setdefault('alerts',{})['enabled']=new['alerts_enabled']
+            if 'alerts_sensors' in new: self.config.setdefault('alerts',{})['sensors']=new['alerts_sensors']
             if 'cpu_temp_alert' in new: self.config.setdefault('alerts',{})['cpu_temp']=new['cpu_temp_alert']
             if 'gpu_temp_alert' in new: self.config.setdefault('alerts',{})['gpu_temp']=new['gpu_temp_alert']
             if 'energy_price_cents' in new: self.config.setdefault('energy',{})['price_eur_kwh']=new['energy_price_cents']/100
@@ -1767,6 +1821,8 @@ class Control:
                 try: self.ai_done_check()
                 except Exception: logging.exception('Fine lavoro AI')
                 last=now
+                try: self.temps_track(t)
+                except Exception: logging.exception('Storico temperature')
                 # Protezione sempre attiva (anche ad avvisi spenti): CPU calda con ventole case rallentate.
                 # Con le ventole del case spente conta anche la GPU, che scarica il calore dentro il case.
                 hot = [f'{n.upper()} a {t[n+"_temp"]:.0f}°C' for n, limit in (('cpu', FAN_SAFETY_TEMP), ('gpu', FAN_SAFETY_TEMP_GPU))
@@ -1778,6 +1834,8 @@ class Control:
                 if not self.config.get('alerts',{}).get('enabled',True):
                     active={'cpu':False,'gpu':False}
                     continue
+                try: self.temps_alerts(t)
+                except Exception: logging.exception('Avvisi sensori')
                 hw=self.config.get('hardware',{})
                 for name,label in [('cpu',('CPU '+hw.get('cpu','')).strip()),('gpu',('GPU '+hw.get('gpu','')).strip())]:
                     val=t.get(name+'_temp')

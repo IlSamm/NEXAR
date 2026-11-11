@@ -15,6 +15,15 @@ KIND = [
     (re.compile(r'^/(nvme|hdd|ssd|storage|ata)/\d+/temperature/'), 'disk'),
 ]
 ORDER = {'cpu': 0, 'gpu': 1, 'board': 2, 'ram': 3, 'disk': 4}
+# sensori che Fan Control legge di sicuro: processore, schede video e scheda madre
+FAN_SOURCE = re.compile(r'^/(amdcpu|intelcpu|gpu-nvidia|gpu-amd|gpu-intel|lpc)/[A-Za-z0-9_-]+(/\d+)?/temperature/\d+$')
+
+
+def all_rows(groups):
+    for g in groups or []:
+        for r in g.get('rows') or []:
+            yield g, r
+
 
 
 def _num(x):
@@ -77,7 +86,8 @@ def groups(tree):
             return
         if not isinstance(node, dict): return
         name = str(node.get('Text', ''))
-        sid = str(node.get('SensorId', '')).lower()
+        raw = str(node.get('SensorId', ''))
+        sid = raw.lower()
         val = _num(node.get('Value'))
         is_temp = str(node.get('Type', '')).lower() == 'temperature' or '°c' in str(node.get('Value', '')).lower()
         if sid and val is not None and is_temp:
@@ -89,14 +99,14 @@ def groups(tree):
                 if re.search(r'(?i)warning', name): info['warn'] = val
                 elif re.search(r'(?i)critical', name): info['crit'] = val
                 elif not SKIP.search(name) and 'main' not in info and -10 < val < 120:
-                    info['main'] = {'id': sid, 'value': round(val, 1), 'max': _num(node.get('Max'))}
+                    info['main'] = {'id': raw, 'value': round(val, 1), 'max': _num(node.get('Max'))}
             elif kind and not SKIP.search(name) and 0 < val < 130:
                 if kind == 'board' and re.search(r'(?i)\bcpu\b', name): pass   # doppione del processore
                 else:
                     lim = LIMITS['gpu_hot'] if kind == 'gpu' and re.search(r'(?i)hot ?spot|memory', name) else \
                           LIMITS['vrm'] if kind == 'board' and 'vrm' in name.lower() else LIMITS[kind]
                     mx = _num(node.get('Max'))
-                    row = {'id': sid, 'name': _label(kind, name), 'value': round(val, 1),
+                    row = {'id': raw, 'name': _label(kind, name), 'value': round(val, 1),
                            'max': round(mx, 1) if mx is not None else None, 'hot': lim[0], 'crit': lim[1]}
                     key = {'cpu': 'cpu', 'board': 'board', 'ram': 'ram'}.get(kind) or sid.split('/temperature/')[0]
                     dev_name = {'board': 'Scheda madre', 'ram': 'Memoria RAM'}.get(kind) or device

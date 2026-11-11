@@ -493,6 +493,10 @@
     <section class="card tp-card" id="tp-card">
      <div class="card-head"><div><h3>Tutte le temperature</h3><p id="tp-sub">Dal vivo · la tacca bianca è il massimo da quando hai acceso il PC</p></div><span class="tp-sum" id="tp-sum" hidden></span></div>
      <div class="tp-grid" id="tp-grid"><p class="muted">Collega i sensori in Collegamenti per vedere tutte le temperature.</p></div>
+     <div class="tp-hist" id="tp-hist" hidden>
+      <div class="tp-hist-head"><div><b id="tp-hist-title">Storico</b><small>Ultime 24 ore, un punto al minuto · tocca un componente qui sopra per cambiarlo</small></div></div>
+      <div class="chart" id="chart-tph"></div>
+     </div>
     </section>
     <section class="card">
      <div class="card-head"><div><h3>Le tue ventole</h3><p>Giri al minuto in tempo reale</p></div><span class="tag" id="fan-free" hidden>—</span></div>
@@ -759,6 +763,7 @@
        <div class="card-head"><div><h3>Avvisi e automazioni</h3><p>Ti scrive su Telegram se qualcosa scalda e gestisce il ritorno a Normale</p></div><span class="saved"></span></div>
        <div class="set-group">
         <div class="set-row"><div><b>Avvisi di temperatura</b><small>Messaggio su Telegram quando CPU o GPU scaldano troppo</small></div><label class="toggle-check"><input type="checkbox" id="cfg-alerts"><span></span></label></div>
+        <div class="set-row"><div><b>Avvisi anche dagli altri sensori</b><small>Dischi, VRM, chipset, RAM e punto più caldo della scheda video, ognuno col suo limite</small></div><label class="toggle-check"><input type="checkbox" id="cfg-alerts-sensors"><span></span></label></div>
         <div class="set-row"><div><b>Soglia processore</b><small>Avviso sopra questa temperatura</small></div><span class="suffix"><input type="number" id="cfg-cpu-alert" min="70" max="99"><i>°C</i></span></div>
         <div class="set-row"><div><b>Soglia scheda video</b><small>Avviso sopra questa temperatura</small></div><span class="suffix"><input type="number" id="cfg-gpu-alert" min="60" max="94"><i>°C</i></span></div>
         <div class="set-row"><div><b>Torna a Normale dopo l'AI</b><small>Con l'automazione AI attiva, attesa dopo che Codex e Claude si fermano</small></div><span class="suffix"><input type="number" id="cfg-delay" min="30" max="7200"><i>s</i></span></div>
@@ -981,7 +986,7 @@
    <p class="fs-note" id="fs-note"></p>
   </div>
   <div class="fs-curve" id="fs-curve" hidden>
-   <div class="fs-cv-top"><div class="fs-src" id="fs-src" role="group" aria-label="Temperatura da seguire"><button type="button" data-s="cpu">Segue la CPU</button><button type="button" data-s="gpu">Segue la GPU</button></div><span class="fs-cv-now" id="fs-cv-now"></span></div>
+   <div class="fs-cv-top"><div class="fs-src" id="fs-src" role="group" aria-label="Temperatura da seguire"><button type="button" data-s="cpu">Segue la CPU</button><button type="button" data-s="gpu">Segue la GPU</button><select id="fs-src-more" aria-label="Altro sensore da seguire"><option value="">Altro sensore…</option></select></div><span class="fs-cv-now" id="fs-cv-now"></span></div>
    <svg class="fs-graph" id="fs-graph" viewBox="0 0 320 184" role="img" aria-label="Curva: velocità della ventola secondo la temperatura"></svg>
    <div class="fs-presets fs-cpresets" id="fs-cpresets"><button type="button" data-c="quiet">Silenziosa</button><button type="button" data-c="bal">Bilanciata</button><button type="button" data-c="perf">Prestazioni</button></div>
    <p class="fs-note" id="fs-cnote"></p>

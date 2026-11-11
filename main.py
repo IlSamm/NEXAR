@@ -186,6 +186,7 @@ class Settings(BaseModel):
     monitor_timeout_seconds: int | None = None
     restore_delay_seconds: int | None = None
     alerts_enabled: bool | None = None
+    alerts_sensors: bool | None = None
     cpu_temp_alert: int | None = None
     gpu_temp_alert: int | None = None
     energy_price_cents: int | None = None
@@ -195,6 +196,11 @@ class Settings(BaseModel):
     extra_watts: int | None = None
     gaming_fans: str | None = None
     anim_style: str | None = None
+
+@app.get('/api/temps/history',dependencies=[Depends(authorized)])
+def temps_history(ids: str = ''):
+    want = [i for i in ids.split(',') if i][:40]
+    return controller.temps_history(want or None)
 
 @app.post('/api/settings',dependencies=[Depends(authorized)])
 def save_settings(data: Settings):

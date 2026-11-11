@@ -260,7 +260,9 @@ def curve_duty(points, temp: float) -> float:
 def fan_curve_clean(curve, pump: bool = False) -> dict:
     """Controlla una curva arrivata dalla dashboard: 2–6 punti, temperature 20–100 °C in salita,
     velocità 0–100% mai in discesa, pompa mai sotto il minimo, e abbastanza forte quando scalda."""
-    if not isinstance(curve, dict) or curve.get('src') not in ('cpu', 'gpu'): raise ValueError('Curva non valida')
+    import temps
+    src = curve.get('src') if isinstance(curve, dict) else None
+    if not isinstance(src, str) or (src not in ('cpu', 'gpu') and not temps.FAN_SOURCE.match(src)): raise ValueError('Curva non valida')
     raw = curve.get('pts')
     if not isinstance(raw, list) or not 2 <= len(raw) <= 6: raise ValueError('La curva vuole da 2 a 6 punti')
     pts = []
@@ -289,7 +291,8 @@ def apply_fan_custom(prof: dict, custom: dict, temp_ids: dict) -> dict:
             ctl['ManualControlValue'] = v
             ctl['SelectedFanCurve'] = None
         elif isinstance(v, dict):
-            source = temp_ids.get(v.get('src'))
+            src = str(v.get('src') or '')
+            source = temp_ids.get(src) or (src if src.startswith('/') else None)
             if not source: raise RuntimeError('Sensore di temperatura non trovato: serve LibreHardwareMonitor acceso')
             name = CURVE_PREFIX + ident
             curves.append({'Name': name, 'IsHidden': False, 'CommandMode': 0,

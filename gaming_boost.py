@@ -509,6 +509,9 @@ class Booster:
                     s['max_' + k] = max(s.get('max_' + k, v), v)
             w = (t.get('power') or {}).get('total')
             if isinstance(w, (int, float)): s['wh'] += w * dt / 3600
+            parts = s.setdefault('parts', {})
+            for key, val in _part_maxima(t.get('temps')).items():
+                parts[key] = max(parts.get(key, val), val)
 
     def session_view(self, s=None):
         s = s or self.session
@@ -517,6 +520,7 @@ class Booster:
         elapsed = int(time.time() - s['start'])
         return {'game': s['game'], 'gid': s['gid'], 'start': int(s['start']), 'elapsed': elapsed,
                 'cpu_temp_max': s.get('max_cpu_temp'), 'gpu_temp_max': s.get('max_gpu_temp'),
+                'parts_max': dict(s.get('parts') or {}),
                 'cpu_temp_avg': avg('cpu_temp'), 'gpu_temp_avg': avg('gpu_temp'), 'cpu_avg': avg('cpu'), 'gpu_avg': avg('gpu'),
                 'kwh': round(s['wh'] / 1000, 3), 'watts_avg': round(s['wh'] * 3600 / elapsed) if elapsed > 30 and s['wh'] else None}
 
@@ -572,3 +576,16 @@ class Booster:
         msg = 'Gaming Boost spento: tutto come prima' + (' · riaperte ' + ', '.join(reopened) if reopened else '')
         self.log(msg)
         return msg
+
+def _part_maxima(groups):
+    """Dalle temperature del momento: il valore più alto di punto caldo GPU, VRM, RAM e dischi."""
+    out = {}
+    for g in groups or []:
+        for r in g.get('rows') or []:
+            v = r.get('value')
+            if not isinstance(v, (int, float)): continue
+            key = ('hotspot' if g['kind'] == 'gpu' and r.get('name') == 'Punto più caldo' else
+                   'vrm' if g['kind'] == 'board' and 'VRM' in r.get('name', '') else
+                   'ram' if g['kind'] == 'ram' else 'disk' if g['kind'] == 'disk' else None)
+            if key: out[key] = max(out.get(key, v), round(v, 1))
+    return out
