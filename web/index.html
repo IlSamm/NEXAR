@@ -130,30 +130,31 @@
 
    <!-- PANORAMICA -->
    <section class="page active" id="page-home">
-    <section class="hm-hero" id="hm-hero">
-     <div class="hm-glow" aria-hidden="true"></div>
-     <div class="ph-chart" id="hm-chart" aria-hidden="true"></div>
-     <div class="hm-main">
-      <span class="hm-eyebrow"><i class="hm-dot"></i><span id="hm-pc">Il tuo PC</span></span>
-      <h2 id="hm-status">Tutto sotto controllo</h2>
-      <p id="mode-desc">—</p>
-      <div class="mode-seg" id="mode-seg" role="group" aria-label="Modalità">
-       <i class="ms-ink" aria-hidden="true"></i>
-       <button class="mode-opt eco" data-action="eco"><svg class="i"><use href="#i-leaf"/></svg><span>AI ECO</span></button>
-       <button class="mode-opt normal" data-action="normal"><svg class="i"><use href="#i-bolt"/></svg><span>Normale</span></button>
-       <button class="mode-opt gaming" data-action="gaming"><svg class="i"><use href="#i-game"/></svg><span>Gaming</span></button>
+    <section class="vx vx-home" id="hm-hero">
+     <div class="vx-bg" aria-hidden="true"><i class="vx-orb a"></i><i class="vx-orb b"></i></div>
+     <div class="vx-main">
+      <span class="vx-tag soft"><i class="vx-live"></i><span id="hm-pc">Il tuo PC</span></span>
+      <h2 class="vx-title" id="hm-status">Tutto sotto controllo</h2>
+      <p class="vx-sub" id="mode-desc">—</p>
+      <div class="vm-seg" id="mode-seg" role="group" aria-label="Modalità">
+       <button class="vm-opt eco" type="button" data-action="eco"><span class="vm-ico"><svg class="i"><use href="#i-leaf"/></svg></span><span class="vm-t"><b>AI ECO</b><small>Consuma il minimo</small></span></button>
+       <button class="vm-opt normal" type="button" data-action="normal"><span class="vm-ico"><svg class="i"><use href="#i-bolt"/></svg></span><span class="vm-t"><b>Normale</b><small>Piano di Windows</small></span></button>
+       <button class="vm-opt gaming" type="button" data-action="gaming"><span class="vm-ico"><svg class="i"><use href="#i-game"/></svg></span><span class="vm-t"><b>Gaming</b><small>Tutta la potenza</small></span></button>
       </div>
      </div>
-     <button class="hm-power" type="button" data-view="energy" aria-label="Apri Consumi">
-      <div class="gauge" id="gauge">
-       <i class="g-ticks" aria-hidden="true"></i>
+     <button class="vx-power" type="button" data-view="energy" aria-label="Apri Consumi">
+      <span class="vp-head"><span>Alla presa</span><i></i></span>
+      <div class="vx-gauge" id="gauge">
+       <i class="vg-ticks" aria-hidden="true"></i>
        <svg viewBox="0 0 200 200" aria-hidden="true">
         <defs><linearGradient id="gauge-grad" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#34d399"/><stop offset=".6" stop-color="#38bdf8"/><stop offset="1" stop-color="#fbbf24"/></linearGradient></defs>
-        <circle class="g-track" cx="100" cy="100" r="86" pathLength="100"/>
-        <circle class="g-fill" id="gauge-fill" cx="100" cy="100" r="86" pathLength="100"/>
+        <circle class="vg-track" cx="100" cy="100" r="86" pathLength="100"/>
+        <circle class="vg-fill" id="gauge-fill" cx="100" cy="100" r="86" pathLength="100"/>
        </svg>
-       <div class="gauge-center"><span class="eyebrow">Alla presa</span><strong id="g-watts">—</strong><span class="unit">watt</span><small id="g-amps">— A · 230 V</small></div>
+       <div class="vg-c"><strong id="g-watts">—</strong><span>watt</span><small id="g-amps">— A · 230 V</small></div>
       </div>
+      <div class="vx-spark" id="hm-chart" aria-hidden="true"></div>
+      <span class="vp-foot" id="hm-chart-lbl">Ultimi minuti</span>
      </button>
     </section>
 
@@ -398,21 +399,21 @@
 
    <!-- CONSUMI -->
    <section class="page" id="page-energy">
-    <section class="phero ph-energy" id="e-hero">
-     <div class="hm-glow" aria-hidden="true"></div>
-     <div class="ph-chart" id="e-chart" aria-hidden="true"></div>
-     <div class="ph-main">
-      <span class="ph-tag"><i><svg class="i"><use href="#i-plug"/></svg></i>Consumo alla presa</span>
-      <div class="ph-big"><strong id="e-watts">—</strong><span>watt</span></div>
-      <p class="ph-sub" id="e-range">—</p>
-      <div class="ph-stats">
+    <section class="vx vx-energy" id="e-hero">
+     <div class="vx-bg" aria-hidden="true"><i class="vx-orb a"></i><i class="vx-orb b"></i></div>
+     <div class="vx-main">
+      <span class="vx-tag"><span class="vx-ico"><svg class="i"><use href="#i-plug"/></svg></span>Consumo alla presa</span>
+      <div class="ve-big"><strong id="e-watts">—</strong><span>watt</span></div>
+      <p class="vx-sub" id="e-range">—</p>
+      <div class="ve-trend"><div class="vx-spark" id="e-chart" aria-hidden="true"></div><small id="e-chart-lbl">Ultimi minuti</small></div>
+      <div class="vx-kpis">
        <div><small>Corrente</small><b id="e-amps">—</b><span id="e-volts">—</span></div>
        <div><small>Alimentatore</small><b id="e-psu">—</b><span id="e-eff">—</span></div>
        <div><small>Potenza apparente</small><b id="e-va">—</b><span id="e-pf">—</span></div>
        <div><small>Misurato</small><b id="e-measured">—</b><span>il resto è stimato</span></div>
       </div>
      </div>
-     <div class="donut-wrap">
+     <div class="donut-wrap vx-donut">
       <svg class="donut" id="e-stack" viewBox="0 0 200 200" aria-label="Ripartizione dei consumi"></svg>
       <div class="donut-c"><small id="e-donut-sub">—</small><b id="e-donut-top">—</b><span id="e-donut-w">—</span></div>
      </div>
@@ -502,24 +503,23 @@
 
    <!-- VENTOLE -->
    <section class="page" id="page-cooling">
-    <section class="phero ph-cool" id="cool-hero">
-     <div class="hm-glow" aria-hidden="true"></div>
-     <div class="ph-main">
-      <span class="ph-tag"><i><svg class="i"><use href="#i-fan"/></svg></i>Ventole</span>
-      <h2 class="ph-title" id="cool-title">—</h2>
-      <p class="ph-sub" id="cool-sub">—</p>
-      <div class="seg-ink fan-seg" id="fan-levels" role="group" aria-label="Profilo ventole">
-       <i class="si-ink" aria-hidden="true"></i>
-       <button data-action="fans-off" id="fans-off"><svg class="i"><use href="#i-x"/></svg><span>Spente</span></button>
-       <button data-action="fans-eco" id="fans-eco"><svg class="i"><use href="#i-moon"/></svg><span>Silenziose</span></button>
-       <button data-action="fans-normal" id="fans-normal"><svg class="i"><use href="#i-fan"/></svg><span>Normali</span></button>
-       <button data-action="fans-max" id="fans-max"><svg class="i"><use href="#i-max"/></svg><span>Massimo</span></button>
+    <section class="vx vx-cool" id="cool-hero">
+     <div class="vx-bg" aria-hidden="true"><i class="vx-orb a"></i><i class="vx-orb b"></i><svg class="vc-rotor" viewBox="-50 -50 100 100" aria-hidden="true"><circle r="48" fill="none" stroke="currentColor" stroke-width="1.2"/><g fill="currentColor"><path transform="rotate(0.0)" d="M0,-10 C12,-16 26,-34 10,-47 C3,-38 -5,-24 0,-10Z"/><path transform="rotate(51.4)" d="M0,-10 C12,-16 26,-34 10,-47 C3,-38 -5,-24 0,-10Z"/><path transform="rotate(102.9)" d="M0,-10 C12,-16 26,-34 10,-47 C3,-38 -5,-24 0,-10Z"/><path transform="rotate(154.3)" d="M0,-10 C12,-16 26,-34 10,-47 C3,-38 -5,-24 0,-10Z"/><path transform="rotate(205.7)" d="M0,-10 C12,-16 26,-34 10,-47 C3,-38 -5,-24 0,-10Z"/><path transform="rotate(257.1)" d="M0,-10 C12,-16 26,-34 10,-47 C3,-38 -5,-24 0,-10Z"/><path transform="rotate(308.6)" d="M0,-10 C12,-16 26,-34 10,-47 C3,-38 -5,-24 0,-10Z"/></g><circle r="10" fill="currentColor"/></svg></div>
+     <div class="vx-main">
+      <span class="vx-tag"><span class="vx-ico"><svg class="i"><use href="#i-fan"/></svg></span>Ventole</span>
+      <h2 class="vx-title" id="cool-title">—</h2>
+      <p class="vx-sub" id="cool-sub">—</p>
+      <div class="vx-seg" id="fan-levels" role="group" aria-label="Profilo ventole">
+       <button type="button" data-action="fans-off" id="fans-off"><svg class="i"><use href="#i-x"/></svg><span>Spente</span></button>
+       <button type="button" data-action="fans-eco" id="fans-eco"><svg class="i"><use href="#i-moon"/></svg><span>Silenziose</span></button>
+       <button type="button" data-action="fans-normal" id="fans-normal"><svg class="i"><use href="#i-fan"/></svg><span>Normali</span></button>
+       <button type="button" data-action="fans-max" id="fans-max"><svg class="i"><use href="#i-max"/></svg><span>Massimo</span></button>
       </div>
      </div>
-     <div class="tgauges">
-      <div class="tg" id="tg-cpu"><svg viewBox="0 0 120 120" aria-hidden="true"><circle class="tg-track" cx="60" cy="60" r="50" pathLength="100"/><circle class="tg-fill" id="hw-cpu-arc" cx="60" cy="60" r="50" pathLength="100"/></svg><div><b id="hw-cpu">—</b><small>Processore</small></div></div>
-      <div class="tg" id="tg-gpu"><svg viewBox="0 0 120 120" aria-hidden="true"><circle class="tg-track" cx="60" cy="60" r="50" pathLength="100"/><circle class="tg-fill" id="hw-gpu-arc" cx="60" cy="60" r="50" pathLength="100"/></svg><div><b id="hw-gpu">—</b><small>Scheda video</small></div></div>
-      <div class="tg pump" id="tg-pump" hidden><svg viewBox="0 0 120 120" aria-hidden="true"><circle class="tg-track" cx="60" cy="60" r="50" pathLength="100"/><circle class="tg-fill ok" id="hw-pump-arc" cx="60" cy="60" r="50" pathLength="100"/></svg><div><b id="hw-pump">—</b><small>Pompa AIO</small></div></div>
+     <div class="vt-row">
+      <div class="vt" id="tg-cpu"><svg viewBox="0 0 120 120" aria-hidden="true"><circle class="vt-track" cx="60" cy="60" r="50" pathLength="100"/><circle class="vt-fill" id="hw-cpu-arc" cx="60" cy="60" r="50" pathLength="100"/></svg><b class="vt-v" id="hw-cpu">—</b><small>Processore</small></div>
+      <div class="vt" id="tg-gpu"><svg viewBox="0 0 120 120" aria-hidden="true"><circle class="vt-track" cx="60" cy="60" r="50" pathLength="100"/><circle class="vt-fill" id="hw-gpu-arc" cx="60" cy="60" r="50" pathLength="100"/></svg><b class="vt-v" id="hw-gpu">—</b><small>Scheda video</small></div>
+      <div class="vt pump" id="tg-pump" hidden><svg viewBox="0 0 120 120" aria-hidden="true"><circle class="vt-track" cx="60" cy="60" r="50" pathLength="100"/><circle class="vt-fill ok" id="hw-pump-arc" cx="60" cy="60" r="50" pathLength="100"/></svg><b class="vt-v" id="hw-pump">—</b><small>Pompa AIO</small></div>
      </div>
     </section>
     <div class="notice" id="fans-upgrade" hidden><div><b id="fans-upgrade-title">Nuovi profili Spente e Massimo</b><small>Spente e Massimo su tutte le ventole, anche radiatore, pompa e scheda video. Si creano una volta in Fan Control: serve una conferma da amministratore.</small></div><button class="btn small primary" type="button" id="fans-upgrade-btn">Aggiorna profili</button></div>
@@ -616,29 +616,28 @@
 
    <!-- OTTIMIZZA -->
    <section class="page" id="page-optimize">
-    <section class="opt-hero2" id="opt-hero">
-     <div class="opt-hero-art" aria-hidden="true"></div>
-     <div class="health" id="opt-health">
+    <section class="vx vx-opt" id="opt-hero">
+     <div class="vx-bg" aria-hidden="true"><i class="vx-orb a"></i><i class="vx-orb b"></i></div>
+     <div class="vx-score" id="opt-health">
       <svg viewBox="0 0 120 120" aria-hidden="true">
-       <defs><linearGradient id="opt-grad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#22d3ee"/><stop offset="1" stop-color="#34d399"/></linearGradient></defs>
        <circle class="h-track" cx="60" cy="60" r="50" pathLength="100"/>
        <circle class="h-fill" id="opt-score-ring" cx="60" cy="60" r="50" pathLength="100"/>
        <circle class="h-scan" cx="60" cy="60" r="50" pathLength="100"/>
       </svg>
-      <div class="health-center"><strong id="opt-score">—</strong><span id="opt-score-label">Stato del PC</span></div>
+      <div class="vs-c"><strong id="opt-score">—</strong><span id="opt-score-label">Stato del PC</span></div>
      </div>
-     <div class="opt-hero-main">
-      <span class="zone-tag"><i></i>ZONA OTTIMIZZA</span>
-      <h2 id="opt-title">Controllo il PC…</h2>
-      <p class="opt-lead" id="opt-lead">Analisi in corso</p>
-      <div class="btn-row">
+     <div class="vx-main">
+      <span class="vx-tag"><span class="vx-ico"><svg class="i"><use href="#i-clean"/></svg></span>Ottimizza</span>
+      <h2 class="vx-title" id="opt-title">Controllo il PC…</h2>
+      <p class="vx-sub" id="opt-lead">Analisi in corso</p>
+      <div class="vx-acts">
        <button class="btn primary big-btn" type="button" id="opt-quick"><svg class="i"><use href="#i-clean"/></svg><span id="opt-quick-label">Ottimizza ora</span></button>
        <button class="btn glass big-btn" type="button" id="opt-scan"><svg class="i"><use href="#i-refresh"/></svg>Analizza</button>
       </div>
      </div>
-     <div class="opt-side">
-      <div class="os-stat os-b"><span class="os-ico"><svg class="i"><use href="#i-check"/></svg></span><div><small>Liberati con NEXAR</small><b id="opt-freed">—</b></div></div>
-      <div class="os-stat os-c"><span class="os-ico"><svg class="i"><use href="#i-clock"/></svg></span><div><small id="opt-auto-lbl">Pulizia automatica</small><b id="opt-freed-sub">—</b></div></div>
+     <div class="vo-side">
+      <div class="vo-stat"><span class="vo-ico"><svg class="i"><use href="#i-check"/></svg></span><div><small>Liberati con NEXAR</small><b id="opt-freed">—</b></div></div>
+      <div class="vo-stat"><span class="vo-ico"><svg class="i"><use href="#i-clock"/></svg></span><div><small id="opt-auto-lbl">Pulizia automatica</small><b id="opt-freed-sub">—</b></div></div>
      </div>
      <ul id="opt-tips" hidden></ul><ol id="opt-steps" hidden></ol>
     </section>
@@ -718,16 +717,18 @@
 
    <!-- COLLEGAMENTI -->
    <section class="page" id="page-links">
-    <section class="phero ph-links lk-hero" id="links-hero">
-     <div class="hm-glow" aria-hidden="true"></div>
-     <div class="ph-main">
-      <span class="ph-tag"><i><svg class="i"><use href="#i-link"/></svg></i>Collegamenti</span>
-      <h2 class="ph-title" id="links-title">Controllo i programmi…</h2>
-      <p class="ph-sub">NEXAR trova da solo i programmi che gli servono e li tiene collegati. Quelli mancanti si installano con un clic.</p>
-      <div class="lk-facts" id="lk-facts"></div>
-      <div class="ph-actions"><button class="btn glass" type="button" id="links-refresh"><svg class="i"><use href="#i-refresh"/></svg>Cerca di nuovo</button></div>
+    <section class="vx vx-links" id="links-hero">
+     <div class="vx-bg" aria-hidden="true"><i class="vx-orb a"></i><i class="vx-orb b"></i></div>
+     <div class="vx-main">
+      <span class="vx-tag"><span class="vx-ico"><svg class="i"><use href="#i-link"/></svg></span>Collegamenti</span>
+      <h2 class="vx-title" id="links-title">Controllo i programmi…</h2>
+      <p class="vx-sub">NEXAR trova da solo i programmi che gli servono e li tiene collegati. Quelli mancanti si installano con un clic.</p>
+      <div class="vx-acts"><button class="btn glass" type="button" id="links-refresh"><svg class="i"><use href="#i-refresh"/></svg>Cerca di nuovo</button></div>
      </div>
-     <div class="ring-stat"><svg viewBox="0 0 120 120" aria-hidden="true"><circle class="rs-track" cx="60" cy="60" r="50" pathLength="100"/><circle class="rs-fill" id="links-ring" cx="60" cy="60" r="50" pathLength="100"/></svg><div><b id="links-count">—</b><small>collegati</small></div></div>
+     <div class="vl-hub">
+      <div class="vl-sats" id="lk-facts"></div>
+      <div class="vl-core"><svg viewBox="0 0 120 120" aria-hidden="true"><circle class="vl-track" cx="60" cy="60" r="56" pathLength="100"/><circle class="vl-fill" id="links-ring" cx="60" cy="60" r="56" pathLength="100"/></svg><div><b id="links-count">—</b><small>collegati</small></div></div>
+     </div>
     </section>
     <div class="two-col wide-left lk-cols">
      <div class="lk-groups" id="links-list"><p class="muted">Ricerca in corso…</p></div>

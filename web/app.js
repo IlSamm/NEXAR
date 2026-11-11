@@ -315,6 +315,21 @@ function areaBg(id,data){
   `<path d="${d} L${W},${H} L0,${H} Z" fill="url(#${g})"/><path d="${d}" fill="none" stroke="currentColor" stroke-width="2" stroke-opacity=".8" vector-effect="non-scaling-stroke"/>`+
   `<circle cx="${P[P.length-1][0]}" cy="${P[P.length-1][1]}" r="4" fill="currentColor" class="ab-dot"/></svg>`;
 }
+function vxSpark(id,data,lbl){
+ // Andamento dei watt nelle vetrine: media su 5 letture, così la linea segue la tendenza e non il tremolio del sensore.
+ const box=$(id);if(!box)return;const raw=(data||[]).filter(v=>typeof v==='number');const pts=raw.length>1?raw:[0,0];
+ const sm=pts.map((v,i)=>{const a=pts.slice(Math.max(0,i-2),i+3);return a.reduce((x,y)=>x+y,0)/a.length;});
+ const lo=Math.min(...sm),hi=Math.max(...sm),span=Math.max(hi-lo,hi*.3,20),base=Math.max(0,lo-span*.3),top=base+span*1.45,W=600,H=100;
+ const P=sm.map((v,i)=>[i*W/(sm.length-1),H-4-(v-base)/(top-base)*(H-12)]);
+ let d=`M${P[0][0]},${P[0][1].toFixed(1)}`;
+ for(let i=0;i<P.length-1;i++){const p0=P[i-1]||P[i],p1=P[i],p2=P[i+1],p3=P[i+2]||p2;
+  d+=` C${(p1[0]+(p2[0]-p0[0])/6).toFixed(1)},${(p1[1]+(p2[1]-p0[1])/6).toFixed(1)} ${(p2[0]-(p3[0]-p1[0])/6).toFixed(1)},${(p2[1]-(p3[1]-p1[1])/6).toFixed(1)} ${p2[0].toFixed(1)},${p2[1].toFixed(1)}`;}
+ const g='vs-'+id,L=P[P.length-1];
+ box.innerHTML=`<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"><defs><linearGradient id="${g}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="currentColor" stop-opacity=".38"/><stop offset="1" stop-color="currentColor" stop-opacity="0"/></linearGradient></defs>`+
+  `<path d="${d} L${W},${H} L0,${H} Z" fill="url(#${g})"/><path class="ln" d="${d}" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" vector-effect="non-scaling-stroke"/></svg>`+
+  `<i class="vs-dot" style="left:${(L[0]/W*100).toFixed(1)}%;top:${(L[1]/H*100).toFixed(1)}%"></i>`;
+ const t=lbl&&$(lbl);if(t)t.textContent=raw.length>1?`Ultimi minuti · min ${Math.round(Math.min(...raw))} W · max ${Math.round(Math.max(...raw))} W`:'Ultimi minuti';
+}
 function push(arr,v){if(typeof v==='number'){arr.push(v);if(arr.length>60)arr.shift();}}
 
 /* ---------- rendering ---------- */
@@ -322,7 +337,7 @@ function render(s){
  current=s;
  modeFx(s.mode);
  const eco=s.mode==='eco';
- document.querySelectorAll('.mode-opt').forEach(b=>b.classList.toggle('selected',b.classList.contains(s.mode)));
+ document.querySelectorAll('.vm-opt').forEach(b=>b.classList.toggle('selected',b.classList.contains(s.mode)));
  $('mode-desc').textContent=eco?`Turbo spento, CPU al ${s.eco_cpu_max_percent??'—'}%, dischi e USB a risparmio, monitor spento dopo ${Math.round((s.monitor_timeout_seconds||60)/60)} min`
   :s.mode==='gaming'?'Turbo al massimo, CPU sempre pronta, monitor mai spento':'Piano energetico originale di Windows';
  const tt=$('tl-temp');if(tt){countUp(tt.querySelector('b'),s.cpu_temp,v=>typeof v==='number'?Math.round(v)+'°':'—');tt.dataset.lv=s.cpu_temp>=85?'crit':s.cpu_temp>=75?'hot':'';}
@@ -363,6 +378,8 @@ function render(s){
  $('cool-title').textContent=!s.fans_enabled?'Gestione del BIOS':{off:'Ventole spente',eco:'Profilo silenzioso',max:'Tutte al massimo'}[s.fans_level]||'Profilo normale';
  $('cool-sub').textContent=fanN?`${fanN} ventole in funzione${avg?` · media ${avg} RPM`:''} · CPU ${deg(s.cpu_temp)} · GPU ${deg(s.gpu_temp)}`:'Nessuna ventola rilevata: collega i sensori in Collegamenti';
  $('cool-hero').dataset.level=s.fans_enabled?(s.fans_level||'normal'):'bios';
+ // la ventola disegnata dietro gira alla velocità media di quelle vere
+ $('cool-hero').style.setProperty('--spin',avg?Math.max(.5,Math.min(8,2400/avg)).toFixed(2)+'s':'0s');$('cool-hero').classList.toggle('still',!avg);
  $('rgb-title').textContent=!s.rgb_enabled?'OpenRGB non collegato':s.rgb_off?'LED spenti':'LED accesi';
  $('fan-profile').textContent=!s.fans_enabled?'Gestione BIOS':{off:'Ventole spente',eco:'Profilo silenzioso',max:'Al massimo'}[s.fans_level]||'Profilo normale';
  $('rgb-label').textContent=!s.rgb_enabled?'OpenRGB non collegato':(s.rgb_off?'LED spenti: scegli un colore per riaccenderli':'Colore e luminosità per tutti i dispositivi');
@@ -383,7 +400,7 @@ function render(s){
  spark('cpu-val',hist.cpu,100,COMP.cpu);spark('gpu-val',hist.gpu,100,COMP.gpu);spark('ram-val',hist.ram,100,COMP.ram);spark('fan-val',hist.fan,1800,COMP.cooling);setZone();
  renderLive(s);
  chart('chart-power',[{data:hist.power,color:'#34d399',name:'Consumo'}],0,' W');
- areaBg('hm-chart',hist.power);areaBg('e-chart',hist.power);
+ vxSpark('hm-chart',hist.power,'hm-chart-lbl');vxSpark('e-chart',hist.power,'e-chart-lbl');
  renderLinks(s.integrations||[],s.jobs||{});
  renderUpdate(s.version,s.update||{},s.jobs?.update);
  watchOptimizeJobs(s.jobs||{});
@@ -706,6 +723,7 @@ function renderPc(pc){
 /* ---------- collegamenti ---------- */
 const LINK_ICONS={rgb:'bulb',fans:'fan',sensors:'temp',gpu:'gpu',ai:'bot',tunnel:'send',autostart:'power'};
 const LINK_COL={rgb:'#f472b6',fans:'#34d399',sensors:'#fbbf24',gpu:'#a78bfa',ai:'#60a5fa',tunnel:'#22d3ee',autostart:'#94a3b8'};
+const LINK_SHORT={sensors:'Sensori',gpu:'Scheda video',fans:'Ventole',rgb:'Luci',autostart:'Avvio',tunnel:'Fuori casa',ai:'Timer AI'};
 const LEVELS={ok:['Collegato','on'],warn:['Da completare','warn'],missing:['Mancante','err']};
 const seenJobs={};
 function linkAction(r,jobs){
@@ -734,9 +752,11 @@ function renderLinks(items,jobs){
  $('links-hero').classList.toggle('todo',!!todo);
  const box=$('links-list');const sig=JSON.stringify([items,jobs,current?.remote]);if(box._sig===sig)return;const first=!box._sig;box._sig=sig;box.replaceChildren();box.classList.toggle('fresh',first);
  $('lk-remote').hidden=!current?.remote;
- const facts=$('lk-facts');facts.replaceChildren();
- items.forEach(r=>{const [,cls]=LEVELS[r.level]||LEVELS.missing;const f=el('span','lk-fact '+cls);f.style.setProperty('--lc',LINK_COL[r.key]||'#38bdf8');
-  f.append(icon(LINK_ICONS[r.key]||'link'),el('span','',LINK_WHAT[r.key]||r.name));f.title=r.name+': '+r.detail;facts.append(f);});
+ // Vetrina: NEXAR al centro e ogni programma collegato tutto intorno, con il suo raggio.
+ const facts=$('lk-facts');facts.replaceChildren();facts.style.setProperty('--n',items.length);
+ items.forEach((r,k)=>{const [,cls]=LEVELS[r.level]||LEVELS.missing;const f=el('span','vl-sat');f.dataset.lv=cls;f.style.setProperty('--lc',LINK_COL[r.key]||'#38bdf8');f.style.setProperty('--k',k);
+  const node=el('span','vl-node');node.append(icon(LINK_ICONS[r.key]||'link'));
+  f.append(el('i','vl-ray'),node,el('span','vl-lbl',LINK_SHORT[r.key]||LINK_WHAT[r.key]||r.name));f.title=r.name+': '+r.detail;facts.append(f);});
  const known=new Set(LINK_GROUPS.flatMap(g=>g[2]));let n=0;
  LINK_GROUPS.map((g,gi)=>gi===LINK_GROUPS.length-1?[g[0],g[1],[...g[2],...items.map(r=>r.key).filter(k=>!known.has(k))]]:g).forEach(([title,sub,keys])=>{
   const rows=keys.map(k=>items.find(r=>r.key===k)).filter(Boolean);if(!rows.length)return;
@@ -1036,7 +1056,7 @@ function renderOptimize(d){
  countUp($('opt-score'),h.score,v=>Math.round(v));$('opt-score-ring').style.strokeDasharray=`${h.score} 100`;
  scoreTicks(h.score);
  $('opt-score-label').textContent=h.score>=85?'Ottimo':h.score>=65?'Buono':'Da migliorare';
- $('opt-health').className='health'+(h.score<65?' low':h.score<85?' mid':'')+($('opt-health').classList.contains('scanning')?' scanning':'');
+ $('opt-health').className='vx-score'+(h.score<65?' low':h.score<85?' mid':'')+($('opt-health').classList.contains('scanning')?' scanning':'');
  swapIn($('opt-title'),!d.report?'Controllo il PC…':h.score>=85?'Il PC è in ottima forma':h.score>=65?'Va bene, ma si può fare meglio':'Il PC ha bisogno di una pulita');
  $('opt-tips').replaceChildren(...(h.tips.length?h.tips.map(([ic,t,go])=>{const li=el('li');li.append(icon(ic),document.createTextNode(t));
   if(go){li.classList.add('link');li.addEventListener('click',()=>optTabGo(go));}return li;}):[(()=>{const li=el('li','ok');li.append(icon('check'),document.createTextNode('Tutto in ordine'));return li;})()]));
@@ -1379,7 +1399,7 @@ function syncTelegram(){
 }
 document.addEventListener('click',e=>{
  if(!tgApp)return;const b=e.target.closest?.('button,.zone-card,a');if(!b)return;
- try{tgApp.HapticFeedback.impactOccurred(b.classList.contains('primary')||b.classList.contains('mode-opt')?'medium':'light');}catch(e){}
+ try{tgApp.HapticFeedback.impactOccurred(b.classList.contains('primary')||b.classList.contains('vm-opt')?'medium':'light');}catch(e){}
 },{passive:true});
 // Barra laterale ridotta a sole icone (ricordata su questo dispositivo).
 document.querySelectorAll('.rail-nav button').forEach(b=>{b.dataset.label=b.textContent.trim();b.setAttribute('aria-label',b.dataset.label);});
@@ -1614,7 +1634,7 @@ const islandW=w=>Math.min(w,innerWidth-24);
 function islandScene(kind,src,{title,sub,auto}){
  const M=MODE_FX[kind]||MODE_FX.normal,col=(LQ_COL[kind]||LQ_COL.normal)[1];const I=island(col,M.i);
  let fillEl=null;
- if(src?.appendChild&&!auto&&!src.closest?.('.mode-seg')){fillEl=el('span','fx-fill');fillEl.style.background=`color-mix(in srgb,${col} 26%,transparent)`;src.appendChild(fillEl);
+ if(src?.appendChild&&!auto&&!src.closest?.('.vm-seg')){fillEl=el('span','fx-fill');fillEl.style.background=`color-mix(in srgb,${col} 26%,transparent)`;src.appendChild(fillEl);
   fillEl.animate([{transform:'scaleX(0)'},{transform:'scaleX(1)'}],{duration:800,easing:EASE.io,fill:'forwards'});}
  I.t1.textContent=title;I.t2.textContent=auto?'Attivata automaticamente':sub||'Applico energia, luci e ventole…';
  I.morph(islandW(340),56).then(()=>{I.txt.animate([{opacity:0},{opacity:1}],{duration:200,fill:'forwards'});if(!auto)I.spin.animate([{opacity:0},{opacity:1}],{duration:200,fill:'forwards'});});
@@ -1699,7 +1719,7 @@ function fx(kind,title,sub,img){
 }
 function markMode(mode){
  // Il selettore si sposta subito al clic, senza aspettare che il PC abbia applicato tutto.
- document.querySelectorAll('.mode-opt').forEach(b=>b.classList.toggle('selected',b.classList.contains(mode)));
+ document.querySelectorAll('.vm-opt').forEach(b=>b.classList.toggle('selected',b.classList.contains(mode)));
  const h=$('hm-hero');if(h)h.dataset.mode=mode;lastMode=mode;
 }
 async function modeSwitch(mode,src){
