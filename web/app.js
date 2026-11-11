@@ -310,6 +310,7 @@ function render(s){
  document.querySelectorAll('.mode-opt').forEach(b=>b.classList.toggle('selected',b.classList.contains(s.mode)));
  $('mode-desc').textContent=eco?`Turbo spento, CPU al ${s.eco_cpu_max_percent??'—'}%, dischi e USB a risparmio, monitor spento dopo ${Math.round((s.monitor_timeout_seconds||60)/60)} min`
   :s.mode==='gaming'?'Turbo al massimo, CPU sempre pronta, monitor mai spento':'Piano energetico originale di Windows';
+ const tt=$('tl-temp');if(tt){countUp(tt.querySelector('b'),s.cpu_temp,v=>typeof v==='number'?Math.round(v)+'°':'—');tt.dataset.lv=s.cpu_temp>=85?'crit':s.cpu_temp>=75?'hot':'';}
  const mp=$('mode-pill');mp.className='mode-pill '+(s.mode||'normal');mp.querySelector('span').textContent={eco:'AI ECO',gaming:'Gaming'}[s.mode]||'Normale';
  // Componenti
  const p=s.power||{};const w=k=>(p.items||[]).find(i=>i.key===k)?.watts;
@@ -612,7 +613,7 @@ function renderPower(p,e){
   // Arco di 270° (75 su 100): scala fino al 60% dell'alimentatore, oltre un PC da scrivania non va quasi mai.
   const scale=Math.max(300,(p.psu_watts||750)*.6);
   fill.style.strokeDasharray=`${Math.min(75,p.total/scale*75).toFixed(1)} 100`;
-  countUp($('g-watts'),p.total,v=>Math.round(v));$('g-amps').textContent=`${nf(p.amps,2)} A · ${p.voltage} V`;
+  countUp($('g-watts'),p.total,v=>Math.round(v));const tw=$('tl-watt')?.querySelector('b');if(tw)countUp(tw,p.total,v=>Math.round(v)+' W');$('g-amps').textContent=`${nf(p.amps,2)} A · ${p.voltage} V`;
   $('e-watts').textContent=Math.round(p.total);
   $('e-range').textContent=`Tra ${p.low} e ${p.high} W (±${p.margin}%)`+(p.monitor_watts?(p.monitor_on?' · monitor incluso':' · monitor spento'):' · monitor escluso');
   $('e-amps').textContent=nf(p.amps,2)+' A';$('e-volts').textContent=`a ${p.voltage} V`;

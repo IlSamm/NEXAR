@@ -115,7 +115,11 @@
    <span class="top-ico" id="page-ico" aria-hidden="true"><svg class="i"><use href="#i-home"/></svg></span>
    <div class="top-title"><h1 id="page-title">Panoramica</h1><p id="page-desc">—</p></div>
    <div class="top-actions">
-    <button class="icon-btn search-btn" type="button" data-palette aria-label="Cerca (Ctrl+K)"><svg class="i"><use href="#i-search"/></svg></button>
+    <div class="top-live">
+     <button class="tl t-temp" type="button" id="tl-temp" data-view="cooling" title="Temperatura del processore"><svg class="i"><use href="#i-temp"/></svg><b>—</b></button>
+     <button class="tl t-watt" type="button" id="tl-watt" data-view="energy" title="Consumo alla presa"><svg class="i"><use href="#i-bolt"/></svg><b>—</b></button>
+    </div>
+    <button class="icon-btn search-btn" type="button" data-palette aria-label="Cerca (Ctrl+K)"><svg class="i"><use href="#i-search"/></svg><span class="sb-txt">Cerca</span><kbd>Ctrl K</kbd></button>
     <span class="mode-pill" id="mode-pill"><i class="dot"></i><span>—</span></span>
     <button class="icon-btn power-btn" data-view="power" aria-label="Accensione e spegnimento"><svg class="i"><use href="#i-power"/></svg></button>
    </div>

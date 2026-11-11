@@ -3320,3 +3320,39 @@ button.au-q:hover{border-color:rgba(251,191,36,.4)}
 }
 @keyframes navGlow{0%,100%{filter:drop-shadow(0 0 0 transparent)}50%{filter:drop-shadow(0 0 9px color-mix(in srgb,var(--c,var(--pc,#3b82f6)) 70%,transparent))}}
 @keyframes brandFloat{0%,100%{transform:none}50%{transform:translateY(-2px) rotate(-3deg)}}
+/* ---------- 1.0.57 · barra in alto: pannello flottante come la barra laterale ---------- */
+.top-live,.sb-txt,.search-btn kbd{display:none}
+@media (min-width:761px){
+ body .main>.top{position:sticky;top:14px;z-index:30;width:calc(100% - 64px);max-width:calc(1880px - 64px);margin:14px auto 6px;min-height:70px;
+  padding:12px 14px!important;gap:14px;border-radius:24px;border:1px solid rgba(255,255,255,.075)!important;
+  background:linear-gradient(180deg,rgba(24,28,39,.84),rgba(12,14,20,.88));backdrop-filter:blur(22px) saturate(150%);-webkit-backdrop-filter:blur(22px) saturate(150%);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.06),0 24px 50px -30px rgba(0,0,0,.95)}
+ body.scrolled .main>.top{border-color:rgba(255,255,255,.1)!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.07),0 26px 50px -24px rgba(0,0,0,1)}
+ .top-title{display:flex!important;flex-direction:column;align-items:flex-start!important;gap:3px;min-width:0}
+ .top h1{font-size:20px!important;line-height:1.1}
+ .top p{font-size:12.5px;color:#8d97a8;max-width:100%}
+ .top-actions{display:flex;align-items:center;gap:8px;flex:none}
+ .top-live{display:flex;gap:8px}
+ .tl{display:inline-flex;align-items:center;gap:7px;height:40px;padding:0 13px;border-radius:13px;color:#e6ebf2;font:700 13.5px/1 var(--font);font-variant-numeric:tabular-nums;
+  background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);cursor:pointer;transition:background .2s,border-color .2s,transform .2s}
+ .tl:hover{background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.14);transform:translateY(-1px)}
+ .tl .i{width:16px;height:16px}
+ .tl.t-temp .i{color:#fb923c}.tl.t-watt .i{color:#fbbf24}
+ .tl.t-temp[data-lv=hot]{color:#fdba74;border-color:rgba(251,146,60,.4)}
+ .tl.t-temp[data-lv=crit]{color:#fca5a5;border-color:rgba(248,113,113,.5);background:rgba(239,68,68,.12)}
+ .top-actions .mode-pill{display:inline-flex!important;height:40px;border-radius:13px;padding:0 14px}
+ .top-actions .search-btn{display:inline-flex!important;align-items:center;gap:8px;width:auto;height:40px;padding:0 10px 0 12px;border-radius:13px;
+  background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);color:#8d97a8;font-size:13px;font-weight:600;transition:background .2s,color .2s}
+ .top-actions .search-btn:hover{background:rgba(255,255,255,.08);color:#fff}
+ .top-actions .search-btn .i{width:16px;height:16px}
+ .sb-txt{display:inline}
+ .search-btn kbd{display:inline-block;margin-left:4px;padding:2px 6px;border-radius:6px;font:650 10.5px/1.4 var(--font);color:#aeb7c6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.08)}
+ /* app per Windows: i pulsanti della finestra stanno dentro la barra, allineati */
+ .in-desktop .main{padding-top:0}
+ .in-desktop .main>.top{padding-right:156px!important}
+ .in-desktop .winbar{top:14px;height:70px;left:auto;right:max(46px,calc((100vw - var(--rail-w,96px) - 1880px)/2 + 46px));padding:0;pointer-events:none;
+  background:none!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;box-shadow:none!important}
+ .in-desktop .wb-btns{pointer-events:auto}
+}
+@media (min-width:761px) and (max-width:1180px){.top-live,.sb-txt,.search-btn kbd{display:none!important}}
+@media (min-width:761px) and (max-width:1380px){.top p{display:none}}
