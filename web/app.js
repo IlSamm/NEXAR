@@ -700,6 +700,11 @@ function renderPc(pc){
  if(typeof pc.uptime_s==='number'){const on=new Date(Date.now()-pc.uptime_s*1000),today=on.toDateString()===new Date().toDateString();
   $('pw-uptime').textContent=`Acceso da ${duration(pc.uptime_s)} · ${today?'oggi':on.toLocaleDateString('it-IT',{weekday:'long',day:'numeric'})} alle ${on.toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'})}`;}
  else $('pw-uptime').textContent='—';
+ // Quadrante delle 24 ore: l'arco va dall'accensione a adesso, il punto è l'ora attuale.
+ const now=new Date(),dayFr=(now.getHours()*3600+now.getMinutes()*60+now.getSeconds())/86400,arc=$('pw-arc');
+ if(arc){const len=typeof pc.uptime_s==='number'?Math.min(100,pc.uptime_s/864):0;arc.style.strokeDasharray=`${len.toFixed(2)} 100`;
+  arc.style.strokeDashoffset=(-(((dayFr*100-len)%100+100)%100)).toFixed(2);
+  $('pw-dial').style.setProperty('--t',dayFr.toFixed(4));$('pw-clock').textContent=now.toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'});}
  $('pw-hibernate').hidden=!pc.hibernate;
  const plan=pc.pending,box=$('pw-pending');box.hidden=!plan;
  $('pw-hero').classList.toggle('armed',!!plan);$('pw-title').textContent=plan?(plan.label||'Programmato'):'PC acceso';

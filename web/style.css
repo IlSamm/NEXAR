@@ -3947,3 +3947,63 @@ button.au-act:active{transform:scale(.98)}
 .vl-sat[data-lv=err] .vl-lbl{color:#fca5a5}
 @media (max-width:760px){.vl-hub{--R:88px;--C:48px;--lw:28px;width:100%;max-width:350px;height:280px}.vl-lbl{font-size:9.5px;left:calc(var(--R) + 25px + max(cos(var(--ang)),calc(cos(var(--ang)) * -1)) * var(--lw) + max(sin(var(--ang)),calc(sin(var(--ang)) * -1)) * 3px)}}
 @media (max-width:760px){.vx-seg{overflow:visible}.vx-seg button{flex:1 1 0;min-width:0;flex-direction:column;height:58px;gap:4px;padding:0 4px;font-size:11.5px}.vx-seg button .i{width:18px;height:18px}}
+
+/* ===== Vetrine 1.0.66: Luci, Accensione e lo stesso stile su Gaming e Audio ===== */
+/* Luci: anello di LED del colore scelto, con una luce che corre */
+.vx-lights{--a:var(--hc,#a78bfa);--b:color-mix(in srgb,var(--hc,#a78bfa) 45%,#6366f1)}
+.vx-lights.off{--a:#64748b;--b:#334155}
+.vli{--orb:#a78bfa;position:relative;width:290px;height:290px;flex:none;transition:opacity .4s}
+.vli::before{content:"";position:absolute;inset:36px;border-radius:50%;background:radial-gradient(circle,color-mix(in srgb,var(--orb) 55%,transparent),transparent 68%);filter:blur(20px);animation:vliBreath 4s ease-in-out infinite}
+.vli::after{content:"";position:absolute;inset:44px;border-radius:50%;border:1px dashed color-mix(in srgb,var(--orb) 35%,rgba(255,255,255,.1));animation:vxSpin 50s linear infinite reverse}
+@keyframes vliBreath{50%{transform:scale(1.08);opacity:.75}}
+.vli-ring{position:absolute;inset:0;animation:vxSpin 60s linear infinite}
+.vli-ring i{position:absolute;left:50%;top:50%;width:12px;height:12px;margin:-6px;border-radius:50%;background:var(--orb);
+ box-shadow:0 0 10px var(--orb),0 0 22px color-mix(in srgb,var(--orb) 55%,transparent);transform:rotate(calc(var(--k) * 11.25deg)) translateY(-128px);
+ animation:vliChase 2.4s linear infinite;animation-delay:calc(var(--k) * -.075s)}
+@keyframes vliChase{0%,30%,100%{opacity:.32;filter:saturate(.7)}6%{opacity:1;filter:saturate(1.2) brightness(1.4)}}
+.vli-core{position:absolute;left:50%;top:50%;width:124px;height:124px;margin:-62px;border-radius:50%;display:grid;place-items:center;color:#fff;
+ background:radial-gradient(circle at 35% 28%,color-mix(in srgb,var(--orb) 55%,#fff),var(--orb) 45%,color-mix(in srgb,var(--orb) 45%,#000));
+ box-shadow:0 0 70px -6px var(--orb),inset 0 -12px 30px rgba(0,0,0,.35),inset 0 6px 16px rgba(255,255,255,.4);transition:background .5s,box-shadow .5s}
+.vli-core .i{width:42px;height:42px;filter:drop-shadow(0 2px 6px rgba(0,0,0,.45))}
+.vli.off::before,.vli.off::after{display:none}
+.vli.off .vli-ring i{background:#334155;box-shadow:none;animation:none;opacity:.55}
+.vli.off .vli-core{color:#64748b;background:radial-gradient(circle at 35% 28%,#334155,#111827);box-shadow:inset 0 1px 0 rgba(255,255,255,.08)}
+
+/* Accensione: quadrante delle 24 ore */
+.vx-pw{--a:#22c55e;--b:#22d3ee}
+.vx-pw.armed{--a:#f87171;--b:#fb923c}
+.vx-pw .pw-facts{margin-top:24px}
+.vw-dial{--t:0;position:relative;width:260px;height:260px;flex:none}
+.vw-dial>svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
+.vw-track{fill:none;stroke:rgba(255,255,255,.06);stroke-width:14}
+.vw-ticks line{stroke:rgba(255,255,255,.18);stroke-width:1.2;stroke-linecap:round}
+.vw-ticks line.m{stroke:rgba(255,255,255,.45);stroke-width:2}
+.vw-arc{fill:none;stroke:var(--a);stroke-width:14;stroke-linecap:round;stroke-dasharray:0 100;transform:rotate(-90deg);transform-origin:100px 100px;
+ filter:drop-shadow(0 0 8px var(--a));transition:stroke-dasharray 1s var(--e-out),stroke .6s}
+.vw-now{position:absolute;left:50%;top:50%;width:16px;height:16px;margin:-8px;border-radius:50%;background:#fff;
+ transform:rotate(calc(var(--t) * 1turn)) translateY(-109px);box-shadow:0 0 0 4px color-mix(in srgb,var(--a) 50%,transparent),0 0 18px var(--a)}
+.vw-h{position:absolute;font-size:10.5px;font-weight:700;color:#7c8698;transform:translate(-50%,-50%)}
+.vw-h.h0{left:50%;top:23%}.vw-h.h6{left:77%;top:50%}.vw-h.h12{left:50%;top:77%}.vw-h.h18{left:23%;top:50%}
+.vw-core{position:absolute;left:50%;top:50%;width:104px;height:104px;margin:-52px;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;
+ background:radial-gradient(circle at 38% 30%,color-mix(in srgb,var(--a) 26%,#141826),#0b0d14 72%);box-shadow:0 0 0 1px color-mix(in srgb,var(--a) 30%,transparent),0 0 46px -8px var(--a)}
+.vw-core .i{width:20px;height:20px;color:var(--a)}
+.vw-core b{font:800 24px/1.1 var(--font-d);color:#fff;font-variant-numeric:tabular-nums;margin-top:3px}
+.vw-core small{font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#7c8698}
+
+/* Gaming e Audio: stessi titoli e stesse etichette delle altre vetrine */
+.au-now h2{font:800 44px/1.04 var(--font-d);letter-spacing:-.035em;background:linear-gradient(180deg,#fff 35%,#d8b4fe);-webkit-background-clip:text;background-clip:text;color:transparent}
+.au-kicker{height:32px;padding:0 14px 0 12px;border-radius:999px;background:rgba(168,85,247,.1);border:1px solid rgba(168,85,247,.28)}
+.au-stage{border-radius:30px;box-shadow:inset 0 1px 0 rgba(255,255,255,.07),0 50px 100px -60px rgba(168,85,247,.85)}
+.gx-stage{border-radius:30px}
+
+@media (max-width:1060px){.vx>.vli,.vx>.vw-dial{justify-self:center}}
+@media (max-width:760px){
+ .vx>.vli,.vx>.vw-dial{order:-1}
+ .vli{width:230px;height:230px}
+ .vli-ring i{width:10px;height:10px;margin:-5px;transform:rotate(calc(var(--k) * 11.25deg)) translateY(-102px)}
+ .vli-core{width:98px;height:98px;margin:-49px}
+ .vw-dial{width:220px;height:220px}
+ .vw-now{transform:rotate(calc(var(--t) * 1turn)) translateY(-92px)}
+ .au-now h2{font-size:28px}
+}
+@media (prefers-reduced-motion:reduce){.vli::before,.vli::after,.vli-ring,.vli-ring i{animation:none!important}}

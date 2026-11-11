@@ -471,19 +471,22 @@
 
    <!-- LUCI -->
    <section class="page" id="page-lights">
-    <section class="phero ph-lights" id="rgb-hero">
-     <div class="hm-glow" aria-hidden="true"></div>
-     <div class="ph-main">
-      <span class="ph-tag"><i><svg class="i"><use href="#i-bulb"/></svg></i>Luci</span>
-      <h2 class="ph-title" id="rgb-title">LED</h2>
-      <p class="ph-sub" id="rgb-label">—</p>
-      <div class="ph-actions">
-       <button class="btn ph-primary" type="button" id="rgb-apply-all"><svg class="i"><use href="#i-check"/></svg>Applica a tutti</button>
-       <button class="btn glass" data-action="rgb-eco" id="rgb-eco"><svg class="i"><use href="#i-moon"/></svg>Spegni</button>
-       <button class="btn glass" data-action="rgb-normal" id="rgb-normal"><svg class="i"><use href="#i-bulb"/></svg>Riaccendi</button>
+    <section class="vx vx-lights" id="rgb-hero">
+     <div class="vx-bg" aria-hidden="true"><i class="vx-orb a"></i><i class="vx-orb b"></i></div>
+     <div class="vx-main">
+      <span class="vx-tag"><span class="vx-ico"><svg class="i"><use href="#i-bulb"/></svg></span>Luci</span>
+      <h2 class="vx-title" id="rgb-title">LED</h2>
+      <p class="vx-sub" id="rgb-label">—</p>
+      <div class="vx-acts">
+       <button class="btn primary" type="button" id="rgb-apply-all"><svg class="i"><use href="#i-check"/></svg>Applica a tutti</button>
+       <button class="btn glass" type="button" data-action="rgb-eco" id="rgb-eco"><svg class="i"><use href="#i-moon"/></svg>Spegni</button>
+       <button class="btn glass" type="button" data-action="rgb-normal" id="rgb-normal"><svg class="i"><use href="#i-bulb"/></svg>Riaccendi</button>
       </div>
      </div>
-     <div class="orb-stage" aria-hidden="true"><i class="orb-ring"></i><i class="orb-ring r2"></i><i class="orb-ring r3"></i><div class="orb" id="rgb-orb"></div></div>
+     <div class="vli" id="rgb-orb" aria-hidden="true">
+      <div class="vli-ring"><i style="--k:0"></i><i style="--k:1"></i><i style="--k:2"></i><i style="--k:3"></i><i style="--k:4"></i><i style="--k:5"></i><i style="--k:6"></i><i style="--k:7"></i><i style="--k:8"></i><i style="--k:9"></i><i style="--k:10"></i><i style="--k:11"></i><i style="--k:12"></i><i style="--k:13"></i><i style="--k:14"></i><i style="--k:15"></i><i style="--k:16"></i><i style="--k:17"></i><i style="--k:18"></i><i style="--k:19"></i><i style="--k:20"></i><i style="--k:21"></i><i style="--k:22"></i><i style="--k:23"></i><i style="--k:24"></i><i style="--k:25"></i><i style="--k:26"></i><i style="--k:27"></i><i style="--k:28"></i><i style="--k:29"></i><i style="--k:30"></i><i style="--k:31"></i></div>
+      <div class="vli-core"><svg class="i"><use href="#i-bulb"/></svg></div>
+     </div>
     </section>
     <div class="lights-grid">
      <section class="card lc-color">
@@ -540,12 +543,12 @@
 
    <!-- ACCENSIONE -->
    <section class="page" id="page-power">
-    <section class="phero ph-power pw-hero" id="pw-hero">
-     <div class="hm-glow" aria-hidden="true"></div>
-     <div class="ph-main">
-      <span class="ph-tag"><i><svg class="i"><use href="#i-power"/></svg></i>Accensione</span>
-      <h2 class="ph-title" id="pw-title">PC acceso</h2>
-      <p class="ph-sub" id="pw-uptime">—</p>
+    <section class="vx vx-pw" id="pw-hero">
+     <div class="vx-bg" aria-hidden="true"><i class="vx-orb a"></i><i class="vx-orb b"></i></div>
+     <div class="vx-main">
+      <span class="vx-tag"><span class="vx-ico"><svg class="i"><use href="#i-power"/></svg></span>Accensione</span>
+      <h2 class="vx-title" id="pw-title">PC acceso</h2>
+      <p class="vx-sub" id="pw-uptime">—</p>
       <div class="pending" id="pw-pending" hidden>
        <svg class="i"><use href="#i-clock"/></svg><div><b id="pw-pending-title">—</b><small id="pw-pending-sub">—</small></div>
        <button class="btn danger" type="button" data-power="cancel">Annulla</button>
@@ -556,7 +559,12 @@
        <button class="pwf f-app" type="button" data-go="rapps-card"><span class="pwf-ico"><svg class="i"><use href="#i-grid"/></svg></span><span class="pwf-t"><small>App sul PC</small><b id="pwf-apps">—</b></span></button>
       </div>
      </div>
-     <div class="pw-orb" aria-hidden="true"><i></i><i></i><i></i><span><svg class="i"><use href="#i-power"/></svg></span></div>
+     <div class="vw-dial" id="pw-dial" aria-hidden="true">
+      <svg viewBox="0 0 200 200"><circle class="vw-track" cx="100" cy="100" r="84"/><g class="vw-ticks"><line class="m" x1="100.0" y1="34.0" x2="100.0" y2="26.0"/><line x1="117.9" y1="33.4" x2="118.9" y2="29.5"/><line x1="134.5" y1="40.2" x2="136.5" y2="36.8"/><line x1="148.8" y1="51.2" x2="151.6" y2="48.4"/><line x1="159.8" y1="65.5" x2="163.2" y2="63.5"/><line x1="166.6" y1="82.1" x2="170.5" y2="81.1"/><line class="m" x1="166.0" y1="100.0" x2="174.0" y2="100.0"/><line x1="166.6" y1="117.9" x2="170.5" y2="118.9"/><line x1="159.8" y1="134.5" x2="163.2" y2="136.5"/><line x1="148.8" y1="148.8" x2="151.6" y2="151.6"/><line x1="134.5" y1="159.8" x2="136.5" y2="163.2"/><line x1="117.9" y1="166.6" x2="118.9" y2="170.5"/><line class="m" x1="100.0" y1="166.0" x2="100.0" y2="174.0"/><line x1="82.1" y1="166.6" x2="81.1" y2="170.5"/><line x1="65.5" y1="159.8" x2="63.5" y2="163.2"/><line x1="51.2" y1="148.8" x2="48.4" y2="151.6"/><line x1="40.2" y1="134.5" x2="36.8" y2="136.5"/><line x1="33.4" y1="117.9" x2="29.5" y2="118.9"/><line class="m" x1="34.0" y1="100.0" x2="26.0" y2="100.0"/><line x1="33.4" y1="82.1" x2="29.5" y2="81.1"/><line x1="40.2" y1="65.5" x2="36.8" y2="63.5"/><line x1="51.2" y1="51.2" x2="48.4" y2="48.4"/><line x1="65.5" y1="40.2" x2="63.5" y2="36.8"/><line x1="82.1" y1="33.4" x2="81.1" y2="29.5"/></g><circle class="vw-arc" id="pw-arc" cx="100" cy="100" r="84" pathLength="100"/></svg>
+      <i class="vw-now"></i>
+      <span class="vw-h h0">0</span><span class="vw-h h6">6</span><span class="vw-h h12">12</span><span class="vw-h h18">18</span>
+      <div class="vw-core"><svg class="i"><use href="#i-power"/></svg><b id="pw-clock">—</b><small>adesso</small></div>
+     </div>
     </section>
     <div class="pact-grid">
      <button class="pact pa-sleep" data-power="sleep"><span class="pa-ico"><svg class="i"><use href="#i-moon"/></svg></span><b>Sospendi</b><small>2–5 W, si riaccende subito</small></button>
