@@ -207,6 +207,33 @@ def elevated_task(task: str, exe: str, args: str, allow_uac: bool) -> str:
     if not allow_uac: return 'serve conferma'
     return 'avviato' if run_elevated(task_script(task, exe, args)) else 'annullato'
 
+# ---------- luci MSI (attacchi ARGB della scheda madre, dove c'è l'ARCTIC) ----------
+# OpenRGB spegne gli attacchi ARGB della MSI ma non sa ridargli colore, e MSI Center ci riapplica il suo effetto.
+# Spegnere: luci di MSI in pausa + nero da OpenRGB. Riaccendere: MSI riparte e rimette da solo il suo effetto.
+# I comandi stanno nella definizione dell'attività (modificabile solo da amministratore), non in un file dell'utente.
+MSI_LIGHT_SERVICE = 'Mystic_Light_Service'
+MSI_LIGHT_PROCESS = 'LEDKeeper2.exe'
+MSI_TASKS = {'pause': 'PC ECO Control - Luci MSI pausa', 'resume': 'PC ECO Control - Luci MSI riprendi'}
+MSI_COMMANDS = {'pause': f"Stop-Service -Name {MSI_LIGHT_SERVICE} -Force -ErrorAction SilentlyContinue; "
+                         f"Stop-Process -Name {MSI_LIGHT_PROCESS[:-4]} -Force -ErrorAction SilentlyContinue",
+                'resume': f"Start-Service -Name {MSI_LIGHT_SERVICE}"}
+
+def msi_lights_script() -> str:
+    """Una sola conferma UAC: le due attività, poi avviabili con schtasks /run senza altre richieste."""
+    windir = os.environ.get('SystemRoot') or r'C:\Windows'
+    conhost = str(Path(windir) / 'System32' / 'conhost.exe')  # --headless: nessuna finestra che lampeggia
+    return ''.join(task_script(MSI_TASKS[k], conhost, f'--headless powershell.exe -NoProfile -NonInteractive -Command "{c}"',
+                               at_logon=False, start=False) for k, c in MSI_COMMANDS.items())
+
+def msi_lights_setup() -> bool:
+    return run_elevated(msi_lights_script(), wait=True) and all(task_exists(t) for t in MSI_TASKS.values())
+
+def msi_lights_ready() -> bool:
+    return all(task_exists(t) for t in MSI_TASKS.values())
+
+def msi_lights_run(action: str) -> bool:
+    return subprocess.run(['schtasks', '/run', '/tn', MSI_TASKS[action]], capture_output=True, **_no_window()).returncode == 0
+
 # ---------- ventole ----------
 FAN_TASKS = {'eco': 'PC ECO Control - Ventole ECO', 'normal': 'PC ECO Control - Ventole Normali',
              'off': 'PC ECO Control - Ventole Spente', 'off_pump': 'PC ECO Control - Ventole Spente Pompa',

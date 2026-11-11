@@ -21,7 +21,8 @@ LOCAL = _env('LOCALAPPDATA', Path.home() / 'AppData' / 'Local')
 WINDIR = _env('WINDIR', r'C:\Windows')
 DAY = 86400
 # Pulizia rapida/automatica: mai cestino né cartelle di Windows (niente admin, niente perdite).
-SAFE_CLEAN = ('temp', 'shader', 'thumbs', 'crash', 'browser')
+# Niente cache degli shader: i giochi la ricostruiscono a scatti nelle prime partite, si pulisce solo a mano.
+SAFE_CLEAN = ('temp', 'thumbs', 'crash', 'browser')
 BROWSERS = {'msedge.exe': LOCAL / 'Microsoft' / 'Edge' / 'User Data', 'chrome.exe': LOCAL / 'Google' / 'Chrome' / 'User Data',
             'brave.exe': LOCAL / 'BraveSoftware' / 'Brave-Browser' / 'User Data'}
 BROWSER_CACHES = ('Cache', 'Code Cache', 'GPUCache', 'Service Worker/CacheStorage')
@@ -45,7 +46,8 @@ def targets():
     return [
         {'key': 'temp', 'name': 'File temporanei', 'desc': 'Cartella Temp dell\'utente, file più vecchi di un giorno',
          'paths': [temp], 'min_age': DAY, 'skip': [temp / 'NEXAR']},
-        {'key': 'shader', 'name': 'Cache shader dei giochi', 'desc': 'DirectX, NVIDIA e AMD: si ricostruisce da sola',
+        {'key': 'shader', 'name': 'Cache shader dei giochi', 'optional': True,
+         'desc': 'Solo se un gioco ha problemi grafici: dopo la pulizia i giochi scattano finché la ricostruiscono',
          'paths': [LOCAL / 'D3DSCache', LOCAL / 'NVIDIA' / 'DXCache', LOCAL / 'NVIDIA' / 'GLCache', LOCAL / 'AMD' / 'DxCache', LOCAL / 'AMD' / 'DxcCache']},
         {'key': 'thumbs', 'name': 'Anteprime delle immagini', 'desc': 'Miniature di Esplora file (quelle in uso restano)',
          'paths': [LOCAL / 'Microsoft' / 'Windows' / 'Explorer'], 'pattern': 'thumbcache_*.db'},
@@ -93,7 +95,7 @@ def analyze(limit_seconds=25):
     report, start, opened = [], time.monotonic(), browsers_open()
     for t in targets():
         item = {k: t.get(k) for k in ('key', 'name', 'desc')}
-        item.update(admin=bool(t.get('admin')), permanent=bool(t.get('recycle')), bytes=0, files=0, note='')
+        item.update(admin=bool(t.get('admin')), permanent=bool(t.get('recycle')), optional=bool(t.get('optional')), bytes=0, files=0, note='')
         if t.get('recycle'):
             item['bytes'], item['files'] = recycle_size()
         else:

@@ -4007,3 +4007,8 @@ button.au-act:active{transform:scale(.98)}
  .au-now h2{font-size:28px}
 }
 @media (prefers-reduced-motion:reduce){.vli::before,.vli::after,.vli-ring,.vli-ring i{animation:none!important}}
+
+/* Luci 1.0.68: riga ARCTIC (attacchi ARGB MSI) con il suo pulsante */
+.rgb-msi{grid-template-columns:minmax(0,1fr) auto}
+.rgb-msi .rd-msi{white-space:nowrap}
+@media (max-width:560px){.rgb-msi{grid-template-columns:1fr}.rgb-msi .rd-msi{justify-self:start}}

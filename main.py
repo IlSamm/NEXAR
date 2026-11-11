@@ -367,6 +367,17 @@ def fans_setup(request: Request):
     try: return {'ok':True,'message':controller.run_job('fans-setup',lambda: controller.setup_fans(admin))}
     except RuntimeError as ex: raise HTTPException(409,str(ex))
 
+class MsiLights(BaseModel):
+    enabled: bool
+@app.post('/api/rgb/msi',dependencies=[Depends(authorized),Depends(pin_gate)])
+def rgb_msi(data: MsiLights, request: Request):
+    # La prima attivazione chiede la conferma UAC, che si vede solo sullo schermo del PC.
+    import discovery
+    if data.enabled and is_remote(request) and not discovery.msi_lights_ready():
+        raise HTTPException(409,'Attivalo dal PC: serve una conferma da amministratore sullo schermo.')
+    try: return {'ok':True,'message':controller.run_job('rgb-msi',lambda: controller.setup_msi_lights(data.enabled))}
+    except RuntimeError as ex: raise HTTPException(409,str(ex))
+
 @app.post('/api/fancontrol/open',dependencies=[Depends(authorized)])
 def fancontrol_open():
     exe=controller.config.get('fans',{}).get('fancontrol_exe','')

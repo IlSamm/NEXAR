@@ -843,9 +843,19 @@ async function loadRgbDevices(){
    b.addEventListener('click',()=>applyColor(c.value,d.key));
    row.append(t,sw,b);box.append(row);
   });
-  (current?.rgb_excluded||[]).forEach(n=>box.append(el('p','fineprint',/mystic|msi/i.test(n)
-   ?`${n}: attacchi ARGB della scheda madre (qui c'è l'ARCTIC). Li comanda MSI Center → Mystic Light, che riapplica il suo effetto a ogni avvio e quando lo schermo si riaccende: NEXAR non può spegnerli. Per tenerli spenti scegli "Spento" su quegli attacchi in MSI Center.`
-   :`${n}: lasciata al suo programma, non si spegne con AI ECO.`)));
+  (current?.rgb_excluded||[]).forEach(n=>{
+   if(!/mystic|msi/i.test(n)){box.append(el('p','fineprint',`${n}: lasciata al suo programma, non si spegne con AI ECO.`));return;}
+   // Attacchi ARGB della MSI (ARCTIC): il colore lo dà MSI Center; NEXAR li spegne con AI ECO mettendo MSI in pausa.
+   const m=current?.rgb_msi||{},on=!!m.off,row=el('div','rgb-dev2 rgb-msi');row.style.setProperty('--dc',on?'#22c55e':'#64748b');
+   const t=el('div','rd-txt');t.append(el('b','','ARCTIC · attacchi ARGB della scheda madre'),
+    el('small','',on?(m.paused?'Spento da NEXAR (luci di MSI Center in pausa)':'Si spegne con AI ECO, il colore lo decide MSI Center')
+     :'Comandato da MSI Center: resta acceso anche in AI ECO'));
+   const b=el('button','btn glass rd-msi');b.type='button';b.textContent=on?'Lascia a MSI Center':'Spegni con AI ECO';
+   b.title=on?`NEXAR non tocca più l'ARCTIC`:'La prima volta Windows chiede una conferma da amministratore';
+   b.addEventListener('click',async()=>{b.disabled=true;await post('/api/rgb/msi',{enabled:!on});setTimeout(loadRgbDevices,on?2500:9000);});
+   row.append(t,b);box.append(row);
+   box.append(el('p','fineprint',`${n}: OpenRGB riesce a spegnere questi attacchi ma non a dargli un colore. Fuori da AI ECO l'effetto lo rimette MSI Center (Mystic Light).`));
+  });
  }catch(ex){box.replaceChildren(el('p','muted','Dispositivi non disponibili: '+ex.message));}
 }
 $('rgb-color').addEventListener('input',()=>{rgbTouched=true;paintOrb(false);});
@@ -986,7 +996,7 @@ $('refresh-events').addEventListener('click',loadEvents);
 const bytes=b=>{if(typeof b!=='number')return '—';const u=['B','KB','MB','GB','TB'];let i=0;while(b>=1024&&i<4){b/=1024;i++;}return (i<2?Math.round(b):b.toFixed(1).replace('.',','))+' '+u[i];};
 let optData=null,procData=null,procSort='by_cpu',optTab='clean',autoScanned=false;const optSeen={};
 const OPT_JOBS=['optimize-scan','optimize-clean','trim','optimize-large','optimize-health','optimize-net'];
-const QUICK_STEPS=['File temporanei','Cache dei giochi','Anteprime delle immagini','Rapporti di errore','Cache dei browser','Cache DNS','Nuova analisi'];
+const QUICK_STEPS=['File temporanei','Anteprime delle immagini','Rapporti di errore','Cache dei browser','Cache DNS','Nuova analisi'];
 const CLEAN_ICO={temp:'clean',shader:'game',thumbs:'palette',crash:'x',browser:'link',wintemp:'grid',wupdate:'refresh',recycle:'disk'};
 const KIND_ICO=k=>/^(mp4|mkv|avi|mov|wmv|webm)$/.test(k)?['🎬','#a78bfa']:/^(zip|rar|7z|tar|gz)$/.test(k)?['📦','#fbbf24']:/^(iso|vmdk|vhd|vhdx|img|ova)$/.test(k)?['💽','#38bdf8']:/^(exe|msi)$/.test(k)?['⚙️','#fb923c']:['📄','#94a3b8'];
 let cleanSteps=null,cleanEst=0;
@@ -1002,11 +1012,12 @@ function watchOptimizeJobs(jobs){
  $('opt-health').classList.toggle('scanning',scan||clean);$('opt-run').disabled=clean||!selectedKeys().length;
  [['optimize-large','opt-large-scan','Cerco…','Cerca'],['optimize-health','opt-health-btn','Controllo…','Controlla'],['optimize-net','opt-net-btn','Provo…','Prova la rete']].forEach(([j,id,on,off])=>{
   const b=$(id),r=jobs[j]?.state==='running';b.disabled=r;b.lastChild.textContent=r?on:off;});
- if(optSeen.quick&&!clean&&jobs['optimize-clean'])quickProgress(false,jobs['optimize-clean'].message,jobs['optimize-clean'].state);
- if(clean&&optSeen.quick)quickProgress(true);
+ // Fine pulizia: solo il lavoro partito dopo il clic (quello vecchio, già finito, ha un orario precedente).
+ const cj=jobs['optimize-clean'];
+ if(optSeen.quick&&cj&&cj.state!=='running'&&cj.at>(optSeen.quickFrom||0)){optSeen.quick=false;quickProgress(false,cj.message,cj.state);}
+ else if(clean&&optSeen.quick)quickProgress(true);
  let reload=false;
  OPT_JOBS.forEach(n=>{const j=jobs[n];if(!j)return;if(j.state!=='running'&&optSeen[n]!==undefined&&optSeen[n]!==j.at)reload=true;optSeen[n]=j.at;});
- if(!clean)optSeen.quick=false;
  if(reload)loadOptimize(true);
 }
 function selectedKeys(){return [...document.querySelectorAll('#opt-clean input:checked')].map(c=>c.value);}
@@ -1017,7 +1028,7 @@ function updateSelected(){
 }
 const DEMO_OPT={report:{total:6.1e9,at:'2026-11-04T08:30:00',items:[
   {key:'temp',name:'File temporanei',desc:'Cartella Temp',bytes:1.2e9,files:3496,admin:false,permanent:false,note:''},
-  {key:'shader',name:'Cache shader dei giochi',desc:'DirectX, NVIDIA e AMD',bytes:2.3e9,files:390,admin:false,permanent:false,note:''},
+  {key:'shader',name:'Cache shader dei giochi',desc:'Solo se un gioco ha problemi grafici',bytes:2.3e9,files:390,admin:false,permanent:false,optional:true,note:''},
   {key:'browser',name:'Cache dei browser',desc:'Edge, Chrome, Brave, Opera',bytes:4.1e8,files:2100,admin:false,permanent:false,note:'chiudi i browser'},
   {key:'wupdate',name:'Aggiornamenti di Windows scaricati',desc:'Già installati',bytes:8e8,files:120,admin:true,permanent:false,note:''},
   {key:'recycle',name:'Cestino',desc:'Svuota il cestino',bytes:2.4e9,files:42,admin:false,permanent:true,note:''}]},
@@ -1042,10 +1053,13 @@ async function loadOptimize(quiet=false){
   if(!d.report&&!autoScanned&&current?.jobs?.['optimize-scan']?.state!=='running'){autoScanned=true;req('/api/optimize/scan','POST',{}).catch(()=>{});}
  }catch(ex){if(!quiet)notify('Ottimizza: '+ex.message,true);}
 }
+// File inutili davvero: senza la cache degli shader (opzionale), che serve ai giochi e si riforma sempre.
+const junkOf=rep=>rep?rep.items.filter(i=>!i.optional).reduce((a,i)=>a+i.bytes,0):0;
 function healthScore(d){
  // Punteggio semplice e spiegabile: ogni problema toglie punti e diventa un consiglio.
  let score=100;const tips=[];const rep=d.report;const c=(d.disks||[]).find(x=>/^C/i.test(x.drive))||(d.disks||[])[0];
- if(rep){const gb=rep.total/2**30;if(gb>=0.5){score-=Math.min(25,Math.round(gb*4));tips.push(['clean',`${bytes(rep.total)} di file inutili da pulire`,'clean']);}}
+ // La cache degli shader non conta: serve ai giochi e si riforma sempre.
+ if(rep){const junk=junkOf(rep),gb=junk/2**30;if(gb>=0.5){score-=Math.min(25,Math.round(gb*4));tips.push(['clean',`${bytes(junk)} di file inutili da pulire`,'clean']);}}
  else tips.push(['refresh','Sto misurando i file inutili…','clean']);
  if(c){const free=c.free/c.total;if(free<0.1){score-=30;tips.push(['disk',`Disco ${c.drive} quasi pieno: ${bytes(c.free)} liberi`,'large']);}
   else if(free<0.2){score-=15;tips.push(['disk',`Disco ${c.drive} con poco spazio (${bytes(c.free)} liberi)`,'large']);}}
@@ -1086,9 +1100,9 @@ function scoreTicks(score){
 }
 function renderChecks(d,h){
  // Controllo salute: sei voci con stato colorato; toccandole si apre la scheda giusta.
- const rep=d.report,c=h.c,free=c?c.free/c.total:null,hd=d.health?.disks,net=d.net,GB=2**30;
+ const rep=d.report,junk=junkOf(rep),c=h.c,free=c?c.free/c.total:null,hd=d.health?.disks,net=d.net,GB=2**30;
  const items=[
-  ['clean','File inutili',rep?bytes(rep.total):'…',!rep?'none':rep.total<.5*GB?'ok':rep.total<3*GB?'warn':'bad',rep?(rep.total<.5*GB?'Già pulito':'Si possono pulire'):'Analisi in corso','clean'],
+  ['clean','File inutili',rep?bytes(junk):'…',!rep?'none':junk<.5*GB?'ok':junk<3*GB?'warn':'bad',rep?(junk<.5*GB?'Già pulito':'Si possono pulire'):'Analisi in corso','clean'],
   ['disk','Disco C',c?bytes(c.free)+' liberi':'—',free==null?'none':free>=.2?'ok':free>=.1?'warn':'bad',free==null?'—':`${Math.round(free*100)}% libero su ${bytes(c.total)}`,'large'],
   ['power','Avvio di Windows',(d.startup||[]).length?`${h.on} app`:'—',!(d.startup||[]).length?'none':h.on<=8?'ok':h.on<=14?'warn':'bad',h.on<=8?'Avvio leggero':'Si può alleggerire','startup'],
   ['ram','Memoria',d.memory?Math.round(h.ram)+'% in uso':'—',!d.memory?'none':h.ram<=65?'ok':h.ram<=80?'warn':'bad',d.memory?.total?`${bytes(d.memory.used)} di ${bytes(d.memory.total)}`:'—','apps'],
@@ -1097,7 +1111,7 @@ function renderChecks(d,h){
  const LBL={ok:'OK',warn:'Attenzione',bad:'Da sistemare',none:'Da fare'};
 
  const box=$('opt-checks');box.replaceChildren();
- const fill={clean:rep?Math.min(100,rep.total/(5*GB)*100):0,large:c?100-Math.round(free*100):0,startup:Math.min(100,(h.on||0)/20*100),apps:h.ram||0,
+ const fill={clean:rep?Math.min(100,junk/(5*GB)*100):0,large:c?100-Math.round(free*100):0,startup:Math.min(100,(h.on||0)/20*100),apps:h.ram||0,
   disks:hd?hd.filter(x=>x.ok).length/hd.length*100:0,net:net?.internet?.ms!=null?Math.min(100,net.internet.ms):0};
  items.forEach(([ic,name,val,s,sub,go])=>{const b=el('button','chk s-'+s);b.type='button';const i=el('span','chk-ico');const ring=ringSvg('cr');
   ring.querySelector('.gr-f').style.strokeDasharray=`${(fill[go]||0).toFixed(1)} 100`;i.append(ring,icon(ic));
@@ -1115,7 +1129,7 @@ function renderClean(d){
  rep.items.forEach((i,k)=>{
   const row=el('label','clean-row'+(i.bytes?'':' empty'));row.style.setProperty('--i',k);const cb=el('input');cb.type='checkbox';cb.value=i.key;
   const blocked=(i.admin&&current?.remote&&!adminInfo?.active)||i.note.startsWith('chiudi');
-  cb.checked=i.bytes>0&&!i.permanent&&!i.admin&&!blocked;cb.disabled=!i.bytes||blocked;cb.addEventListener('change',updateSelected);
+  cb.checked=i.bytes>0&&!i.permanent&&!i.admin&&!i.optional&&!blocked;cb.disabled=!i.bytes||blocked;cb.addEventListener('change',updateSelected);
   const ico=el('span','clean-ico');ico.append(icon(CLEAN_ICO[i.key]||'clean'));
   const t=el('div');const name=el('b','',i.name);
   if(i.permanent)name.append(el('em','pill warn','definitivo'));if(i.admin)name.append(el('em','pill admin','🛡 admin'));
@@ -1337,7 +1351,7 @@ function renderZones(){
  if(d){const h=healthScore(d);countUp($('zc-opt-score'),h.score,v=>Math.round(v));$('zc-opt-ring').style.strokeDasharray=`${h.score} 100`;
   $('zc-opt').classList.toggle('low',h.score<65);$('zc-opt').classList.toggle('mid',h.score>=65&&h.score<85);
   $('zc-opt-title').textContent=h.score>=85?'PC in ottima forma':h.score>=65?'Si può migliorare':'Da sistemare';
-  $('zc-opt-sub').textContent=d.report?`${bytes(d.report.total)} da liberare · ${h.on} app all’avvio`:'Analisi in corso…';}
+  $('zc-opt-sub').textContent=d.report?`${bytes(junkOf(d.report))} da liberare · ${h.on} app all’avvio`:'Analisi in corso…';}
  const g=gameData,b=current?.boost||{};
  const ses=b.session,run=b.running,last=(g?.games||[]).find(x=>!x.hidden&&x.last);
  const title=b.active&&(ses?.game||run)?(ses?.game||run.name):last?last.name:'I tuoi giochi';
@@ -1361,12 +1375,18 @@ document.querySelectorAll('.ostat[data-go]').forEach(b=>b.addEventListener('clic
 document.querySelectorAll('#apps-sort button').forEach(b=>b.addEventListener('click',()=>{procSort=b.dataset.sort;
  document.querySelectorAll('#apps-sort button').forEach(x=>x.classList.toggle('selected',x===b));if(procData)renderProcs(procData);}));
 $('opt-scan').addEventListener('click',()=>post('/api/optimize/scan',{}));
+async function startClean(path,body){
+ // Ricorda l'orario dell'ultima pulizia: l'animazione si chiude solo col risultato di quella nuova.
+ optSeen.quick=true;optSeen.quickFrom=current?.jobs?.['optimize-clean']?.at||0;quickProgress(true);
+ try{await req(path,'POST',body);await refresh();}
+ catch(ex){optSeen.quick=false;quickProgress(false,ex.message,'error');}
+}
 async function quickOptimize(){
- const est=optData?.report?.items?.filter(i=>['temp','shader','thumbs','crash','browser'].includes(i.key)).reduce((a,i)=>a+i.bytes,0);
- if(!await ask('Ottimizzare adesso?',`Pulisco file temporanei, cache dei giochi, anteprime, rapporti di errore e cache dei browser chiusi${est?' (circa '+bytes(est)+')':''}, poi svuoto la cache DNS. Cestino e documenti non vengono toccati.`,{danger:false,ico:'clean',yes:'Ottimizza'}))return;
+ const est=optData?.report?.items?.filter(i=>['temp','thumbs','crash','browser'].includes(i.key)).reduce((a,i)=>a+i.bytes,0);
+ if(!await ask('Ottimizzare adesso?',`Pulisco file temporanei, anteprime, rapporti di errore e cache dei browser chiusi${est?' (circa '+bytes(est)+')':''}, poi svuoto la cache DNS. Cestino, documenti e cache dei giochi non vengono toccati.`,{danger:false,ico:'clean',yes:'Ottimizza'}))return;
  cleanSteps=QUICK_STEPS;cleanEst=est||0;
  if(demo){quickProgress(true);setTimeout(()=>quickProgress(false,'Ottimizzazione fatta: liberati 3,9 GB · DNS svuotata','ok'),5000);return;}
- optSeen.quick=true;quickProgress(true);post('/api/optimize/quick',{});
+ startClean('/api/optimize/quick',{});
 }
 $('opt-quick').addEventListener('click',quickOptimize);
 $('opt-run').addEventListener('click',async()=>{
@@ -1376,7 +1396,7 @@ $('opt-run').addEventListener('click',async()=>{
  const items=(optData?.report?.items||[]).filter(i=>keys.includes(i.key));
  cleanSteps=items.map(i=>i.name).concat('Nuova analisi');cleanEst=items.reduce((a,i)=>a+i.bytes,0);
  if(demo){quickProgress(true);setTimeout(()=>quickProgress(false,'Pulizia: liberati '+bytes(cleanEst),'ok'),4000);return;}
- optSeen.quick=true;quickProgress(true);post('/api/optimize/clean',{keys});
+ startClean('/api/optimize/clean',{keys});
 });
 $('opt-auto').addEventListener('click',()=>post('/api/optimize/auto',{enabled:$('opt-auto').getAttribute('aria-checked')!=='true'}).then(()=>loadOptimize(true)));
 $('opt-large-scan').addEventListener('click',()=>post('/api/optimize/large/scan',{}));
