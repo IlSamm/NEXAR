@@ -843,19 +843,9 @@ async function loadRgbDevices(){
    b.addEventListener('click',()=>applyColor(c.value,d.key));
    row.append(t,sw,b);box.append(row);
   });
-  (current?.rgb_excluded||[]).forEach(n=>{
-   if(!/mystic|msi/i.test(n)){box.append(el('p','fineprint',`${n}: lasciata al suo programma, non si spegne con AI ECO.`));return;}
-   // Attacchi ARGB della MSI (ARCTIC): il colore lo dà MSI Center; NEXAR li spegne con AI ECO mettendo MSI in pausa.
-   const m=current?.rgb_msi||{},on=!!m.off,row=el('div','rgb-dev2 rgb-msi');row.style.setProperty('--dc',on?'#22c55e':'#64748b');
-   const t=el('div','rd-txt');t.append(el('b','','ARCTIC · attacchi ARGB della scheda madre'),
-    el('small','',on?(m.paused?'Spento da NEXAR (luci di MSI Center in pausa)':'Si spegne con AI ECO, il colore lo decide MSI Center')
-     :'Comandato da MSI Center: resta acceso anche in AI ECO'));
-   const b=el('button','btn glass rd-msi');b.type='button';b.textContent=on?'Lascia a MSI Center':'Spegni con AI ECO';
-   b.title=on?`NEXAR non tocca più l'ARCTIC`:'La prima volta Windows chiede una conferma da amministratore';
-   b.addEventListener('click',async()=>{b.disabled=true;await post('/api/rgb/msi',{enabled:!on});setTimeout(loadRgbDevices,on?2500:9000);});
-   row.append(t,b);box.append(row);
-   box.append(el('p','fineprint',`${n}: OpenRGB riesce a spegnere questi attacchi ma non a dargli un colore. Fuori da AI ECO l'effetto lo rimette MSI Center (Mystic Light).`));
-  });
+  (current?.rgb_excluded||[]).forEach(n=>box.append(el('p','fineprint',/mystic|msi/i.test(n)
+   ?`${n}: attacchi ARGB della scheda madre (qui c'è l'ARCTIC). Li comanda MSI Center → Mystic Light, che riapplica il suo effetto a ogni avvio e quando lo schermo si riaccende: NEXAR non può spegnerli. Per tenerli spenti scegli "Spento" su quegli attacchi in MSI Center.`
+   :`${n}: lasciata al suo programma, non si spegne con AI ECO.`)));
  }catch(ex){box.replaceChildren(el('p','muted','Dispositivi non disponibili: '+ex.message));}
 }
 $('rgb-color').addEventListener('input',()=>{rgbTouched=true;paintOrb(false);});
@@ -1000,6 +990,7 @@ const QUICK_STEPS=['File temporanei','Anteprime delle immagini','Rapporti di err
 const CLEAN_ICO={temp:'clean',shader:'game',thumbs:'palette',crash:'x',browser:'link',wintemp:'grid',wupdate:'refresh',recycle:'disk'};
 const KIND_ICO=k=>/^(mp4|mkv|avi|mov|wmv|webm)$/.test(k)?['🎬','#a78bfa']:/^(zip|rar|7z|tar|gz)$/.test(k)?['📦','#fbbf24']:/^(iso|vmdk|vhd|vhdx|img|ova)$/.test(k)?['💽','#38bdf8']:/^(exe|msi)$/.test(k)?['⚙️','#fb923c']:['📄','#94a3b8'];
 let cleanSteps=null,cleanEst=0;
+const cleanPick={};   // caselle toccate a mano: valgono finché non parte la pulizia
 function quickProgress(running,result,state){
  // Mentre la pulizia lavora: vortice con i passi e il contatore; alla fine spunta e spazio liberato.
  if(running){if(!cfx.box)cleanStart(cleanSteps||QUICK_STEPS,cleanEst);return;}
@@ -1084,7 +1075,7 @@ function renderOptimize(d){
  countUp($('opt-freed'),d.freed_total||0,v=>bytes(v));
  const last=(d.history||[])[0];$('opt-auto-lbl').textContent=d.auto?'Pulizia automatica attiva':'Pulizia automatica spenta';$('opt-freed-sub').textContent=last?`Ultima ${ago(last.at)}`:'Mai fatta';
  renderChecks(d,h);
- $('tb-clean').textContent=d.report?bytes(d.report.total):'';$('tb-startup').textContent=h.on||'';$('tb-large').textContent=d.large?.count||'';
+ $('tb-clean').textContent=d.report?bytes(junkOf(d.report)):'';$('tb-startup').textContent=h.on||'';$('tb-large').textContent=d.large?.count||'';
  renderClean(d);renderStartup(d.startup||[]);renderDisks(d);renderLarge(d.large);renderNet(d.net);renderNetHist(d);renderOptHistory(d);
  renderZones();
 }
@@ -1129,10 +1120,13 @@ function renderClean(d){
  rep.items.forEach((i,k)=>{
   const row=el('label','clean-row'+(i.bytes?'':' empty'));row.style.setProperty('--i',k);const cb=el('input');cb.type='checkbox';cb.value=i.key;
   const blocked=(i.admin&&current?.remote&&!adminInfo?.active)||i.note.startsWith('chiudi');
-  cb.checked=i.bytes>0&&!i.permanent&&!i.admin&&!i.optional&&!blocked;cb.disabled=!i.bytes||blocked;cb.addEventListener('change',updateSelected);
+  cb.checked=i.bytes>0&&!i.permanent&&!i.admin&&!i.optional&&!blocked;cb.disabled=!i.bytes||blocked;
+  if(!cb.disabled&&i.key in cleanPick)cb.checked=cleanPick[i.key];
+  if(blocked&&i.bytes)row.classList.add('locked');
+  cb.addEventListener('change',()=>{cleanPick[i.key]=cb.checked;updateSelected();});
   const ico=el('span','clean-ico');ico.append(icon(CLEAN_ICO[i.key]||'clean'));
   const t=el('div');const name=el('b','',i.name);
-  if(i.permanent)name.append(el('em','pill warn','definitivo'));if(i.admin)name.append(el('em','pill admin','🛡 admin'));
+  if(i.permanent)name.append(el('em','pill warn','definitivo'));if(i.admin)name.append(el('em','pill admin','🛡 admin'));if(i.optional)name.append(el('em','pill','facoltativa'));
   const bar=el('div','bar mini');const f=el('span');f.style.width=(i.bytes/max*100)+'%';bar.append(f);
   t.append(name,el('small','',i.note||i.desc),bar);row.append(cb,ico,t,el('strong','',i.bytes?bytes(i.bytes):'pulito'));box.append(row);
  });
@@ -1337,7 +1331,7 @@ function renderProcs(d){
   const t=el('div');t.append(el('b','',a.name.replace(/\.exe$/i,'')),el('small','',`${a.count>1?a.count+' processi · ':''}CPU ${nf(a.cpu,1)}% · ${bytes(a.bytes)}`));
   const bar=el('div','bar mini');const f=el('span');f.style.width=((procSort==='by_cpu'?a.cpu:a.bytes)/max*100)+'%';bar.append(f);t.append(bar);
   const v=el('strong','',procSort==='by_cpu'?nf(a.cpu,1)+'%':bytes(a.bytes));
-  const btn=el('button','btn small'+(a.closable?'':' ghost'),a.closable?'Chiudi':'Sistema');btn.type='button';btn.disabled=!a.closable;
+  const btn=el('button','btn small'+(a.closable?'':' ghost'),a.closable?'Chiudi':'Protetto');btn.title=a.closable?'Chiudi '+a.name:'Processo di Windows o di un altro utente: NEXAR non lo chiude';btn.type='button';btn.disabled=!a.closable;
   btn.addEventListener('click',async()=>{if(!await ask(`Chiudere ${a.name.replace(/\.exe$/i,'')}?`,'Come premere la X: se c\'è lavoro non salvato il programma te lo chiede.',{ico:'x',yes:'Chiudi'}))return;
    if(demo){notify('Anteprima: comando non attivo.');return;}
    try{const res=await req('/api/optimize/close','POST',{name:a.name});notify('✓ '+res.message);setTimeout(loadProcs,800);}catch(ex){notify('⚠ '+ex.message,true);}});
@@ -1367,7 +1361,8 @@ document.querySelectorAll('#opt-tabs button').forEach(b=>b.addEventListener('cli
  optTab=b.dataset.panel;
  document.querySelectorAll('#opt-tabs button').forEach(x=>x.classList.toggle('selected',x===b));
  document.querySelectorAll('.opt-panel').forEach(p=>p.hidden=p.dataset.panel!==b.dataset.panel);
- if(optTab==='apps')loadProcs();
+ // La CPU si misura tra due letture: la seconda arriva subito, così la lista non parte tutta a 0%.
+ if(optTab==='apps'){loadProcs();setTimeout(loadProcs,1200);}
  inkTabs($('opt-tabs'));
  b.scrollIntoView({block:'nearest',inline:'center',behavior:'smooth'});
 }));
@@ -1396,7 +1391,7 @@ $('opt-run').addEventListener('click',async()=>{
  const items=(optData?.report?.items||[]).filter(i=>keys.includes(i.key));
  cleanSteps=items.map(i=>i.name).concat('Nuova analisi');cleanEst=items.reduce((a,i)=>a+i.bytes,0);
  if(demo){quickProgress(true);setTimeout(()=>quickProgress(false,'Pulizia: liberati '+bytes(cleanEst),'ok'),4000);return;}
- startClean('/api/optimize/clean',{keys});
+ Object.keys(cleanPick).forEach(k=>delete cleanPick[k]);startClean('/api/optimize/clean',{keys});
 });
 $('opt-auto').addEventListener('click',()=>post('/api/optimize/auto',{enabled:$('opt-auto').getAttribute('aria-checked')!=='true'}).then(()=>loadOptimize(true)));
 $('opt-large-scan').addEventListener('click',()=>post('/api/optimize/large/scan',{}));

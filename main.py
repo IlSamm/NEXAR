@@ -367,17 +367,6 @@ def fans_setup(request: Request):
     try: return {'ok':True,'message':controller.run_job('fans-setup',lambda: controller.setup_fans(admin))}
     except RuntimeError as ex: raise HTTPException(409,str(ex))
 
-class MsiLights(BaseModel):
-    enabled: bool
-@app.post('/api/rgb/msi',dependencies=[Depends(authorized),Depends(pin_gate)])
-def rgb_msi(data: MsiLights, request: Request):
-    # La prima attivazione chiede la conferma UAC, che si vede solo sullo schermo del PC.
-    import discovery
-    if data.enabled and is_remote(request) and not discovery.msi_lights_ready():
-        raise HTTPException(409,'Attivalo dal PC: serve una conferma da amministratore sullo schermo.')
-    try: return {'ok':True,'message':controller.run_job('rgb-msi',lambda: controller.setup_msi_lights(data.enabled))}
-    except RuntimeError as ex: raise HTTPException(409,str(ex))
-
 @app.post('/api/fancontrol/open',dependencies=[Depends(authorized)])
 def fancontrol_open():
     exe=controller.config.get('fans',{}).get('fancontrol_exe','')
@@ -891,7 +880,7 @@ def optimize_clean(data: CleanRequest, request: Request):
     def job():
         res = optimizer.clean(data.keys, discovery.run_elevated, allow_admin=not remote, admin=admin)
         controller.record_clean(res['freed'], 'manuale')
-        optimize_scan_job()
+        optimize_scan_job(); optimizer.mark_left(controller.optimize_report, res.get('items'))
         return 'Pulizia: liberati ' + optimizer.human(res['freed']) + ('. ' + ' · '.join(res['notes']) if res['notes'] else '')
     if not data.keys or set(data.keys) - {t['key'] for t in optimizer.targets()}: raise HTTPException(400,'Scegli cosa pulire')
     try: return {'ok':True,'message':controller.run_job('optimize-clean',job)}
@@ -921,9 +910,10 @@ def optimize_quick():
     def job():
         res = optimizer.clean(QUICK_CLEAN)
         controller.record_clean(res['freed'], 'rapida')
+        left = res.get('items')
         try: optimizer.flush_dns(); dns = ' · DNS svuotata'
         except (RuntimeError,OSError): dns = ''
-        optimize_scan_job()
+        optimize_scan_job(); optimizer.mark_left(controller.optimize_report, left)
         return 'Ottimizzazione fatta: liberati ' + optimizer.human(res['freed']) + dns + ('. ' + ' · '.join(res['notes']) if res['notes'] else '')
     try: return {'ok':True,'message':controller.run_job('optimize-clean',job)}
     except RuntimeError as ex: raise HTTPException(409,str(ex))

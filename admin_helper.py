@@ -53,7 +53,10 @@ try {
       foreach ($k in @($a.keys)) {
         $p = $clean[[string]$k]
         if (-not $p) { throw 'Voce di pulizia non prevista' }
+        $wu = $p -like '*SoftwareDistribution*'
+        if ($wu) { Stop-Service wuauserv,bits -Force -ErrorAction SilentlyContinue }
         Get-ChildItem -LiteralPath $p -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+        if ($wu) { Start-Service bits,wuauserv -ErrorAction SilentlyContinue }
       }
     }
     'trim' { @@TRIM@@ }

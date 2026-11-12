@@ -8,6 +8,7 @@ import ctypes
 import fnmatch
 import os
 import shutil
+import stat
 import subprocess
 import time
 from pathlib import Path
@@ -60,13 +61,18 @@ def targets():
         {'key': 'recycle', 'name': 'Cestino', 'desc': 'Svuota il cestino: i file non si possono più recuperare', 'recycle': True},
     ]
 
+def _long(p):
+    """Percorso esteso (prefisso \\\\?\\) su Windows: niente limite dei 260 caratteri (cache e copie di progetti profonde)."""
+    p = os.path.abspath(str(p))
+    return '\\\\?\\' + p if os.name == 'nt' and not p.startswith('\\\\') else p
+
 def _files(t, now=None):
     """File eliminabili di un obiettivo (rispetta età minima, filtro nome e cartelle escluse)."""
     now = now or time.time()
-    skip = [str(s).lower() for s in t.get('skip', [])]
+    skip = [_long(s).lower() for s in t.get('skip', [])]
     for root in t.get('paths', []):
         if not Path(root).is_dir(): continue
-        for dirpath, dirnames, filenames in os.walk(root):
+        for dirpath, dirnames, filenames in os.walk(_long(root)):
             if any(dirpath.lower().startswith(s) for s in skip):
                 dirnames[:] = []; continue
             for f in filenames:
@@ -90,6 +96,14 @@ def browsers_open():
     names = {p.info['name'].lower() for p in psutil.process_iter(['name']) if p.info.get('name')}
     return sorted(n for n in list(BROWSERS) + list(OPERA) if n in names)
 
+def mark_left(report, items):
+    """Dopo una pulizia: nelle voci rimaste a metà la riga spiega perché (file aperti da un programma)."""
+    for it in (report or {}).get('items', []):
+        left = (items or {}).get(it['key'], {}).get('left')
+        if left and it['bytes'] and not it['note']:
+            it['note'] = f"{left} file in uso: {IN_USE_HINT.get(it['key'], 'programmi aperti')}"
+    return report
+
 def analyze(limit_seconds=25):
     """Quanto spazio libererebbe ogni voce."""
     report, start, opened = [], time.monotonic(), browsers_open()
@@ -109,14 +123,42 @@ def analyze(limit_seconds=25):
     return {'items': report, 'total': sum(i['bytes'] for i in report), 'at': time.strftime('%Y-%m-%dT%H:%M:%S')}
 
 def _remove_empty_dirs(root):
+    root = _long(root)
     for dirpath, dirnames, filenames in os.walk(root, topdown=False):
-        if dirpath != str(root):
+        if dirpath != root:
             try: os.rmdir(dirpath)
             except OSError: pass
 
+def _delete(path):
+    """True se il file non c'è più. I file in sola lettura (oggetti di git, installer) perdono il flag e vengono
+    cancellati; quelli aperti da un programma restano (False)."""
+    for attempt in (0, 1):
+        try: os.remove(path); return True
+        except FileNotFoundError: return True
+        except PermissionError:
+            if attempt: return False
+            try:
+                if os.stat(path).st_mode & stat.S_IWRITE: return False  # non è sola lettura: è in uso
+                os.chmod(path, stat.S_IWRITE)
+            except OSError: return False
+        except OSError: return False
+    return False
+
+IN_USE_HINT = {'shader': 'chiudi i giochi e riprova', 'thumbs': 'le usa Esplora file, si liberano dopo un riavvio',
+               'temp': 'li usano programmi aperti', 'crash': 'li sta usando Windows', 'browser': 'chiudi i browser e riprova'}
+
+# Windows Update tiene aperti i suoi download: si ferma un attimo il servizio, si pulisce, si riavvia.
+WU_STOP = "Stop-Service wuauserv,bits -Force -ErrorAction SilentlyContinue;"
+WU_START = "Start-Service bits,wuauserv -ErrorAction SilentlyContinue;"
+
+def admin_clean_script(paths):
+    script = ''.join(f"Get-ChildItem -LiteralPath '{p}' -Force -ErrorAction SilentlyContinue | "
+                     f"Remove-Item -Recurse -Force -ErrorAction SilentlyContinue;" for p in paths)
+    return (WU_STOP + script + WU_START) if any('SoftwareDistribution' in p for p in paths) else script
+
 def clean(keys, run_elevated=None, allow_admin=False, admin=None):
     """Pulisce le voci scelte. Restituisce byte liberati e note. Le voci admin passano da run_elevated (UAC sul PC)."""
-    freed, notes, wanted = 0, [], set(keys)
+    freed, notes, wanted, per = 0, [], set(keys), {}
     known = {t['key']: t for t in targets()}
     if wanted - set(known): raise ValueError('Voce di pulizia sconosciuta')
     admin_paths, admin_keys = [], []
@@ -126,6 +168,7 @@ def clean(keys, run_elevated=None, allow_admin=False, admin=None):
             size, _ = recycle_size()
             if os.name == 'nt' and ctypes.windll.shell32.SHEmptyRecycleBinW(None, None, 0x7) in (0, -2147418113):
                 freed += size  # -2147418113 = cestino già vuoto
+            elif os.name == 'nt': notes.append('Cestino: Windows non l\'ha svuotato (riprova tra poco)')
             continue
         if t.get('admin'):
             if not allow_admin and not admin: notes.append(f'{t["name"]}: attiva Amministratore da remoto sul PC')
@@ -133,23 +176,24 @@ def clean(keys, run_elevated=None, allow_admin=False, admin=None):
             continue
         if t.get('needs_closed') and browsers_open():
             notes.append(f'{t["name"]}: chiudi i browser e riprova'); continue
+        got, left = 0, 0
         for path, size in list(_files(t)):
-            try: os.remove(path); freed += size
-            except OSError: pass  # in uso: resta dov'è
+            if _delete(path): got += size
+            else: left += 1   # aperto da un programma: resta dov'è
         for root in t.get('paths', []):
             if Path(root).is_dir() and not t.get('pattern'): _remove_empty_dirs(root)
+        freed += got; per[key] = {'freed': got, 'left': left}
+        if left: notes.append(f'{t["name"]}: {left} file in uso ({IN_USE_HINT.get(key, "programmi aperti")})')
     if admin_paths and admin:
         before = sum(s for p in admin_paths for _, s in _files({'paths': [p]}))
         admin.call('clean', keys=admin_keys)
         freed += max(0, before - sum(s for p in admin_paths for _, s in _files({'paths': [p]})))
     elif admin_paths and run_elevated:
         before = sum(s for p in admin_paths for _, s in _files({'paths': [p]}))
-        script = ''.join(f"Get-ChildItem -LiteralPath '{p}' -Force -ErrorAction SilentlyContinue | "
-                         f"Remove-Item -Recurse -Force -ErrorAction SilentlyContinue;" for p in admin_paths)
-        if run_elevated(script, wait=True):
+        if run_elevated(admin_clean_script(admin_paths), wait=True):
             freed += max(0, before - sum(s for p in admin_paths for _, s in _files({'paths': [p]})))
         else: notes.append('Pulizia di Windows annullata (conferma amministratore)')
-    return {'freed': freed, 'notes': notes}
+    return {'freed': freed, 'notes': notes, 'items': per}
 
 # ---------- programmi all'avvio (come Gestione attività: StartupApproved, reversibile) ----------
 RUN = r'Software\Microsoft\Windows\CurrentVersion\Run'
@@ -217,7 +261,8 @@ def memory_top(n=8):
     procs = {}
     for p in psutil.process_iter(['name', 'memory_info']):
         try:
-            name = p.info['name'] or '?'; rss = p.info['memory_info'].rss
+            name = p.info['name']; rss = p.info['memory_info'].rss
+            if not name: continue
             procs[name] = procs.get(name, 0) + rss  # Chrome & co. hanno molti processi: si sommano
         except (psutil.Error, AttributeError): continue
     vm = psutil.virtual_memory()
@@ -255,8 +300,8 @@ def processes(n=12):
     for p in psutil.process_iter(['name', 'memory_info', 'username', 'cpu_times']):
         try:
             alive.add(p.pid)
-            name = p.info['name'] or '?'
-            if name.lower() in ('system idle process', 'idle'): continue
+            name = p.info['name']
+            if not name or name.lower() in ('system idle process', 'idle'): continue  # senza nome: processi protetti
             t = p.info['cpu_times']; total = (t.user + t.system) if t else 0.0
             prev = _cpu_seen.get(p.pid)
             cpu = max(0.0, (total - prev[0]) / max(0.5, now - prev[1]) * 100 / cores) if prev else 0.0

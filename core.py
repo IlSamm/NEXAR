@@ -216,7 +216,6 @@ ARGB_HEADER_GUESS = 16
 # Registro di Mystic Light (MSI Center): "ResetItem" vuol dire che ha appena riapplicato i suoi effetti
 # a RAM e attacchi ARGB della scheda madre (avvio, schermo che si riaccende, uscita dalla sospensione).
 MSI_LIGHT_LOG = Path(r'C:\Program Files (x86)\MSI\MSI Center\Log\MysticLight_Test\MysticLight.txt')
-MSI_LIGHT_NAME = 'MSI MYSTIC LIGHT'  # attacchi ARGB della scheda madre (ventole e pompa ARCTIC)
 RGB_KEEP_EVERY = 1800  # anche senza segnali, ogni mezz'ora NEXAR rimette il suo stato dei LED
 DEFAULT_PALETTE = ['#ffffff', '#ff0000', '#ff8a00', '#ffd400', '#2cff5a', '#00e5ff', '#1f6bff', '#8a3cff', '#ff3cc8']
 
@@ -1179,7 +1178,7 @@ class Control:
                 raise RuntimeError('OpenRGB: profilo .orp non trovato')
             cmd([str(exe), '--profile', str(profile)], 90)
             return 'RGB: profilo '+('AI ECO' if eco else 'Normale')+' applicato'
-        if not eco and not self.state.get('rgb_saved') and not self.state.get('rgb_msi_paused'): return 'RGB: già acceso'
+        if not eco and not self.state.get('rgb_saved'): return 'RGB: già acceso'
         def run():
             import openrgb_sdk
             try:
@@ -1189,12 +1188,10 @@ class Control:
                     snaps, done = openrgb_sdk.all_off(saved, exclude=self.rgb_excluded())
                     with self.lock:
                         self.state.update(rgb_saved=snaps, rgb_off=True); json_save(STATE_FILE, self.state)
-                    done += self.msi_lights_eco()
                 else:
                     done = openrgb_sdk.all_restore(self.state.get('rgb_saved') or {}, cfg.get('normal_color', '#ffffff'), self.rgb_excluded())
                     with self.lock:
                         self.state.update(rgb_off=False); self.state.pop('rgb_saved', None); json_save(STATE_FILE, self.state)
-                    if self.msi_lights_resume(): done.append(MSI_LIGHT_NAME + ' (effetto di MSI Center)')
                 self.log_event('RGB ' + ('spenti' if eco else 'riaccesi') + ': ' + (', '.join(done) or 'nessun dispositivo'))
             except Exception as ex:
                 self.log_event('OpenRGB non raggiungibile: ' + str(ex)[:200])
@@ -1202,60 +1199,16 @@ class Control:
         threading.Thread(target=run, daemon=True, name='openrgb').start()
         return 'RGB: ' + ('spegnimento LED' if eco else 'riaccensione LED') + ' in corso'
 
-    # ---------- attacchi ARGB della MSI (ARCTIC): OpenRGB li spegne, il colore lo rimette MSI Center ----------
-    def msi_lights_on(self):
-        """L'utente ha scelto di spegnere anche l'ARCTIC e le due attività da amministratore esistono."""
+    def msi_lights_restore(self):
+        """La 1.0.68 poteva mettere in pausa le luci di MSI Center per spegnere l'ARCTIC. Provato sul PC: alla ripresa
+        il driver di MSI a volte resta bloccato per minuti, quindi la funzione è stata tolta. Chi l'aveva attivata
+        ritrova MSI Center acceso, con l'attività "Luci MSI riprendi" già creata allora (nessuna richiesta UAC)."""
         import discovery
-        return bool(self.config.get('rgb', {}).get('msi_off')) and discovery.msi_lights_ready()
-
-    def msi_lights_off(self):
-        """Luci di MSI Center in pausa, poi nero da OpenRGB sugli attacchi ARGB della scheda madre."""
-        import discovery, openrgb_sdk
-        if not discovery.msi_lights_run('pause'): raise RuntimeError('attività "Luci MSI pausa" non avviata')
-        for _ in range(60):
-            if not discovery.process_running(discovery.MSI_LIGHT_PROCESS): break
-            time.sleep(0.25)
-        else: raise RuntimeError('MSI Center non si è fermato')
-        with self.lock: self.state['rgb_msi_paused'] = True; json_save(STATE_FILE, self.state)
-        time.sleep(1)  # MSI chiude il collegamento con la scheda madre
-        with openrgb_sdk.Client() as c:
-            done = [x['name'] for x in c.controllers() if x['name'] == MSI_LIGHT_NAME and openrgb_sdk.leds_set(c, x, 0, allow_off_mode=False)]
-            c.controllers()
-        if not done: raise RuntimeError(MSI_LIGHT_NAME + ' non trovato in OpenRGB')
-        return True
-
-    def msi_lights_eco(self):
-        """Con AI ECO: spegne anche gli attacchi MSI se l'utente l'ha scelto. Non blocca il resto se non riesce."""
-        try:
-            if self.msi_lights_on() and self.msi_lights_off(): return [MSI_LIGHT_NAME]
-        except Exception as ex:
-            self.log_event('Luci MSI (ARCTIC) non spente: ' + str(ex)[:200])
-        return []
-
-    def msi_lights_resume(self, force=False):
-        """MSI Center riparte e dopo pochi secondi rimette da solo il suo effetto sugli attacchi ARGB."""
-        import discovery
-        if not (self.state.get('rgb_msi_paused') or force) or not discovery.msi_lights_ready(): return False
-        if not discovery.msi_lights_run('resume'):
-            self.log_event('Luci MSI (ARCTIC): attività "Luci MSI riprendi" non avviata'); return False
-        with self.lock: self.state.pop('rgb_msi_paused', None); json_save(STATE_FILE, self.state)
-        return True
-
-    def setup_msi_lights(self, enabled):
-        """Interruttore della pagina Luci. La prima volta crea le due attività con una sola conferma UAC."""
-        import discovery
-        if enabled and not discovery.msi_lights_ready() and not discovery.msi_lights_setup():
-            raise RuntimeError('Conferma da amministratore annullata')
+        if discovery.msi_lights_ready() and discovery.msi_lights_run('resume'):
+            self.log_event('Luci MSI: MSI Center rimesso in funzione, l\'ARCTIC torna al suo effetto')
         with self.lock:
-            self.config.setdefault('rgb', {})['msi_off'] = bool(enabled); json_save(CONFIG_FILE, self.config)
-        if enabled:
-            if self.state.get('rgb_off'): self.msi_lights_off()
-            msg = 'ARCTIC e attacchi ARGB della scheda madre: ora si spengono con AI ECO'
-        else:
-            self.msi_lights_resume(force=True)
-            msg = 'ARCTIC lasciato a MSI Center'
-        self.log_event('Luci MSI: ' + msg)
-        return msg
+            self.state.pop('rgb_msi_paused', None); self.config.get('rgb', {}).pop('msi_off', None)
+            json_save(STATE_FILE, self.state); json_save(CONFIG_FILE, self.config)
 
     def openrgb_ready(self):
         """Il server OpenRGB tiene vivi i dispositivi (es. Corsair Lighting Node) dopo il comando."""
@@ -1339,7 +1292,6 @@ class Control:
                 self.state.pop('rgb_gaming', None)
             # I LED sono di nuovo accesi con colori scelti: il prossimo ECO salverà questi.
             self.state.update(rgb_off=False); self.state.pop('rgb_saved', None); json_save(STATE_FILE, self.state)
-        if not device: self.msi_lights_resume()
         msg = 'Colore ' + color.upper() + f' ({brightness}%) su ' + ', '.join(dict.fromkeys(done))
         if not quiet: self.log_event('RGB: ' + msg)
         return msg
@@ -1369,6 +1321,7 @@ class Control:
     def rgb_keep(self, resumed=False):
         """MSI Center (sincronizzazione Mystic Light) rimette i suoi effetti sulla RAM all'avvio, quando lo schermo
         si riaccende e dopo la sospensione: NEXAR rimette il suo stato (spenti, oppure i colori scelti)."""
+        if self.state.get('rgb_msi_paused') or self.config.get('rgb', {}).get('msi_off'): self.msi_lights_restore()
         rgb = self.config.get('rgb', {})
         if not rgb.get('enabled') or (rgb.get('eco_profile') and rgb.get('normal_profile')): return ''
         import discovery, openrgb_sdk
@@ -1385,8 +1338,6 @@ class Control:
             snaps, done = openrgb_sdk.all_off(self.state.get('rgb_saved'), exclude=self.rgb_excluded())
             with self.lock:
                 if self.state.get('rgb_off'): self.state['rgb_saved'] = snaps; json_save(STATE_FILE, self.state)
-            if self.msi_lights_on() and discovery.process_running(discovery.MSI_LIGHT_PROCESS):
-                done += self.msi_lights_eco()
             msg = 'LED rimessi spenti: ' + ', '.join(done)
         elif rgb.get('normal_color') and not self.state.get('rgb_gaming') and not self.state.get('rgb_saved'):
             bright = int(rgb.get('brightness', 100))
@@ -1942,7 +1893,6 @@ class Control:
             'boost':self.booster.info(),'fps':self.live_fps,
             'anim_style':self.config.get('ui',{}).get('anim_style','liquid'),
             'rgb_excluded':list(self.rgb_excluded()),
-            'rgb_msi':{'off':bool(self.config.get('rgb',{}).get('msi_off')),'paused':bool(self.state.get('rgb_msi_paused'))},
             'fans_eco':bool(self.state.get('fans_eco')),
             'fans_level':self.state.get('fans_level') or ('eco' if self.state.get('fans_eco') else 'normal'),
             'fans_levels_ready':self.fans_levels_ready() if self.config.get('fans',{}).get('enabled') else False,
