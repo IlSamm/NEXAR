@@ -145,3 +145,24 @@ def test_unpair(app):
     pc, web = app
     pair(web, pc)
     assert call(web, 'POST', '/__nexar/unpair')[0] == 200 and nx.load() is None
+
+
+def test_wake_goes_to_broadcast_and_to_the_pc(monkeypatch):
+    sent = []
+    class Sock:
+        def __init__(self, *a): pass
+        def __enter__(self): return self
+        def __exit__(self, *a): pass
+        def setsockopt(self, *a): pass
+        def sendto(self, pkt, dst): sent.append(dst)
+    monkeypatch.setattr(nx.socket, 'socket', Sock)
+    monkeypatch.setattr(nx.time, 'sleep', lambda s: None)
+    nx.send_wake({'pc_mac': 'AA:BB:CC:DD:EE:FF', 'pc_ip': '192.168.0.10', 'broadcast': '192.168.0.255'})
+    assert {d[0] for d in sent} == {'192.168.0.255', '255.255.255.255', '192.168.0.10'} and len(sent) == 30
+
+
+def test_pc_counts_as_on_only_if_it_answers_itself(monkeypatch):
+    """Un ripetitore Wi-Fi risponde all'ARP al posto del PC spento: non deve sembrare acceso."""
+    monkeypatch.setattr(nx, 'app_up', lambda cfg: False)
+    monkeypatch.setattr(nx, 'quiet', lambda *a: a[0] == 'arping')
+    assert not nx.pc_on({'pc_ip': '192.168.0.10'})

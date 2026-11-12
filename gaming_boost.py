@@ -296,6 +296,31 @@ def foreground_window():
     m = mi.rcMonitor
     return pid.value or None, (win.l, win.t, win.r, win.b) == (m.l, m.t, m.r, m.b)
 
+def close_windows(pids) -> int:
+    """Chiede la chiusura (come la X della finestra) alle finestre di questi processi: il gioco può salvare."""
+    if os.name != 'nt' or not pids: return 0
+    u, sent = ctypes.windll.user32, []
+    PROC = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)
+    def each(hwnd, _):
+        pid = ctypes.c_ulong(); u.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+        if pid.value in pids and u.IsWindowVisible(hwnd): u.PostMessageW(hwnd, 0x0010, 0, 0); sent.append(hwnd)  # WM_CLOSE
+        return True
+    u.EnumWindows(PROC(each), 0)
+    return len(sent)
+
+def game_processes(running: dict | None, pids: set, games: list) -> list:
+    """Processi del gioco aperto: quelli visti in primo piano più tutto ciò che gira dalla sua cartella
+    (Fortnite: il client, l'anti-cheat del gioco). Mai programmi di sistema o il launcher (Epic, Steam)."""
+    dirs = [norm(g['dir']) for g in games if running and g['id'] == running['id'] and g.get('dir') and len(Path(g['dir']).parts) >= 3]
+    out = []
+    for p in psutil.process_iter(['name', 'exe']):
+        try:
+            name, path = (p.info['name'] or '').lower(), norm(p.info['exe']) if p.info['exe'] else ''
+            if name in PROTECTED or p.pid == os.getpid(): continue
+            if p.pid in pids or (path and any(path.startswith(d) for d in dirs)): out.append(p)
+        except (psutil.Error, OSError): continue
+    return out
+
 def user_apps():
     """App aperte dall'utente (un elemento per eseguibile), tra cui scegliere cosa chiudere o rallentare in Gaming."""
     me = psutil.Process().username() if os.name == 'nt' else None
@@ -441,6 +466,24 @@ class Booster:
 
     def find(self, gid):
         return next((g for g in library() if g['id'] == gid), None)
+
+    def quit_game(self, wait=8.0):
+        """Chiude il gioco aperto: prima come la X della finestra, poi (se resta aperto) lo termina."""
+        with self.lock: run, pids = self.running, set(self.game_pids)
+        if not run: return None
+        procs = game_processes(run, pids, library())
+        if not procs: return None
+        close_windows({p.pid for p in procs})
+        _, alive = psutil.wait_procs(procs, timeout=wait)
+        for p in alive:
+            try: p.terminate()
+            except psutil.Error: pass
+        _, alive = psutil.wait_procs(alive, timeout=4)
+        for p in alive:
+            try: p.kill()
+            except psutil.Error: pass
+        with self.lock: self.running = None; self.game_pids = set()
+        return run['name']
 
     def history(self):
         return list(self.state.get('gaming_history') or [])

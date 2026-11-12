@@ -65,6 +65,16 @@ FAN_SAFETY_TEMP = 80
 FAN_SAFETY_TEMP_GPU = 78
 FAN_OFF_LIMIT = 75      # ventole tutte spente: oltre questa temperatura tornano normali
 FAN_GUARD_SECONDS = 2
+FAN_VERIFY_SECONDS = 15  # tempo concesso a Fan Control per caricare un profilo prima di riprovare
+FAN_SPACING = 3          # secondi minimi fra due profili mandati a Fan Control (due avvii insieme lo bloccano)
+
+def windows_shutting_down():
+    """True mentre Windows si spegne o si riavvia: in quei secondi NEXAR non deve toccare ventole e servizi."""
+    if os.name != 'nt': return False
+    try:
+        import ctypes
+        return bool(ctypes.windll.user32.GetSystemMetrics(0x2000))  # SM_SHUTTINGDOWN
+    except Exception: return False
 logging.basicConfig(filename=LOG_FILE, level=logging.INFO,
     format='%(asctime)s %(levelname)s %(message)s', encoding='utf-8')
 
@@ -217,6 +227,9 @@ ARGB_HEADER_GUESS = 16
 # a RAM e attacchi ARGB della scheda madre (avvio, schermo che si riaccende, uscita dalla sospensione).
 MSI_LIGHT_LOG = Path(r'C:\Program Files (x86)\MSI\MSI Center\Log\MysticLight_Test\MysticLight.txt')
 RGB_KEEP_EVERY = 1800  # anche senza segnali, ogni mezz'ora NEXAR rimette il suo stato dei LED
+RGB_KEEP_OFF_EVERY = 600  # con i LED spenti ogni 10 minuti: chi li riaccende (MSI, firmware) viene corretto presto
+RGB_OFF_SETTLE = (3, 10, 30)  # dopo uno spegnimento: secondi a cui i LED vengono rimessi spenti
+RGB_QUIET_AFTER_USER = 15  # secondi dopo un comando dell'utente in cui il guardiano non tocca i LED
 DEFAULT_PALETTE = ['#ffffff', '#ff0000', '#ff8a00', '#ffd400', '#2cff5a', '#00e5ff', '#1f6bff', '#8a3cff', '#ff3cc8']
 
 def leds_estimate(ctl):
@@ -251,6 +264,11 @@ class Control:
         self.discover_lock = threading.Lock()
         self.msi_log_pos = None
         self.rgb_kept_at = 0.0
+        # Un comando LED alla volta: il guardiano non deve mai riaccendere mentre si spegne (o viceversa).
+        self.rgb_lock = threading.RLock()
+        self.fan_lock = threading.Lock()
+        self.fan_sent = (-1e9, '')  # (quando, profilo) dell'ultimo profilo mandato a Fan Control
+        self.rgb_user_at = -1e9
         self.jobs = {}
         self.disk_prev = None
         self.video_timeout = (0.0, None)
@@ -816,6 +834,16 @@ class Control:
             out.append(msg)
         return out
 
+    def quit_game(self):
+        """Dalla scheda del gioco: chiude il gioco (es. Fortnite) e, se era in Gaming, torna alla modalità normale."""
+        if os.name != 'nt': raise RuntimeError('Disponibile solo su Windows')
+        name = self.booster.quit_game()
+        notes = [f'{name} chiuso'] if name else ['Nessun gioco aperto']
+        if self.mode() == 'gaming': notes.append(self.set_mode('normal'))
+        msg = ' · '.join(n for n in notes if n)
+        self.log_event('🎮 ' + msg)
+        return msg
+
     def launch_game(self, gid):
         if os.name != 'nt': raise RuntimeError('Disponibile solo su Windows')
         game = self.booster.find(str(gid))
@@ -1067,9 +1095,11 @@ class Control:
             state['sensors'] = ok
         fans = self.config.get('fans', {})
         if fans.get('enabled') and Path(fans.get('fancontrol_exe', '')).is_file():
-            ok = discovery.process_running('FanControl.exe')
+            # Prima guardava solo la finestra FanControl.exe: col servizio di Fan Control 285 la finestra è chiusa,
+            # NEXAR lo credeva spento e ogni 2 minuti ricaricava il profilo (le regolazioni a mano saltavano).
+            ok = discovery.fancontrol_running()
             task = self.fans_task_now()
-            if not ok and due('fans') and discovery.task_exists(task):
+            if not ok and due('fans') and discovery.task_exists(task) and not windows_shutting_down():
                 tries['fans'] = now
                 cmd(['schtasks', '/run', '/tn', task], 15)
                 logging.info('Collegamenti: Fan Control avviato (%s)', task)
@@ -1130,7 +1160,7 @@ class Control:
         st = {}
         if discovery.find_lhm(): st['sensors'] = discovery.sensors_online()
         fans = self.config.get('fans', {})
-        if fans.get('enabled') and Path(fans.get('fancontrol_exe', '')).is_file(): st['fans'] = discovery.process_running('FanControl.exe')
+        if fans.get('enabled') and Path(fans.get('fancontrol_exe', '')).is_file(): st['fans'] = discovery.fancontrol_running()
         rgb = self.config.get('rgb', {})
         if rgb.get('enabled') and rgb.get('openrgb_exe'): st['rgb'] = discovery.port_open(discovery.OPENRGB_PORT)
         return st
@@ -1167,7 +1197,9 @@ class Control:
         finally:
             self.discover_lock.release()
 
-    def rgb_profile(self, eco):
+    def rgb_profile(self, eco, by='user'):
+        """by: 'user' (pulsante, bot, programmazione) o 'mode' (AI ECO). Cambiando modalità si riaccendono
+        solo i LED spenti da ECO: quelli spenti a mano restano spenti."""
         cfg = self.config.get('rgb',{})
         exe = Path(cfg.get('openrgb_exe',''))
         if not cfg.get('enabled') or not exe.is_file(): return 'RGB: OpenRGB non trovato'
@@ -1179,25 +1211,47 @@ class Control:
             cmd([str(exe), '--profile', str(profile)], 90)
             return 'RGB: profilo '+('AI ECO' if eco else 'Normale')+' applicato'
         if not eco and not self.state.get('rgb_saved'): return 'RGB: già acceso'
+        self.rgb_user_at = time.monotonic()
+        with self.lock:
+            # Stato voluto fissato subito: anche se il guardiano dei LED scatta adesso, sa che vanno spenti.
+            saved = self.state.get('rgb_saved') if self.state.get('rgb_off') else None
+            if eco: self.state.update(rgb_off=True, rgb_off_by=by); json_save(STATE_FILE, self.state)
+        stamp = self.rgb_user_at
         def run():
             import openrgb_sdk
             try:
-                self.openrgb_ready()
-                if eco:
-                    saved = self.state.get('rgb_saved') if self.state.get('rgb_off') else None
-                    snaps, done = openrgb_sdk.all_off(saved, exclude=self.rgb_excluded())
-                    with self.lock:
-                        self.state.update(rgb_saved=snaps, rgb_off=True); json_save(STATE_FILE, self.state)
-                else:
-                    done = openrgb_sdk.all_restore(self.state.get('rgb_saved') or {}, cfg.get('normal_color', '#ffffff'), self.rgb_excluded())
-                    with self.lock:
-                        self.state.update(rgb_off=False); self.state.pop('rgb_saved', None); json_save(STATE_FILE, self.state)
+                with self.rgb_lock:
+                    self.openrgb_ready()
+                    if eco:
+                        snaps, done = openrgb_sdk.all_off(saved, exclude=self.rgb_excluded())
+                        with self.lock:
+                            if self.state.get('rgb_off'): self.state['rgb_saved'] = snaps; json_save(STATE_FILE, self.state)
+                    else:
+                        done = openrgb_sdk.all_restore(self.state.get('rgb_saved') or {}, cfg.get('normal_color', '#ffffff'), self.rgb_excluded())
+                        with self.lock:
+                            self.state.update(rgb_off=False); self.state.pop('rgb_saved', None); self.state.pop('rgb_off_by', None)
+                            json_save(STATE_FILE, self.state)
                 self.log_event('RGB ' + ('spenti' if eco else 'riaccesi') + ': ' + (', '.join(done) or 'nessun dispositivo'))
+                if eco: self.rgb_settle(stamp)
             except Exception as ex:
                 self.log_event('OpenRGB non raggiungibile: ' + str(ex)[:200])
         # Il primo avvio del server richiede qualche secondo: non bloccare la finestra.
         threading.Thread(target=run, daemon=True, name='openrgb').start()
         return 'RGB: ' + ('spegnimento LED' if eco else 'riaccensione LED') + ' in corso'
+
+    def rgb_settle(self, stamp, sleep=time.sleep):
+        """Subito dopo lo spegnimento qualcuno può rimettere il suo effetto (MSI Center sincronizza la RAM, firmware
+        che riparte): i LED vengono rimessi spenti qualche volta nei secondi successivi. Si ferma se l'utente
+        nel frattempo ha dato un altro comando o li ha riaccesi."""
+        import openrgb_sdk
+        waited = 0
+        for at in RGB_OFF_SETTLE:
+            sleep(at - waited); waited = at
+            with self.rgb_lock:
+                if self.rgb_user_at != stamp or not self.state.get('rgb_off'): return
+                snaps, _ = openrgb_sdk.all_off(self.state.get('rgb_saved'), exclude=self.rgb_excluded())
+                with self.lock:
+                    if self.state.get('rgb_off'): self.state['rgb_saved'] = snaps; json_save(STATE_FILE, self.state)
 
     def msi_lights_restore(self):
         """La 1.0.68 poteva mettere in pausa le luci di MSI Center per spegnere l'ARCTIC. Provato sul PC: alla ripresa
@@ -1263,6 +1317,11 @@ class Control:
                 self.state['rgb_leds'] = total; json_save(STATE_FILE, self.state)
 
     def rgb_color(self, color, brightness=100, device=None, remember=True, quiet=False):
+        with self.rgb_lock:
+            if not quiet: self.rgb_user_at = time.monotonic()
+            return self._rgb_color(color, brightness, device, remember, quiet)
+
+    def _rgb_color(self, color, brightness, device, remember, quiet):
         """Un colore per tutti i dispositivi (device=None) o per uno solo; luminosità 0-100%."""
         import openrgb_sdk
         if not isinstance(color, str) or not re.fullmatch(r'#[0-9a-fA-F]{6}', color): raise ValueError('Colore non valido')
@@ -1291,7 +1350,10 @@ class Control:
                 json_save(CONFIG_FILE, self.config)
                 self.state.pop('rgb_gaming', None)
             # I LED sono di nuovo accesi con colori scelti: il prossimo ECO salverà questi.
-            self.state.update(rgb_off=False); self.state.pop('rgb_saved', None); json_save(STATE_FILE, self.state)
+            # Il guardiano (quiet) rimette solo i colori: non cambia mai lo stato acceso/spento.
+            if not quiet:
+                self.state.update(rgb_off=False); self.state.pop('rgb_saved', None); self.state.pop('rgb_off_by', None)
+                json_save(STATE_FILE, self.state)
         msg = 'Colore ' + color.upper() + f' ({brightness}%) su ' + ', '.join(dict.fromkeys(done))
         if not quiet: self.log_event('RGB: ' + msg)
         return msg
@@ -1324,15 +1386,25 @@ class Control:
         if self.state.get('rgb_msi_paused') or self.config.get('rgb', {}).get('msi_off'): self.msi_lights_restore()
         rgb = self.config.get('rgb', {})
         if not rgb.get('enabled') or (rgb.get('eco_profile') and rgb.get('normal_profile')): return ''
-        import discovery, openrgb_sdk
+        import discovery
         now = time.monotonic()
+        if now - self.rgb_user_at < RGB_QUIET_AFTER_USER: return ''  # comando appena dato: lo gestisce lui
+        every = RGB_KEEP_OFF_EVERY if self.state.get('rgb_off') else RGB_KEEP_EVERY
         try: changed = MSI_LIGHT_LOG.stat().st_size != self.msi_log_pos
         except OSError: changed = False
-        if not (changed or resumed or now - self.rgb_kept_at >= RGB_KEEP_EVERY): return ''
+        if not (changed or resumed or now - self.rgb_kept_at >= every): return ''
         if not discovery.port_open(discovery.OPENRGB_PORT): return ''
-        reset = self.msi_light_reset()
-        if not (reset or resumed or now - self.rgb_kept_at >= RGB_KEEP_EVERY): return ''
-        self.rgb_kept_at = now
+        if not self.rgb_lock.acquire(blocking=False): return ''  # un comando LED è in corso
+        try:
+            if now - self.rgb_user_at < RGB_QUIET_AFTER_USER: return ''
+            reset = self.msi_light_reset()
+            if not (reset or resumed or now - self.rgb_kept_at >= every): return ''
+            self.rgb_kept_at = now
+            return self._rgb_keep(rgb, reset, resumed)
+        finally: self.rgb_lock.release()
+
+    def _rgb_keep(self, rgb, reset, resumed):
+        import openrgb_sdk
         why = 'MSI Center ha rimesso i suoi effetti' if reset else ('uscita dalla sospensione' if resumed else '')
         if self.state.get('rgb_off'):
             snaps, done = openrgb_sdk.all_off(self.state.get('rgb_saved'), exclude=self.rgb_excluded())
@@ -1384,17 +1456,17 @@ class Control:
         task = discovery.FAN_TASKS[profile]
         if profile in ('off','off_pump','max') and (not discovery.task_exists(task) or self.fans_profiles_outdated()):
             raise RuntimeError('Profilo "'+FAN_LEVEL_NAMES[level]+'" da aggiornare: sul PC premi "Aggiorna profili" nella pagina Ventole')
-        if not any((d / name).is_file() for d in (exe.parent / 'Configurations', exe.parent)):
+        if not any((d / name).is_file() for d in discovery.fancontrol_dirs(str(exe))):
             raise RuntimeError('Fan Control: profilo '+name+' assente')
         if name == discovery.FAN_FILES[profile] and discovery.task_exists(task):
             # Fan Control gira come amministratore: lo raggiungiamo con l'attività già autorizzata.
-            cmd(['schtasks', '/run', '/tn', task], 15)
+            self.fan_send(profile)
             with self.lock:
                 # Un livello scelto azzera le regolazioni fatte a mano sulle singole ventole.
                 self.state.update(fans_level=level, fans_pump=bool(level == 'off' and keep_pump), fans_eco=level in ('eco','off'), fans_custom={})
                 json_save(STATE_FILE, self.state)
             detail = {'normal': ' (BIOS)', 'max': ' (tutte: case, radiatore, pompa e scheda video al 100%)',
-                      'off': ' (tutte ferme' + (f', pompa al {discovery.PUMP_MIN_PERCENT}%' if keep_pump else ', anche la pompa') +
+                      'off': ' (tutte ferme' + (f', pompa e radiatore AIO al {discovery.PUMP_MIN_PERCENT}%' if keep_pump else ', anche la pompa') +
                              '; tornano normali da sole se CPU o GPU arrivano a 75 °C)',
                       'eco': ' (solo case, radiatore e pompa al BIOS)'}
             return 'Ventole: ' + FAN_LEVEL_NAMES[level] + detail[level]
@@ -1403,11 +1475,79 @@ class Control:
         subprocess.Popen([str(exe),'-c',name],**opts)
         return 'Ventole: richiesto profilo '+name+' (AIO escluso nei profili utente)'
 
+    def fan_rows(self, fans):
+        """Ventole con nome chiaro (o quello dato dall'utente) e quali mostrare: quelle che hanno girato almeno
+        una volta restano in elenco anche da ferme (Spente, GPU a 0 RPM al minimo); i connettori vuoti no."""
+        seen = set(self.state.get('fans_seen') or [])
+        new = {f.get('ctl') or f['name'] for f in fans if f.get('rpm', 0) > 0} - seen
+        if new:
+            seen |= new
+            with self.lock: self.state['fans_seen'] = sorted(seen); json_save(STATE_FILE, self.state)
+        names = self.config.get('fans', {}).get('names') or {}
+        custom = self.state.get('fans_custom') or {}
+        cooler = str(self.config.get('hardware', {}).get('cooler', '')).lower()
+        aio = any(w in cooler for w in ('liquid', 'aio', 'water', 'kraken', 'h100', 'h115', 'h150', 'lf ii', 'lf iii'))
+        pump_used = any('pump' in f['name'].lower() and (f.get('ctl') or f['name']) in seen for f in fans)
+        out = []
+        for f in fans:
+            key, low = f.get('ctl') or f['name'], f['name'].lower()
+            num = re.search(r'#?\s*(\d+)\s*$', f['name'])
+            if 'pump' in low: kind, label = 'pump', 'Pompa AIO'
+            elif re.match(r'cpu\s*(opt\s*)?fan', low):
+                kind = 'aio' if aio and not pump_used else 'cpu'
+                label = 'Radiatore AIO + pompa' if kind == 'aio' else ('Radiatore AIO' if aio else 'Ventola CPU')
+            elif low.startswith('system fan'): kind, label = 'case', 'Ventola case ' + (num.group(1) if num else '')
+            elif 'gpu' in low or '/gpu' in key or 'nvapi' in key.lower(): kind, label = 'gpu', 'Scheda video · ventola ' + (num.group(1) if num else '')
+            elif 'chipset' in low: kind, label = 'chipset', 'Ventola chipset'
+            elif 'ez' in low and 'connect' in low: kind, label = 'other', 'EZ Conn (connettore extra)'
+            else: kind, label = 'other', f['name']
+            out.append(dict(f, key=key, kind=kind, label=names.get(key) or label.strip(), auto_label=label.strip(),
+                            show=key in seen or kind == 'gpu' or key in custom))
+        return out
+
+    def fan_name(self, key, name):
+        """Nome scelto dall'utente per una ventola (vuoto = torna quello automatico)."""
+        if not isinstance(key, str) or not 1 <= len(key) <= 90: raise ValueError('Ventola non valida')
+        name = re.sub(r'\s+', ' ', str(name or '')).strip()
+        if len(name) > 32: raise ValueError('Nome troppo lungo: massimo 32 caratteri')
+        with self.lock:
+            names = self.config.setdefault('fans', {}).setdefault('names', {})
+            if name: names[key] = name
+            else: names.pop(key, None)
+            json_save(CONFIG_FILE, self.config)
+            self.cached_telemetry = None
+        return 'Nome salvato' if name else 'Nome automatico'
+
+    def fan_send(self, key, sleep=time.sleep):
+        """Manda a Fan Control un profilo (attività già autorizzata) e controlla che lo carichi davvero.
+        Le ventole "impallate" dopo un cambio: due avvii troppo vicini, oppure l'attività di prima ancora aperta
+        (Windows ignora un'attività che sta già girando). Ora: uno alla volta, chiusa e rilanciata, e verificata."""
+        import discovery
+        exe = self.config.get('fans', {}).get('fancontrol_exe', '')
+        want = discovery.FAN_FILES[key]
+        with self.fan_lock:
+            wait = FAN_SPACING - (time.monotonic() - self.fan_sent[0])
+            if wait > 0: sleep(wait)
+            if not discovery.task_restart(discovery.FAN_TASKS[key]): raise RuntimeError('Fan Control: attività non avviata')
+            self.fan_sent = stamp = (time.monotonic(), want)
+        if not discovery.fancontrol_config_loaded(exe): return  # versione di Fan Control senza CACHE: niente verifica
+        def verify():
+            for attempt in (1, 2):
+                for _ in range(FAN_VERIFY_SECONDS):
+                    sleep(1)
+                    if self.fan_sent != stamp and self.fan_sent[1] != want: return  # nel frattempo scelto altro
+                    if discovery.fancontrol_config_loaded(exe) == want: return
+                if attempt == 1:
+                    logging.info('Fan Control non ha caricato %s: nuovo tentativo', want)
+                    with self.fan_lock: discovery.task_restart(discovery.FAN_TASKS[key])
+            self.log_event(f'⚠ Ventole: Fan Control non ha caricato il profilo {want}. Aprilo e controlla che il servizio sia acceso.')
+        threading.Thread(target=verify, daemon=True, name='fan-verify').start()
+
     def fans_manual_ready(self):
         """Profili "Manuale" creati e scrivibili: serve aver premuto Configura/Aggiorna profili da questa versione."""
         import discovery
         exe = Path(self.config.get('fans', {}).get('fancontrol_exe', ''))
-        f = exe.parent / 'Configurations' / discovery.FAN_FILES['manual_a']
+        f = discovery.fancontrol_config_dir(str(exe)) / discovery.FAN_FILES['manual_a']
         at, ready = getattr(self, 'fans_manual_cache', (0.0, False))
         if time.monotonic() - at > 60:
             ready = f.is_file() and os.access(f, os.W_OK) and discovery.task_exists(discovery.FAN_TASKS['manual_a'])
@@ -1424,7 +1564,7 @@ class Control:
         if percent is not None and (type(percent) is not int or not 0 <= percent <= 100): raise ValueError('Velocità 0–100%')
         if percent is not None and curve is not None: raise ValueError('Scegli velocità fissa oppure curva')
         exe = Path(cfg.get('fancontrol_exe', ''))
-        folder = exe.parent / 'Configurations'
+        folder = discovery.fancontrol_config_dir(str(exe))
         if not self.fans_manual_ready():
             self.fans_manual_cache = (0.0, False)
             raise RuntimeError('Per regolare le singole ventole premi "Aggiorna profili" nella pagina Ventole (una conferma)')
@@ -1436,10 +1576,13 @@ class Control:
         target = next((c for c in ctls if str(c.get('Identifier', '')) == ident), None)
         if not target: raise ValueError('Questa ventola non è regolabile da Fan Control')
         name = str(target.get('NickName') or 'Ventola')
-        if percent is not None and discovery.is_pump(name, ident) and percent < discovery.PUMP_MIN_PERCENT:
+        kind = next((f['kind'] for f in self.fan_rows(collect_sensors(self.config.get('sensors', {}).get('libre_hardware_monitor', '')).get('fans') or [])
+                     if f['key'] == ident), '')
+        pumpish = discovery.is_pump(name, ident) or kind == 'aio'  # AIO su CPU_FAN: pompa e ventole sullo stesso cavo
+        if percent is not None and pumpish and percent < discovery.PUMP_MIN_PERCENT:
             raise ValueError(f'La pompa non scende sotto il {discovery.PUMP_MIN_PERCENT}%: raffredda il processore')
         if curve is not None:
-            curve = discovery.fan_curve_clean(curve, discovery.is_pump(name, ident))
+            curve = discovery.fan_curve_clean(curve, pumpish)
             if curve['src'] not in ('cpu', 'gpu') and self.sensor_name(curve['src']) == curve['src']:
                 raise ValueError('Sensore non trovato: serve LibreHardwareMonitor acceso')
         custom = {k: v for k, v in (self.state.get('fans_custom') or {}).items() if isinstance(v, (int, dict))}
@@ -1449,11 +1592,12 @@ class Control:
         temp_ids = collect_sensors(self.config.get('sensors', {}).get('libre_hardware_monitor', '')).get('temp_ids') or {}
         discovery.apply_fan_custom(prof, custom, temp_ids)
         slot = 'manual_b' if self.state.get('fans_slot') == 'manual_a' else 'manual_a'
-        (folder / discovery.FAN_FILES[slot]).write_text(json.dumps(prof, indent=2), encoding='utf-8')
-        cmd(['schtasks', '/run', '/tn', discovery.FAN_TASKS[slot]], 15)
+        with self.fan_lock:  # A e B a turno: non riscrivere il file mentre Fan Control lo sta caricando
+            (folder / discovery.FAN_FILES[slot]).write_text(json.dumps(prof, indent=2), encoding='utf-8')
+        self.fan_send(slot)
         with self.lock:
             self.state.update(fans_custom=custom, fans_slot=slot); json_save(STATE_FILE, self.state)
-        nice = name.replace('CPU Fan', 'Radiatore').replace('Pump Fan', 'Pompa').replace('System Fan', 'Ventola case')
+        nice = (self.config.get('fans', {}).get('names') or {}).get(ident) or name.replace('CPU Fan', 'Radiatore').replace('Pump Fan', 'Pompa').replace('System Fan', 'Ventola case')
         msg = f'{nice}: ' + (f'{percent}% fisso' if percent is not None else
                              f"curva sulla temperatura {self.sensor_name(curve['src'])}" if curve is not None else 'torna al profilo ' + FAN_LEVEL_NAMES.get(level, level))
         self.log_event('Ventole · ' + msg)
@@ -1467,6 +1611,7 @@ class Control:
             slow = any(isinstance(v, int) and v < 30 for v in (self.state.get('fans_custom') or {}).values())
             if self.state.get('fans_level') != 'off' and not slow:
                 blind = 0; continue
+            if windows_shutting_down(): blind = 0; continue  # i sensori si chiudono: non è un guasto
             try:
                 cpu = collect_sensors(self.config.get('sensors',{}).get('libre_hardware_monitor',''))['cpu_temp']
                 gpu = gpu_read()['temp']
@@ -1558,7 +1703,9 @@ class Control:
             self.state['rgb_gaming'] = True; self.save_state()
             return 'Luci Gaming: ' + msg
         eco_off = value == 'eco' and self.eco_settings()['leds_off']
-        note = self.rgb_profile(eco_off) if eco_off or not notes else ''
+        if eco_off: note = self.rgb_profile(True, by='mode')
+        elif notes or self.state.get('rgb_off_by') == 'user': note = ''  # spenti a mano: restano spenti
+        else: note = self.rgb_profile(False)
         return ' · '.join(n for n in notes + [note] if n)
 
     def set_auto(self, enable):
@@ -1848,7 +1995,7 @@ class Control:
                 'cpu_temp':sensors['cpu_temp'],
                 'gpu':gpu['load'], 'gpu_temp':gpu['temp'], 'gpu_watts':gpu['watts'],
                 'ram':round(mem.percent,1),'ram_used':round(mem.used/1024**3,1),
-                'ram_total':round(mem.total/1024**3,1), 'fans':sensors['fans'],
+                'ram_total':round(mem.total/1024**3,1), 'fans':self.fan_rows(sensors['fans']),
                 'cpu_power':sensors.get('cpu_power'), 'temps':sensors.get('temps') or [],
             }
             rgb=self.config.get('rgb',{})

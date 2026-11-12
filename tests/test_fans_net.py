@@ -87,7 +87,8 @@ def test_fan_set_writes_alternate_manual_profiles(tmp_path, monkeypatch):
     (folder / discovery.FAN_FILES['normal']).write_text(json.dumps(_profile()), encoding='utf-8')
     c.config['fans'] = {'enabled': True, 'fancontrol_exe': str(exe)}
     ran = []
-    monkeypatch.setattr(core, 'cmd', lambda args, t=0: ran.append(args) or '')
+    monkeypatch.setattr(discovery, 'task_restart', lambda task: ran.append([task]) or True)
+    monkeypatch.setattr(core, 'FAN_SPACING', 0)
     monkeypatch.setattr(c, 'fans_manual_ready', lambda: True)
     monkeypatch.setattr(core, 'collect_sensors', lambda url: {'temp_ids': {'cpu': '/amdcpu/0/temperature/2'}})
     assert '40%' in c.fan_set('/lpc/x/control/1', 40)
@@ -142,3 +143,48 @@ def test_riot_skips_uninstalled_games(tmp_path):
     assert gaming_boost.riot_games(tmp_path) == []                               # cartella vuota: disinstallato
     (live / 'VALORANT.exe').write_text('x')
     assert [g['name'] for g in gaming_boost.riot_games(tmp_path)] == ['VALORANT']
+
+def test_fan_rows_names_and_stopped_fans(tmp_path, monkeypatch):
+    c, core = _controller(tmp_path, monkeypatch)
+    c.config['hardware'] = {'cooler': 'ARCTIC Liquid Freezer II 240'}
+    fans = [{'name': 'CPU Fan', 'rpm': 810, 'ctl': '/lpc/n/control/0'}, {'name': 'Pump Fan #1', 'rpm': 0, 'ctl': '/lpc/n/control/1'},
+            {'name': 'System Fan #2', 'rpm': 745, 'ctl': '/lpc/n/control/11'}, {'name': 'System Fan #5', 'rpm': 0, 'ctl': '/lpc/n/control/14'},
+            {'name': 'GPU Fan 1', 'rpm': 0, 'ctl': '/gpu-nvidia/0/control/1'}]
+    rows = {r['name']: r for r in c.fan_rows(fans)}
+    assert rows['CPU Fan']['kind'] == 'aio' and rows['CPU Fan']['label'] == 'Radiatore AIO + pompa'
+    assert not rows['Pump Fan #1']['show'] and not rows['System Fan #5']['show']   # connettori vuoti
+    assert rows['GPU Fan 1']['show'] and rows['GPU Fan 1']['label'] == 'Scheda video · ventola 1'
+    fans[2]['rpm'] = 0   # Spente: resta in elenco perché l'ha già vista girare
+    assert {r['name']: r for r in c.fan_rows(fans)}['System Fan #2']['show']
+    c.fan_name('/lpc/n/control/11', '  Frontale   alta ')
+    assert {r['name']: r for r in c.fan_rows(fans)}['System Fan #2']['label'] == 'Frontale alta'
+    c.fan_name('/lpc/n/control/11', '')
+    assert {r['name']: r for r in c.fan_rows(fans)}['System Fan #2']['label'] == 'Ventola case 2'
+
+def test_fancontrol_service_counts_as_running(monkeypatch):
+    monkeypatch.setattr(discovery, 'process_running', lambda n: n == 'FanControl.Service.exe')
+    assert discovery.fancontrol_running()
+
+def test_fan_send_retries_when_the_profile_is_not_loaded(tmp_path, monkeypatch):
+    c, core = _controller(tmp_path, monkeypatch)
+    c.config['fans'] = {'enabled': True, 'fancontrol_exe': str(tmp_path / 'FanControl.exe')}
+    c.events = []; c.log_event = c.events.append
+    runs, loaded = [], ['PCECO-Normale.json']
+    monkeypatch.setattr(discovery, 'task_restart', lambda t: runs.append(t) or True)
+    monkeypatch.setattr(discovery, 'fancontrol_config_loaded', lambda exe: loaded[0])
+    monkeypatch.setattr(core.threading, 'Thread', lambda target, **k: type('T', (), {'start': lambda self: target()})())
+    monkeypatch.setattr(core, 'FAN_VERIFY_SECONDS', 2)
+    c.fan_send('eco', sleep=lambda s: None)
+    assert runs == [discovery.FAN_TASKS['eco']] * 2   # non caricato: chiusa e rilanciata una volta
+    assert any("non ha caricato" in e for e in c.events)
+
+def test_profiles_go_where_fan_control_reads_them(tmp_path, monkeypatch):
+    """Fan Control con la cartella dei profili spostata (opzioni → cartella personalizzata): prima i profili di NEXAR
+    finivano altrove e "Silenziose" o "Massimo" non cambiavano nulla."""
+    exe = tmp_path / 'FanControl' / 'FanControl.exe'; (exe.parent / 'Configurations').mkdir(parents=True)
+    custom = tmp_path / 'Documenti' / 'FanControl'; custom.mkdir(parents=True)
+    (exe.parent / 'Configurations' / 'CACHE').write_text(json.dumps({'CurrentConfigFileName': 'Mio.json', 'CustomConfigFolder': str(custom)}))
+    monkeypatch.setattr(discovery, 'user_sid', lambda: '')
+    assert discovery.fancontrol_config_dir(str(exe)) == custom
+    script = discovery.fancontrol_script(str(exe), tmp_path / 'staging')
+    assert str(custom / 'PCECO-Eco.json') in script and str(exe.parent / 'Configurations' / 'PCECO-Eco.json') in script

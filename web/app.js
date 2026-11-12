@@ -3,6 +3,11 @@
 'use strict';
 const $=id=>document.getElementById(id);
 const demo=new URLSearchParams(location.search).get('demo')==='1';
+// Animazioni: decide l'impostazione di NEXAR (Liquido, Discreto, Spente). Prima vinceva "Effetti animazione"
+// di Windows: spento quello, in NEXAR sparivano anche se scelte. calm.matches resta il nome usato ovunque.
+const osCalm=matchMedia('(prefers-reduced-motion: reduce)');
+const calm={get matches(){return animStyle()==='off';}};
+function applyCalm(){document.documentElement.classList.toggle('calm',calm.matches);const n=$('cfg-anim-os');if(n)n.hidden=!osCalm.matches||calm.matches;}
 const titles={
  home:['Panoramica','Il tuo PC sotto controllo, ovunque tu sia.'],
  energy:['Consumi','Quanto assorbe il PC dalla presa, componente per componente.'],
@@ -98,7 +103,7 @@ function noteSplit(s){
 }
 function topNote(o={}){
  // Pillola nera che scende dall'alto e si allarga col contenuto; può avere pulsanti e una barra di avanzamento.
- const stack=$('nt-stack'),still=matchMedia('(prefers-reduced-motion: reduce)').matches;
+ const stack=$('nt-stack'),still=calm.matches;
  stack.classList.toggle('below-isl',!!document.querySelector('.isl'));
  const n=el('div','nt');n.style.setProperty('--c',o.col||NT_COL.info);
  const ico=el('span','nt-ico');const ring=document.createElementNS('http://www.w3.org/2000/svg','svg');ring.setAttribute('class','nt-ring');ring.setAttribute('viewBox','0 0 40 40');
@@ -334,6 +339,7 @@ function push(arr,v){if(typeof v==='number'){arr.push(v);if(arr.length>60)arr.sh
 
 /* ---------- rendering ---------- */
 function render(s){
+ queueMicrotask(applyCalm);
  current=s;
  modeFx(s.mode);
  const eco=s.mode==='eco';
@@ -360,7 +366,8 @@ function render(s){
  const fs=$('fan-spin');if(fs){fs.style.animationDuration=avg?Math.max(.35,Math.min(4,900/avg)).toFixed(2)+'s':'0s';fs.classList.toggle('still',!avg);}
  renderHomeHero(s);
  $('hw-cpu').textContent=deg(s.cpu_temp);$('hw-gpu').textContent=deg(s.gpu_temp);
- [['cpu',s.cpu_temp,80],['gpu',s.gpu_temp,78]].forEach(([k,v,hot])=>{const a=$(`hw-${k}-arc`);if(!a)return;
+ const mb=boardTemp(s);$('tg-mb').hidden=mb==null;$('hw-mb-t').textContent=deg(mb);
+ [['cpu',s.cpu_temp,80],['gpu',s.gpu_temp,78],['mb',mb,60]].forEach(([k,v,hot])=>{const a=$(`hw-${k}-arc`);if(!a)return;
   a.style.strokeDasharray=`${typeof v==='number'?Math.min(75,Math.max(0,v)/100*75).toFixed(1):0} 100`;$('tg-'+k).classList.toggle('hot',v>=hot);
   const col=!(v>0)?'#475569':v<60?'#34d399':v<hot-5?'#fbbf24':'#f87171';a.style.stroke=col;a.style.filter=`drop-shadow(0 0 6px ${col})`;});
  // Agenti e automazione
@@ -376,7 +383,7 @@ function render(s){
  $('fans-upgrade-title').textContent=s.fans_levels_ready?'Nuovo Massimo: tutte le ventole al 100%':'Nuovi profili Spente e Massimo';
  const fanN=(s.fans||[]).filter(f=>f.rpm>0).length;
  $('cool-title').textContent=!s.fans_enabled?'Gestione del BIOS':{off:'Ventole spente',eco:'Profilo silenzioso',max:'Tutte al massimo'}[s.fans_level]||'Profilo normale';
- $('cool-sub').textContent=fanN?`${fanN} ventole in funzione${avg?` · media ${avg} RPM`:''} · CPU ${deg(s.cpu_temp)} · GPU ${deg(s.gpu_temp)}`:'Nessuna ventola rilevata: collega i sensori in Collegamenti';
+ $('cool-sub').textContent=fanN?`${fanN} ventole in funzione${avg?` · media ${avg} RPM`:''} · CPU ${deg(s.cpu_temp)} · GPU ${deg(s.gpu_temp)}${boardTemp(s)!=null?` · scheda madre ${deg(boardTemp(s))}`:''}`:'Nessuna ventola rilevata: collega i sensori in Collegamenti';
  $('cool-hero').dataset.level=s.fans_enabled?(s.fans_level||'normal'):'bios';
  // la ventola disegnata dietro gira alla velocità media di quelle vere
  $('cool-hero').style.setProperty('--spin',avg?Math.max(.5,Math.min(8,2400/avg)).toFixed(2)+'s':'0s');$('cool-hero').classList.toggle('still',!avg);
@@ -483,35 +490,40 @@ function hideSplash(){
 }
 function renderFans(fans){
  const box=$('fan-list');
- const spinning=fans.filter(f=>f.rpm>0),empty=fans.length-spinning.length;
+ // Anche le ventole ferme (Spente, scheda video a 0 RPM al minimo) restano: si possono aprire e regolare.
+ const spinning=fans.filter(fanShown),empty=fans.length-spinning.length;
  const free=$('fan-free');free.hidden=!empty;free.textContent=`${empty} connettori liberi`;
- if(!spinning.length){box._map=null;box.replaceChildren(el('p','muted',fans.length?'Ventole ferme in questo momento.':'Nessun RPM disponibile: collega i sensori in Collegamenti.'));return;}
+ if(!spinning.length){box._map=null;box.replaceChildren(el('p','muted',fans.length?'Nessuna ventola collegata ai connettori letti.':'Nessun RPM disponibile: collega i sensori in Collegamenti.'));return;}
  if(!box._map){box._map=new Map();box.replaceChildren();}
  const seen=new Set();
  spinning.forEach((f,i)=>{
-  const pump=/pump/i.test(f.name),max=pump?3000:1800,pct=Math.min(100,f.rpm/max*100);seen.add(f.name);
-  let c=box._map.get(f.name);
+  const k=f.key||f.name,pump=f.kind?f.kind==='pump':/pump/i.test(f.name),max=pump?3000:1800,pct=Math.min(100,f.rpm/max*100);seen.add(k);
+  let c=box._map.get(k);
   if(!c){c=el('div','fan2'+(pump?' pump':''));c.style.setProperty('--i',i);c.tabIndex=0;c.setAttribute('role','button');
    c.addEventListener('click',()=>openFan(c._f));c.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openFan(c._f);}});
    c.innerHTML=`<div class="f2-dial"><svg viewBox="0 0 60 60"><circle class="f2-track" cx="30" cy="30" r="26" pathLength="100"/><circle class="f2-fill" cx="30" cy="30" r="26" pathLength="100"/></svg><svg class="i f2-spin"><use href="#i-fan"/></svg></div><div class="f2-txt"><small></small><b></b></div>`;
-   c.querySelector('small').textContent=f.name.replace('CPU Fan','Radiatore').replace('Pump Fan','Pompa').replace('System Fan','Ventola case');
-   box._map.set(f.name,c);box.append(c);}
+   box._map.set(k,c);box.append(c);}
+  c.querySelector('small').textContent=fanLabel(f);c.classList.toggle('still',!f.rpm);
   c._f=f;const cu=(current?.fans_custom||{})[f.ctl],cv=cu&&typeof cu==='object';c.classList.toggle('custom',cu!=null);
-  c.setAttribute('aria-label',`${FAN_NICE(f.name)}: ${f.rpm} RPM${cv?`, con curva sulla ${srcLabel(cu.src)}`:cu!=null?`, fissa al ${cu}%`:''}. Apri per regolarla`);
+  c.setAttribute('aria-label',`${fanLabel(f)}: ${f.rpm} RPM${cv?`, con curva sulla ${srcLabel(cu.src)}`:cu!=null?`, fissa al ${cu}%`:''}. Apri per regolarla`);
   let tag=c.querySelector('.f2-tag');if(cu!=null){if(!tag){tag=el('span','f2-tag');c.append(tag);}tag.textContent=cv?'Curva':cu+'%';tag.classList.toggle('cv',cv);}else tag?.remove();
-  c.querySelector('b').innerHTML=`${f.rpm}<em>RPM</em>`;
+  c.querySelector('b').innerHTML=f.rpm?`${f.rpm}<em>RPM</em>`:'Ferma';
   if(fanSheet.f?.ctl===f.ctl){fanSheetLive(f);if(fanSheet.mode==='curve'&&fanSheet.drag<0)fanCurveDraw();}
   c.querySelector('.f2-fill').style.strokeDasharray=`${pct.toFixed(1)} 100`;
-  c.querySelector('.f2-spin').style.animationDuration=Math.max(.3,Math.min(4,900/f.rpm)).toFixed(2)+'s';
+  c.querySelector('.f2-spin').style.animationDuration=f.rpm?Math.max(.3,Math.min(4,900/f.rpm)).toFixed(2)+'s':'0s';
  });
  [...box._map].forEach(([k,c])=>{if(!seen.has(k)){c.remove();box._map.delete(k);}});
 }
 /* ---------- una ventola alla volta: scheda con regolazione manuale ---------- */
 const FAN_NICE=n=>String(n||'Ventola').replace('CPU Fan','Radiatore').replace('Pump Fan','Pompa AIO').replace('System Fan','Ventola case');
+const fanLabel=f=>f?.label||FAN_NICE(f?.name);
+const fanShown=f=>f.show??f.rpm>0;
+// Pompa, oppure CPU_FAN con un AIO che ha pompa e ventole sullo stesso cavo: mai sotto il 40% a mano.
+const fanPumpish=f=>f?(f.kind?f.kind==='pump'||f.kind==='aio':/pump/i.test(f.name||'')):false;
 const fanSheet={f:null,mode:'auto',val:50,src:'cpu',pts:null,drag:-1};
 const FAN_CURVES={quiet:[[40,20],[60,35],[72,55],[85,100]],bal:[[35,30],[55,45],[70,70],[80,100]],perf:[[30,45],[50,60],[65,85],[75,100]]};
 function fanSheetLive(f){
- fanSheet.f=f;const pump=/pump/i.test(f.name),pct=Math.min(100,f.rpm/(pump?3000:1800)*100);
+ fanSheet.f=f;const pump=f.kind?f.kind==='pump':/pump/i.test(f.name),pct=Math.min(100,f.rpm/(pump?3000:1800)*100);
  $('fs-rpm').textContent=f.rpm;$('fs-arc').style.strokeDasharray=`${pct.toFixed(1)} 100`;
  $('fs-spin').style.animationDuration=f.rpm>0?Math.max(.25,Math.min(4,900/f.rpm)).toFixed(2)+'s':'0s';
  $('fan-sheet').classList.toggle('still',!f.rpm);
@@ -525,9 +537,11 @@ function fanSheetMode(m){
 const CV={x0:34,x1:310,y0:10,y1:156,t0:20,t1:100};
 const cvX=t=>CV.x0+(t-CV.t0)/(CV.t1-CV.t0)*(CV.x1-CV.x0),cvY=d=>CV.y0+(100-d)/100*(CV.y1-CV.y0);
 function cvDuty(pts,t){if(t<=pts[0][0])return pts[0][1];for(let i=1;i<pts.length;i++){const[a,b]=[pts[i-1],pts[i]];if(t<=b[0])return a[1]+(b[1]-a[1])*(t-a[0])/(b[0]-a[0]);}return pts[pts.length-1][1];}
-const fanIsPump=()=>/pump/i.test(fanSheet.f?.name||'');
+const fanIsPump=()=>fanPumpish(fanSheet.f);
 function fanCurveSet(pts){const min=fanIsPump()?40:0;fanSheet.pts=pts.map(([t,d])=>[t,Math.max(min,d)]);
  for(let i=1;i<fanSheet.pts.length;i++)fanSheet.pts[i][1]=Math.max(fanSheet.pts[i][1],fanSheet.pts[i-1][1]);fanCurveDraw();fanSheetSafe();}
+// Temperatura della scheda madre: il sensore "Sistema" (o il più caldo se manca).
+function boardTemp(s){const g=(s.temps||[]).find(x=>x.kind==='board');if(!g||!g.rows?.length)return null;const r=g.rows.find(x=>x.name==='Sistema')||g.rows.reduce((a,b)=>b.value>a.value?b:a);return r.value;}
 function tempRow(id){for(const g of current?.temps||[])for(const r of g.rows||[])if(r.id===id)return {g,r};return null;}
 function srcLabel(src){if(src==='cpu'||src==='gpu')return src.toUpperCase();const x=tempRow(src);return x?(x.g.kind==='board'?x.r.name.replace(/ \(.*\)/,''):x.r.name+' '+(x.g.kind==='gpu'?'GPU':'CPU')):'sensore';}
 const FAN_SRC_RX=/^\/(amdcpu|intelcpu|gpu-nvidia|gpu-amd|gpu-intel|lpc)\/[A-Za-z0-9_-]+(\/\d+)?\/temperature\/\d+$/;
@@ -593,21 +607,23 @@ document.querySelectorAll('#fs-src button').forEach(b=>b.addEventListener('click
 $('fs-src-more')?.addEventListener('change',e=>{fanSheet.src=e.target.value||'cpu';fanCurveDraw();});
 document.querySelectorAll('#fs-cpresets button').forEach(b=>b.addEventListener('click',()=>fanCurveSet(FAN_CURVES[b.dataset.c])));
 function fanSheetVal(v){
- const pump=/pump/i.test(fanSheet.f?.name||''),min=pump?40:0;v=Math.max(min,Math.min(100,Math.round(v)));fanSheet.val=v;
+ const pump=fanPumpish(fanSheet.f),min=pump?40:0;v=Math.max(min,Math.min(100,Math.round(v)));fanSheet.val=v;
  const r=$('fs-range');r.min=min;r.value=v;r.style.setProperty('--v',((v-min)/(100-min)*100).toFixed(1)+'%');
  $('fs-pct').textContent=v;$('fan-sheet').style.setProperty('--fv',v);
  document.querySelectorAll('#fs-presets button').forEach(b=>{const p=+b.dataset.p;b.disabled=p<min;b.classList.toggle('selected',p===v);});
- $('fs-note').textContent=pump?'La pompa non scende sotto il 40%: tiene freddo il processore.'
+ $('fs-note').textContent=pump?(fanSheet.f?.kind==='aio'?'Su questo cavo ci sono ventole e pompa dell\'AIO insieme: a mano non scende sotto il 40%. Per fermarle tutte usa Spente → "anche la pompa" (tornano su da sole a 75 °C).':'La pompa non scende sotto il 40%: tiene freddo il processore.')
   :v===0?'Ferma: se CPU o GPU arrivano a 75 °C torna normale da sola.':v<30?'Molto lenta: se CPU o GPU arrivano a 75 °C torna normale da sola.':'';
 }
 function openFan(f){
  if(!f)return;const d=$('fan-sheet'),cu=(current?.fans_custom||{})[f.ctl],ready=!!current?.fans_manual_ready,enabled=current?.fans_enabled!==false;
- $('fs-name').textContent=FAN_NICE(f.name);
- $('fs-kind').textContent=/pump/i.test(f.name)?'Pompa del liquido':/cpu/i.test(f.name)?'Radiatore del processore':/system/i.test(f.name)?'Ventola del case':'Ventola';
+ $('fs-name').textContent=fanLabel(f);$('fs-name').hidden=false;$('fs-rename-box').hidden=true;
+ $('fs-kind').textContent={pump:'Pompa del liquido',aio:'Ventole e pompa AIO · stesso cavo',cpu:'Ventola del processore',case:'Ventola del case',gpu:'Scheda video',chipset:'Chipset'}[f.kind]
+  ||(/pump/i.test(f.name)?'Pompa del liquido':/cpu/i.test(f.name)?'Radiatore del processore':/system/i.test(f.name)?'Ventola del case':'Ventola');
+ $('fs-header').textContent=`connettore ${f.name}`;
  const cv=cu&&typeof cu==='object';
  $('fs-mode').textContent=cv?`curva sulla ${srcLabel(cu.src)}`:cu!=null?`fissa al ${cu}%`:'segue il profilo';
  fanSheetLive(f);fanSheet.src=cv?cu.src:(/gpu/i.test(f.name)?'gpu':'cpu');fanSrcOptions();fanCurveSet(cv?cu.pts.map(p=>[...p]):FAN_CURVES.bal);
- fanSheetVal(typeof cu==='number'?cu:(/pump/i.test(f.name)?60:50));fanSheetMode(cv?'curve':cu!=null?'manual':'auto');
+ fanSheetVal(typeof cu==='number'?cu:(fanPumpish(f)?60:50));fanSheetMode(cv?'curve':cu!=null?'manual':'auto');
  $('fs-ctl').hidden=!ready||!enabled||!f.ctl;$('fs-setup').hidden=ready&&enabled;
  $('fs-setup-text').textContent=!enabled?'La gestione delle ventole non è collegata: attivala da Collegamenti (serve Fan Control).'
   :current?.remote?'Per regolare ogni ventola a mano serve una conferma da amministratore, una volta sola: falla dalla app sul PC.'
@@ -615,6 +631,16 @@ function openFan(f){
  const ap=$('fs-apply');ap.hidden=!enabled||(!ready&&!!current?.remote);ap.textContent=ready?'Applica':'Attiva regolazione';
  if(!d.open)d.showModal();
 }
+function fanRename(save){
+ const box=$('fs-rename-box'),inp=$('fs-rename-in'),f=fanSheet.f;if(!f)return;
+ if(!save){inp.value=f.auto_label&&f.label!==f.auto_label?f.label:'';inp.placeholder=f.auto_label||FAN_NICE(f.name);box.hidden=false;$('fs-name').hidden=true;inp.focus();return;}
+ const name=inp.value.trim();box.hidden=true;$('fs-name').hidden=false;$('fs-name').textContent=name||f.auto_label||FAN_NICE(f.name);
+ if(demo){f.label=name||f.auto_label;notify('Anteprima: nome cambiato solo qui.');return;}
+ req('/api/fans/name','POST',{id:f.key||f.ctl||f.name,name}).then(r=>{notify('✓ '+r.message);refresh();}).catch(ex=>notify('⚠ '+ex.message,true));
+}
+$('fs-rename').addEventListener('click',()=>fanRename(false));
+$('fs-rename-ok').addEventListener('click',()=>fanRename(true));
+$('fs-rename-in').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();fanRename(true);}if(e.key==='Escape'){e.preventDefault();e.stopPropagation();$('fs-rename-box').hidden=true;$('fs-name').hidden=false;}});
 function closeFan(){const d=$('fan-sheet');if(d.open)d.close();fanSheet.f=null;}
 document.querySelectorAll('#fs-modes button').forEach(b=>b.addEventListener('click',()=>fanSheetMode(b.dataset.m)));
 $('fs-range').addEventListener('input',e=>{fanSheetVal(+e.target.value);if(fanSheet.mode!=='manual')fanSheetMode('manual');});
@@ -627,7 +653,7 @@ $('fs-apply').addEventListener('click',async()=>{
  if(!current?.fans_manual_ready){closeFan();post('/api/fans/setup',{});return;}
  const percent=fanSheet.mode==='manual'?fanSheet.val:null,curve=fanSheet.mode==='curve'?{src:fanSheet.src,pts:fanSheet.pts.map(p=>[...p])}:null;closeFan();
  if(demo){current.fans_custom[f.ctl]=curve||percent;if(curve==null&&percent==null)delete current.fans_custom[f.ctl];
-  notify(`✓ ${FAN_NICE(f.name)}: `+(curve?`curva sulla ${srcLabel(curve.src)}`:percent==null?'torna al profilo':`${percent}% fisso`));return;}
+  notify(`✓ ${fanLabel(f)}: `+(curve?`curva sulla ${srcLabel(curve.src)}`:percent==null?'torna al profilo':`${percent}% fisso`));return;}
  post('/api/fans/one',{id:f.ctl,percent,curve});
 });
 const COMP_ICON={cpu:'cpu',gpu:'gpu',board:'grid',ram:'ram',disks:'disk',cooling:'fan',rgb:'bulb',usb:'plug',monitor:'monitor',loss:'bolt'};
@@ -716,8 +742,9 @@ function renderPc(pc){
  const setStep=(id,ok)=>{$(id).classList.toggle('ok',ok===true);$(id).classList.toggle('bad',ok===false);};
  setStep('wol-net',!!n);
  $('wol-net-text').textContent=n?`${n.desc.replace(/\s*(Family )?Controller$/i,'')} · ${n.ip}`:'Nessun cavo di rete: col solo Wi-Fi il PC spento non si accende.';
- const winOk=!!n&&n.wol_magic!==false&&n.wol_shutdown!==false;setStep('wol-win',n?winOk:null);
- $('wol-win-text').textContent=!n?'—':winOk?'Attivo, anche da spento':'Da attivare (una conferma)';
+ const winOk=!!n&&n.wol_magic!==false&&n.wol_shutdown!==false&&!n.wol_eee;setStep('wol-win',n?winOk:null);
+ $('wol-win-text').textContent=!n?'—':winOk?'Attivo, anche da spento':n.wol_magic!==false&&n.wol_shutdown!==false
+  ?'Da sistemare: il risparmio energetico Ethernet addormenta la rete a PC spento (una conferma)':'Da attivare (una conferma)';
  $('wol-enable').hidden=!n||winOk||!!current?.remote;
  $('wol-phone').textContent=n?`Senza Umbrel: un'app Wake-on-LAN sul telefono collegato al Wi-Fi di casa, con MAC ${n.mac} e indirizzo ${n.broadcast}.`:'';
  const ready=!!n&&winOk;
@@ -1454,7 +1481,6 @@ document.addEventListener('pointermove',e=>{
  const r=c.getBoundingClientRect();c.style.setProperty('--mx',(e.clientX-r.left)+'px');c.style.setProperty('--my',(e.clientY-r.top)+'px');
 },{passive:true});
 
-const calm=matchMedia('(prefers-reduced-motion: reduce)');
 let lastMode=null,fxQuiet=0;
 const TP_ICON={cpu:'cpu',gpu:'gpu',board:'grid',ram:'ram',disk:'disk'};
 function tpLevel(r){return r.value>=r.crit?'crit':r.value>=r.hot?'hot':r.value>=r.hot-15?'warm':'cool';}
@@ -1515,7 +1541,8 @@ async function loadTempHistory(force){
 }
 function renderPump(fans){
  // La pompa del liquido: OK solo se gira davvero (prima era una scritta fissa).
- const p=fans.find(f=>/pump/i.test(f.name)),g=$('tg-pump');if(!g)return;g.hidden=!p;if(!p)return;
+ // Connettore pompa mai usato (pompa dell'AIO su CPU_FAN, come l'ARCTIC): niente "Ferma" in rosso.
+ const p=fans.find(f=>(f.kind?f.kind==='pump':/pump/i.test(f.name))&&fanShown(f)),g=$('tg-pump');if(!g)return;g.hidden=!p;if(!p)return;
  const on=p.rpm>0;$('hw-pump').textContent=on?p.rpm:'Ferma';g.classList.toggle('hot',!on);
  const a=$('hw-pump-arc');a.style.strokeDasharray=`${on?Math.min(75,p.rpm/3000*75).toFixed(1):0} 100`;
 }
@@ -1726,7 +1753,7 @@ function islandClean(steps,est){
 
 /* ===== collegamenti con l'app ===== */
 function modeSceneOpen(mode,src,{auto=false,sub=''}={}){
- const st=animStyle();if(calm.matches||document.hidden||st==='off')return null;
+ const st=animStyle();if(calm.matches||st==='off')return null;
  modeScene?.close?.();
  const M=MODE_FX[mode];const o={title:M.t,sub:sub||M.s,auto};
  modeScene=st==='discreet'?islandScene(mode,src,o):liquidScene(mode,src,o);
@@ -1735,7 +1762,7 @@ function modeSceneOpen(mode,src,{auto=false,sub=''}={}){
 function modeSceneDone(scene,message,ok=true){if(scene)scene.done(message,ok);else notify((ok?'✓ ':'⚠ ')+message,!ok);}
 function fx(kind,title,sub,img){
  // Avvio di un gioco.
- const st=animStyle();if(calm.matches||document.hidden||st==='off')return;
+ const st=animStyle();if(calm.matches||st==='off')return;
  const s=st==='discreet'?islandScene('gaming',null,{title:'Avvio '+(sub||title),sub:'NEXAR prepara il PC',auto:true})
   :liquidScene('gaming',null,{title:sub||title,sub:'Avvio il gioco…',auto:true,img});
 }
@@ -1805,7 +1832,7 @@ Object.entries(FIELDS).forEach(([id,f])=>$(id).addEventListener('change',()=>{
  saveSetting({[f]:v},i.closest('.set-panel'));
 }));
 [['cfg-psu-class','psu_class'],['cfg-gaming-fans','gaming_fans'],['cfg-anim','anim_style']].forEach(([id,f])=>$(id).addEventListener('change',()=>{
- if(f==='anim_style'&&current)current.anim_style=$(id).value;saveSetting({[f]:$(id).value},$(id).closest('.set-panel'));}));
+ if(f==='anim_style'&&current){current.anim_style=$(id).value;applyCalm();}saveSetting({[f]:$(id).value},$(id).closest('.set-panel'));}));
 $('cfg-alerts').addEventListener('change',()=>saveSetting({alerts_enabled:$('cfg-alerts').checked},$('cfg-alerts').closest('.set-panel')));
 $('cfg-alerts-sensors').addEventListener('change',()=>saveSetting({alerts_sensors:$('cfg-alerts-sensors').checked},$('cfg-alerts-sensors').closest('.set-panel')));
 
@@ -2811,7 +2838,7 @@ function setHeroArt(gid){
 }
 function setHeroBtn(id,spec){
  const b=$(id);b.hidden=!spec;if(!spec)return;const [label,ic,act]=spec;
- b.dataset.act=act;b.querySelector('use').setAttribute('href','#i-'+ic);b.querySelector('span').textContent=label;b.classList.toggle('exit',act==='exit');
+ b.dataset.act=act;b.querySelector('use').setAttribute('href','#i-'+ic);b.querySelector('span').textContent=label;b.classList.toggle('exit',act==='exit'||act==='quit');
 }
 function renderGamingLive(s){
  const b=s.boost||(demo?DEMO_GAMING.boost:null);if(!b)return;
@@ -2821,9 +2848,9 @@ function renderGamingLive(s){
  $('boost-live').replaceChildren(...(on?live.map(t=>el('span','',t)):[]));
  const foc=gxFocus&&gxGame(gxFocus),last=foc&&!foc.hidden?foc:(gameData?.games||[]).filter(g=>!g.hidden&&g.last).sort((a,b)=>b.last-a.last)[0];
  let state,title,sub,main,second=null,gid='';
- if(on&&(ses?.game||run)){state='IN GIOCO';title=ses?.game||run.name;gid=ses?.gid||run?.id;sub='Gaming attivo: il gioco ha la precedenza su tutto il resto.';main=['Esci da Gaming','x','exit'];}
+ if(on&&(ses?.game||run)){state='IN GIOCO';title=ses?.game||run.name;gid=ses?.gid||run?.id;sub='Gaming attivo: il gioco ha la precedenza su tutto il resto.';main=run?['Chiudi il gioco','x','quit']:['Esci da Gaming','x','exit'];second=run?['Solo esci da Gaming','bolt','exit']:null;}
  else if(on){state='GAMING ATTIVO';title='Aspetto il gioco';sub='Apri un gioco: gli do la priorità appena parte.';main=['Esci da Gaming','x','exit'];}
- else if(run){state='GIOCO APERTO';title=run.name;gid=run.id;sub='Gaming è spento: attivalo per dare la precedenza al gioco.';main=['Attiva Gaming','game','on'];}
+ else if(run){state='GIOCO APERTO';title=run.name;gid=run.id;sub='Gaming è spento: attivalo per dare la precedenza al gioco.';main=['Attiva Gaming','game','on'];second=['Chiudi il gioco','x','quit'];}
  else if(last){state='PRONTO';title=last.name;gid=last.id;
   sub=(last.last?`Ultima partita ${ago(last.last)}`:'Mai giocato con NEXAR')+(last.playtime?` · ${playtime(last.playtime)} in tutto`:'')+'. Premi Gioca: NEXAR prepara il PC e apre il gioco.';
   main=['Gioca','play','launch:'+last.id];second=['Solo Gaming','game','on'];}
@@ -2853,6 +2880,12 @@ async function launchGame(g){
  if(demo){notify('Anteprima: comando non attivo.');return;}
  try{const r=await req('/api/gaming/launch','POST',{id:g.id});notify('🎮 '+r.message);await refresh();}catch(ex){notify('⚠ '+ex.message,true);}
 }
+async function quitGame(){
+ const name=current?.boost?.running?.name||gameData?.boost?.running?.name||'il gioco';
+ if(!await ask(`Chiudere ${name}?`,'Lo chiudo come con la X della finestra; se non risponde lo termino. Salva prima, se il gioco lo chiede. Poi Gaming si spegne.',{ico:'game',yes:'Chiudi il gioco'}))return;
+ if(demo){notify('Anteprima: comando non attivo.');return;}
+ busy=true;try{const r=await req('/api/gaming/quit','POST',{});notify('✓ '+r.message);await refresh();loadGaming();}catch(ex){notify('⚠ '+ex.message,true);}finally{busy=false;}
+}
 async function saveGaming(change){
  if(demo){notify('Anteprima: comando non attivo.');return;}
  try{const r=await req('/api/gaming/settings','POST',change);notify('✓ '+r.message);await loadGaming();}catch(ex){notify('⚠ '+ex.message,true);}
@@ -2860,6 +2893,7 @@ async function saveGaming(change){
 async function heroAction(act,src){
  if(!act)return;
  if(act==='exit')return action('normal',src);
+ if(act==='quit')return quitGame();
  if(act==='on')return action('gaming',src);
  if(act.startsWith('launch:')){const g=(gameData?.games||[]).find(x=>x.id===act.slice(7));if(g)launchGame(g);}
 }

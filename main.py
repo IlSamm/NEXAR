@@ -361,6 +361,14 @@ def fan_one(data: FanOne):
     try: return {'ok':True,'message':controller.fan_set(data.id,data.percent,data.curve)}
     except (RuntimeError,OSError,ValueError) as ex: raise HTTPException(400,str(ex))
 
+class FanName(BaseModel):
+    id: str
+    name: str = ''
+@app.post('/api/fans/name',dependencies=[Depends(authorized)])
+def fan_name(data: FanName):
+    try: return {'ok':True,'message':controller.fan_name(data.id,data.name)}
+    except ValueError as ex: raise HTTPException(400,str(ex))
+
 @app.post('/api/fans/setup',dependencies=[Depends(authorized),Depends(pin_gate)])
 def fans_setup(request: Request):
     admin = elevator(request)
@@ -762,6 +770,11 @@ def apps_icon(key: str):
 def gaming_launch(data: GameLaunch):
     try: return {'ok':True,'message':controller.launch_game(data.id)}
     except (ValueError,RuntimeError,OSError) as ex: raise HTTPException(400,str(ex))
+
+@app.post('/api/gaming/quit',dependencies=[Depends(authorized)])
+def gaming_quit():
+    try: return {'ok':True,'message':controller.quit_game()}
+    except (RuntimeError,OSError) as ex: raise HTTPException(400,str(ex))
 
 @app.get('/api/gaming/cover/{gid}/{kind}',dependencies=[Depends(authorized)])
 def gaming_cover(gid: str, kind: str):

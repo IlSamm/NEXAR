@@ -87,6 +87,8 @@ try {
       Set-NetAdapterAdvancedProperty -Name $nic.Name -RegistryKeyword '*WakeOnMagicPacket' -RegistryValue 1 -ErrorAction SilentlyContinue
       Set-NetAdapterAdvancedProperty -Name $nic.Name -RegistryKeyword 'S5WakeOnLan' -RegistryValue 1 -ErrorAction SilentlyContinue
       Set-NetAdapterPowerManagement -Name $nic.Name -WakeOnMagicPacket Enabled -ErrorAction SilentlyContinue
+      # Risparmio energetico Ethernet: a PC spento il collegamento dorme e il pacchetto magico non arriva.
+      foreach ($k in '*EEE', 'EnableGreenEthernet', 'AdvancedEEE') { Set-NetAdapterAdvancedProperty -Name $nic.Name -RegistryKeyword $k -RegistryValue 0 -ErrorAction SilentlyContinue }
       $d = Get-PnpDevice -FriendlyName $nic.InterfaceDescription
       & powercfg.exe /deviceenablewake $d.FriendlyName
     }

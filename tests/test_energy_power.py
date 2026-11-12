@@ -173,7 +173,8 @@ def test_max_profile_drives_every_fan(tmp_path, monkeypatch):
     assert manual('max') == {'CPU Fan': 100, 'Pump Fan': 100, 'System Fan #2': 100, 'Control 1 - NVIDIA GeForce RTX 3060 Ti': 100}
     every = {'CPU Fan', 'Pump Fan', 'System Fan #2', 'Control 1 - NVIDIA GeForce RTX 3060 Ti'}
     assert manual('off') == dict.fromkeys(every, 0)        # Spente: tutte ferme, pompa compresa
-    assert manual('off_pump') == dict(dict.fromkeys(every, 0), **{'Pump Fan': discovery.PUMP_MIN_PERCENT})
+    # Pompa al minimo anche su CPU_FAN: l'ARCTIC Liquid Freezer ha pompa e radiatore sullo stesso cavo.
+    assert manual('off_pump') == dict(dict.fromkeys(every, 0), **{'Pump Fan': discovery.PUMP_MIN_PERCENT, 'CPU Fan': discovery.PUMP_MIN_PERCENT})
     assert manual('eco') == {'System Fan #2': 40} and manual('normal') == {} and chosen == ['System Fan #2']
 
 def test_bot_retries_identity_after_network_error(monkeypatch, tmp_path):

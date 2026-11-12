@@ -122,26 +122,30 @@ def quiet(*a):
     except (OSError, subprocess.TimeoutExpired): return False
 
 
-def alive(ip):
-    # Windows spesso blocca il ping: l'ARP invece risponde sempre quando il PC è acceso.
-    if not ip: return False
-    if quiet('ping', '-c', '1', '-W', '1', ip): return True
-    try: dev = subprocess.check_output(['ip', 'route', 'get', ip], text=True, timeout=5).split(' dev ')[1].split()[0]
-    except (OSError, IndexError, subprocess.SubprocessError): return False
-    return quiet('arping', '-c', '2', '-w', '3', '-I', dev, ip)
-
-
 def magic(mac): return b'\xff' * 6 + bytes.fromhex(re.sub('[:-]', '', mac)) * 16
 
 
 def send_wake(cfg):
+    """Pacchetto magico in broadcast (rete e globale) e anche diretto all'IP del PC: con un ripetitore o un ponte
+    Wi-Fi in mezzo a volte passa solo uno dei due. Ripetuto per qualche secondo, la scheda di rete in standby
+    può perdere i primi."""
     pkt = magic(cfg['pc_mac'])
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
         s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-        for _ in range(3):
-            for dst in dict.fromkeys((cfg.get('broadcast') or '255.255.255.255', '255.255.255.255')):
-                for port in (9, 7): s.sendto(pkt, (dst, port))
-            time.sleep(0.3)
+        for _ in range(5):
+            for dst in dict.fromkeys((cfg.get('broadcast') or '255.255.255.255', '255.255.255.255', cfg.get('pc_ip') or '')):
+                if not dst: continue
+                for port in (9, 7):
+                    try: s.sendto(pkt, (dst, port))
+                    except OSError: pass
+            time.sleep(0.5)
+    print('Wake-on-LAN inviato a', cfg['pc_mac'], flush=True)
+
+
+def pc_on(cfg):
+    """Acceso davvero: risponde NEXAR, oppure il PC al ping. L'ARP da solo non basta: un ripetitore Wi-Fi
+    risponde al posto del PC anche quando è spento."""
+    return app_up(cfg) or quiet('ping', '-c', '1', '-W', '1', cfg['pc_ip'])
 
 
 # ---------- waker: sempre acceso sulla rete di casa ----------
@@ -177,13 +181,13 @@ class Waker:
                         now = time.time()
                         if ev.get('topic') == link:
                             if not link_ok(ev, last_link, now): continue
-                            last_link = now; on = alive(cur['pc_ip'])
+                            last_link = now; on = pc_on(cur)
                             if not on: send_wake(cur)
                             self.tell(cur, '⏻ Accensione chiesta dal link del telefono.' if not on else "💻 Il link del telefono ha chiesto l'accensione, ma il PC è già acceso.")
                             continue
                         p = unseal(sec, ev.get('message', ''))
                         if not fresh(p, last, now): continue
-                        last = p['wake']; on = alive(cur['pc_ip'])
+                        last = p['wake']; on = pc_on(cur)
                         if not on: send_wake(cur)
                         ack = urllib.request.Request(NTFY + '/' + topic('ack:' + ws), data=seal('ack:' + ws, {'ack': last, 'on': on}).encode(), headers={**UA, 'Firebase': 'no'})
                         urllib.request.urlopen(ack, timeout=10).read()
@@ -221,7 +225,7 @@ class Waker:
             cfg = load()
             if not cfg or not cfg.get('bot_token'): time.sleep(30); continue
             try:
-                if alive(cfg['pc_ip']):
+                if app_up(cfg):  # NEXAR acceso sul PC: il bot lo gestisce lui
                     offset = None; time.sleep(15); continue
                 for ev in self.tg(cfg, 'getUpdates', offset=offset or 0, timeout=20, allowed_updates=['message', 'callback_query']) or []:
                     offset = ev['update_id'] + 1
@@ -231,10 +235,13 @@ class Waker:
                     if who != cfg.get('user_id') or (not cb and time.time() - msg.get('date', 0) > 300): continue
                     if text.split('@')[0] in ('/accendi', 'wake', '/wake'):
                         send_wake(cfg); self.tell(cfg, '⏻ Segnale di accensione inviato. Ti scrivo appena il PC risponde.')
-                        for _ in range(36):
+                        for i in range(36):
                             time.sleep(5)
-                            if alive(cfg['pc_ip']): self.tell(cfg, '🟢 PC acceso. Tra poco NEXAR riprende il controllo.'); break
-                        else: self.tell(cfg, '⚠️ Il PC non risponde. Controlla nel BIOS Wake on LAN / ErP disattivato.')
+                            if pc_on(cfg): self.tell(cfg, '🟢 PC acceso. Tra poco NEXAR riprende il controllo.'); break
+                            if i == 5: send_wake(cfg)  # secondo tentativo dopo 30 secondi
+                        else: self.tell(cfg, '⚠️ Il PC non risponde. Nel BIOS MSI: Settings → Advanced → Wake Up Event Setup → '
+                                             '"Resume By PCI-E Device" su Enabled, e "ErP Ready" su Disabled. Se il cavo va a un '
+                                             'ripetitore Wi-Fi, prova a collegarlo direttamente al router.')
                     else:
                         self.tg(cfg, 'sendMessage', chat_id=cfg.get('user_id'), text='🔴 Il PC è spento.', reply_markup=kb)
             except Exception:
@@ -256,7 +263,7 @@ class Waker:
                 self.send_response(code); self.send_header('Content-Type', 'application/json'); self.send_header('Content-Length', str(len(body))); self.end_headers(); self.wfile.write(body)
             def do_GET(self):
                 cfg = load()
-                self.reply({'pc': bool(cfg and alive(cfg['pc_ip']))} if self.path == '/status' else {}, 200 if self.path == '/status' else 404)
+                self.reply({'pc': bool(cfg and pc_on(cfg))} if self.path == '/status' else {}, 200 if self.path == '/status' else 404)
             def do_POST(self):
                 if self.path != '/wake': return self.reply({}, 404)
                 self.reply({'ok': waker.page_wake()})

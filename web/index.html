@@ -522,8 +522,10 @@
      <div class="vt-row">
       <div class="vt" id="tg-cpu"><svg viewBox="0 0 120 120" aria-hidden="true"><circle class="vt-track" cx="60" cy="60" r="50" pathLength="100"/><circle class="vt-fill" id="hw-cpu-arc" cx="60" cy="60" r="50" pathLength="100"/></svg><b class="vt-v" id="hw-cpu">—</b><small>Processore</small></div>
       <div class="vt" id="tg-gpu"><svg viewBox="0 0 120 120" aria-hidden="true"><circle class="vt-track" cx="60" cy="60" r="50" pathLength="100"/><circle class="vt-fill" id="hw-gpu-arc" cx="60" cy="60" r="50" pathLength="100"/></svg><b class="vt-v" id="hw-gpu">—</b><small>Scheda video</small></div>
+      <div class="vt" id="tg-mb" hidden><svg viewBox="0 0 120 120" aria-hidden="true"><circle class="vt-track" cx="60" cy="60" r="50" pathLength="100"/><circle class="vt-fill" id="hw-mb-arc" cx="60" cy="60" r="50" pathLength="100"/></svg><b class="vt-v" id="hw-mb-t">—</b><small>Scheda madre</small></div>
       <div class="vt pump" id="tg-pump" hidden><svg viewBox="0 0 120 120" aria-hidden="true"><circle class="vt-track" cx="60" cy="60" r="50" pathLength="100"/><circle class="vt-fill ok" id="hw-pump-arc" cx="60" cy="60" r="50" pathLength="100"/></svg><b class="vt-v" id="hw-pump">—</b><small>Pompa AIO</small></div>
      </div>
+     <p class="fineprint cool-note">Allo spegnimento Windows chiude Fan Control: negli ultimi secondi le ventole seguono la curva del BIOS. Per tenerle silenziose anche lì, nel BIOS (Hardware Monitor) scegli la curva <b>Silent</b> per le ventole del case.</p>
     </section>
     <div class="notice" id="fans-upgrade" hidden><div><b id="fans-upgrade-title">Nuovi profili Spente e Massimo</b><small>Spente e Massimo su tutte le ventole, anche radiatore, pompa e scheda video. Si creano una volta in Fan Control: serve una conferma da amministratore.</small></div><button class="btn small primary" type="button" id="fans-upgrade-btn">Aggiorna profili</button></div>
     <section class="card tp-card" id="tp-card">
@@ -592,7 +594,7 @@
       <li id="wol-net"><i class="step-dot"></i><div><b>Rete via cavo</b><small id="wol-net-text">—</small></div></li>
       <li id="wol-win"><i class="step-dot"></i><div><b>Windows</b><small id="wol-win-text">—</small></div><button class="btn small" type="button" id="wol-enable" hidden>Attiva</button></li>
       <li class="manual" id="wol-bios"><i class="step-dot"></i><div><b>BIOS</b><small>Da controllare una volta sola</small></div>
-       <details class="how"><summary>Come si fa</summary><p>Canc all'avvio → Settings → Advanced → Power Management: <em>ErP Ready</em> = Disabled. Poi in Wake Up Event Setup: <em>Resume By PCI-E Device</em> = Enabled.</p></details></li>
+       <details class="how"><summary>Come si fa</summary><p>Canc all'avvio → Settings → Advanced → Power Management: <em>ErP Ready</em> = Disabled. Poi in Wake Up Event Setup: <em>Resume By PCI-E Device</em> = Enabled.</p><p>A PC spento la lucina della presa di rete deve restare accesa: se è spenta il BIOS toglie corrente alla scheda di rete. Se il cavo va a un ripetitore, un ponte Wi-Fi o un powerline invece che al router, il segnale spesso non passa: prova a collegarlo direttamente al router.</p></details></li>
       <li class="manual" id="umbrel-step"><i class="step-dot"></i><div><b>Umbrel</b><small id="umbrel-text">Resta acceso in casa e sveglia il PC quando lo chiedi</small></div><button class="btn small primary" type="button" id="umbrel-link">Collega</button></li>
      </ol>
      <div class="relay ulink" id="umbrel-box" hidden><div class="relay-head"><b>Codice per Umbrel</b><button class="btn small" type="button" id="umbrel-copy"><svg class="i"><use href="#i-copy"/></svg>Copia</button></div><pre id="umbrel-code"></pre><div class="btn-row"><a class="btn small primary" id="umbrel-open" href="#" target="_blank" rel="noopener noreferrer">Apri NEXAR su Umbrel</a><button class="btn small ghost" type="button" id="relay-show">Configurazione manuale</button></div><p class="fineprint warn-text">Incollalo solo nell'app NEXAR del tuo Umbrel: contiene la chiave di accensione e l'accesso al PC. Se l'app è già aperta sul collegamento si fa da solo.</p></div>
@@ -834,7 +836,7 @@
       <section class="card set-panel" data-set="look" hidden>
        <div class="card-head"><div><h3>Aspetto e Gaming</h3><p>Come si muove l'app e cosa fa il PC quando giochi</p></div><span class="saved"></span></div>
        <div class="set-group">
-        <div class="set-row"><div><b>Animazioni</b><small>Cambio modalità e pulizia</small></div><span class="anim-pick"><select id="cfg-anim" aria-label="Animazioni"><option value="liquid">Liquido</option><option value="discreet">Discreto</option><option value="off">Spente</option></select><button class="btn small" type="button" id="cfg-anim-try">Prova</button></span></div>
+        <div class="set-row"><div><b>Animazioni</b><small>Cambio modalità e pulizia</small><small class="warn-text" id="cfg-anim-os" hidden>"Effetti animazione" è spento in Windows: NEXAR le mostra lo stesso. Scegli Spente per toglierle.</small></div><span class="anim-pick"><select id="cfg-anim" aria-label="Animazioni"><option value="liquid">Liquido</option><option value="discreet">Discreto</option><option value="off">Spente</option></select><button class="btn small" type="button" id="cfg-anim-try">Prova</button></span></div>
         <div class="set-row"><div><b>Ventole in Gaming</b><small>Anche dalla pagina Gaming</small></div><select id="cfg-gaming-fans" aria-label="Ventole in Gaming"><option value="normal">Normali (curva BIOS)</option><option value="max">Al massimo</option></select></div>
         <div class="set-row"><div><b>Scorciatoie</b><small><kbd>Ctrl</kbd> + <kbd>K</kbd> cerca pagine e azioni · <kbd>1</kbd>–<kbd>9</kbd> cambiano pagina</small></div></div>
        </div>
@@ -1037,7 +1039,7 @@
 <dialog class="sheet fan-sheet" id="fan-sheet" aria-labelledby="fs-name">
  <div class="fs-head">
   <div class="fs-dial"><svg viewBox="0 0 120 120"><circle class="fs-track" cx="60" cy="60" r="52" pathLength="100"/><circle class="fs-fill" id="fs-arc" cx="60" cy="60" r="52" pathLength="100"/></svg><svg class="i fs-spin" id="fs-spin"><use href="#i-fan"/></svg></div>
-  <div class="fs-title"><small id="fs-kind">Ventola</small><h3 id="fs-name">—</h3><p><b id="fs-rpm">—</b> RPM · <span id="fs-mode">segue il profilo</span></p></div>
+  <div class="fs-title"><small id="fs-kind">Ventola</small><h3 id="fs-name">—</h3><div class="fs-rename-box" id="fs-rename-box" hidden><input id="fs-rename-in" maxlength="32" aria-label="Nome della ventola" autocomplete="off"><button class="btn small primary" type="button" id="fs-rename-ok">Salva</button></div><p class="fs-header"><span id="fs-header"></span> · <button class="linkish" type="button" id="fs-rename">Rinomina</button></p><p><b id="fs-rpm">—</b> RPM · <span id="fs-mode">segue il profilo</span></p></div>
   <button class="icon-btn fs-x" type="button" id="fs-close" aria-label="Chiudi"><svg class="i"><use href="#i-x"/></svg></button>
  </div>
  <div id="fs-ctl">

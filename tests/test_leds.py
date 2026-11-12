@@ -110,3 +110,57 @@ def test_msi_pause_from_1_0_68_is_undone(tmp_path, monkeypatch):
     assert c.events[0] == "Luci MSI: MSI Center rimesso in funzione, l'ARCTIC torna al suo effetto"
     c.rgb_keep()
     assert ran == ['resume']  # una volta sola
+
+def test_off_is_not_undone_by_the_keeper(tmp_path, monkeypatch):
+    """Segnalato: "spegne 1 sec per poi riaccenderli". Il guardiano scattava mentre lo spegnimento era in corso
+    e rimetteva il colore normale su tutto."""
+    import core
+    setup(monkeypatch, [ctl(0, 'ENE DRAM', DRAM, active=2), ctl(1, 'Corsair', [mode('Direct')])])
+    exe = tmp_path / 'OpenRGB.exe'; exe.write_text('')
+    c, _ = control(tmp_path, monkeypatch, {'openrgb_exe': str(exe), 'normal_color': '#ff0000', 'brightness': 100})
+    jobs = []
+    monkeypatch.setattr(core.threading, 'Thread', lambda target, **k: type('T', (), {'start': lambda self: jobs.append(target)})())
+    monkeypatch.setattr(core, 'RGB_OFF_SETTLE', (0, 0, 0))
+    assert c.rgb_profile(True) == 'RGB: spegnimento LED in corso'
+    assert c.state['rgb_off'] is True  # stato voluto fissato prima ancora di toccare i LED
+    assert c.rgb_keep() == ''  # comando appena dato: il guardiano non tocca nulla
+    jobs[0]()
+    offs = [x for x in FakeClient.log if x == ('mode', 'ENE DRAM', 'Off')]
+    assert len(offs) == 4  # spegnimento + 3 conferme nei secondi successivi
+    assert not [x for x in FakeClient.log if x[0] == 'colors' and x[2] == o.color('#ff0000')]
+    assert c.state['rgb_off'] is True and 'Corsair' in c.state['rgb_saved']
+    FakeClient.log.clear()
+    monkeypatch.setattr(core, 'RGB_QUIET_AFTER_USER', 0)
+    c.rgb_kept_at = 0.0
+    assert c.rgb_keep().startswith('LED rimessi spenti')  # col tempo li tiene spenti, non li riaccende
+    assert not [x for x in FakeClient.log if x[0] == 'colors' and x[2] == o.color('#ff0000')]
+
+def test_settle_stops_when_the_user_picks_a_colour(tmp_path, monkeypatch):
+    setup(monkeypatch, [ctl(0, 'Corsair', [mode('Direct')])])
+    c, _ = control(tmp_path, monkeypatch, {}, {'rgb_off': True, 'rgb_saved': {}})
+    stamp = c.rgb_user_at = 5.0
+    c.rgb_settle(stamp, sleep=lambda s: c.rgb_color('#00ff00'))
+    assert c.state['rgb_off'] is False
+    assert FakeClient.log == [('mode', 'Corsair', 'Direct'), ('colors', 'Corsair', o.color('#00ff00'))]
+
+def test_keeper_colour_does_not_change_on_off_state(tmp_path, monkeypatch):
+    setup(monkeypatch, [ctl(0, 'Corsair', [mode('Direct')])])
+    c, _ = control(tmp_path, monkeypatch, {'normal_color': '#ff0000'})
+    c.state.update(rgb_off=True, rgb_saved={'Corsair': {}})
+    c.rgb_color('#ff0000', 100, remember=False, quiet=True)
+    assert c.state['rgb_off'] is True and 'rgb_saved' in c.state
+
+def test_mode_change_keeps_leds_turned_off_by_hand(tmp_path, monkeypatch):
+    import core
+    setup(monkeypatch, [ctl(0, 'Corsair', [mode('Direct')])])
+    exe = tmp_path / 'OpenRGB.exe'; exe.write_text('')
+    c, _ = control(tmp_path, monkeypatch, {'openrgb_exe': str(exe)})
+    monkeypatch.setattr(core.threading, 'Thread', lambda target, **k: type('T', (), {'start': lambda self: target()})())
+    monkeypatch.setattr(core, 'RGB_OFF_SETTLE', ())
+    c.rgb_profile(True)
+    assert c.rgb_mode('normal') == '' and c.state['rgb_off'] is True
+    c.rgb_profile(False)
+    monkeypatch.setattr(c, 'eco_settings', lambda: {'leds_off': True})
+    c.rgb_mode('eco')
+    assert c.state['rgb_off_by'] == 'mode'
+    assert c.rgb_mode('normal') == 'RGB: riaccensione LED in corso' and c.state['rgb_off'] is False

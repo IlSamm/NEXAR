@@ -76,9 +76,20 @@ def find_nvidia_smi():
     guess = Path(os.environ.get('ProgramFiles', r'C:\Program Files')) / 'NVIDIA Corporation' / 'NVSMI' / 'nvidia-smi.exe'
     return str(guess) if guess.is_file() else ''
 
+def fancontrol_cache(exe: str) -> dict:
+    try: return json.loads((Path(exe).parent / 'Configurations' / 'CACHE').read_text(encoding='utf-8-sig'))
+    except Exception: return {}
+
+def fancontrol_config_dir(exe: str) -> Path:
+    """Cartella da cui Fan Control legge davvero i profili: quella scelta nelle sue opzioni (CustomConfigFolder,
+    es. in Documenti) oppure Configurations accanto al programma. Prima NEXAR scriveva sempre in Configurations:
+    con una cartella personalizzata Fan Control non trovava i profili e le ventole non cambiavano."""
+    custom = str(fancontrol_cache(exe).get('CustomConfigFolder') or '')
+    return Path(custom) if custom and Path(custom).is_dir() else Path(exe).parent / 'Configurations'
+
 def fancontrol_dirs(exe: str) -> list[Path]:
     base = Path(exe).parent
-    return [base / 'Configurations', base]
+    return list(dict.fromkeys([fancontrol_config_dir(exe), base / 'Configurations', base]))
 
 def fancontrol_profiles(exe: str) -> list[str]:
     names = []
@@ -131,6 +142,15 @@ def task_restart(name: str) -> bool:
     if os.name != 'nt' or not task_exists(name): return False
     subprocess.run(['schtasks', '/end', '/tn', name], capture_output=True, **_no_window())
     return subprocess.run(['schtasks', '/run', '/tn', name], capture_output=True, **_no_window()).returncode == 0
+
+def fancontrol_running() -> bool:
+    """Fan Control dalla versione 285 gira come servizio di Windows (FanControl.Service.exe): la finestra
+    FanControl.exe può essere chiusa e le ventole restano comandate lo stesso."""
+    return process_running('FanControl.Service.exe') or process_running('FanControl.exe')
+
+def fancontrol_config_loaded(exe: str) -> str:
+    """Il profilo che Fan Control ha caricato davvero (file CACHE nella cartella Configurations)."""
+    return str(fancontrol_cache(exe).get('CurrentConfigFileName') or '')
 
 def process_running(exe_name: str) -> bool:
     import psutil
@@ -236,7 +256,7 @@ FAN_LEVELS = {'off': 0, 'off_pump': 0, 'eco': None, 'normal': None, 'max': 100}
 # "off_pump" è Spente con la pompa AIO al minimo. ECO resta solo sulle ventole del case.
 ALL_FANS_LEVELS = ('max', 'off', 'off_pump')
 PUMP_MIN_PERCENT = 40
-FAN_PROFILES_VERSION = 3  # 2 = Massimo su tutte; 3 = Spente su tutte + variante con pompa al minimo
+FAN_PROFILES_VERSION = 4  # 2 = Massimo su tutte; 3 = Spente su tutte + variante con pompa al minimo; 4 = AIO su CPU_FAN al minimo
 FAN_EXCLUDE = ('cpu', 'pump', 'aio', 'nvidia', 'gpu', 'chipset')
 
 def user_sid() -> str:
@@ -256,6 +276,10 @@ def fan_control_id(sensor_id: str) -> str:
 
 def is_pump(nick: str, ident: str) -> bool:
     return any(w in (nick + ' ' + ident).lower() for w in ('pump', 'pompa', 'aio'))
+
+def is_cpu_header(nick: str, ident: str) -> bool:
+    """Connettore CPU_FAN: con un AIO tipo ARCTIC Liquid Freezer qui ci sono radiatore e pompa sullo stesso cavo."""
+    return bool(re.match(r'(?i)cpu\s*(opt\s*)?fan', nick.strip()))
 
 # Curva per una sola ventola: velocità (%) secondo la temperatura di CPU o GPU, eseguita da Fan Control.
 CURVE_SAFE_AT, CURVE_SAFE_MIN = 80, 50   # a 80 °C ogni curva deve dare almeno il 50%
@@ -338,7 +362,10 @@ def live_fan_rpm() -> dict[str, float]:
 def build_fan_profiles(exe: str, eco_percent: int) -> tuple[dict[str, dict], list[str]]:
     """Un profilo per livello. Solo le ventole del case che girano davvero ricevono una velocità fissa
     (0% spente, ECO ridotta, 100% massimo); radiatore, pompa e GPU restano sempre al BIOS."""
-    base_file = Path(exe).parent / 'Configurations' / 'userConfig.json'
+    # Base: il profilo che l'utente usa in Fan Control (se non è uno di NEXAR), altrimenti userConfig.json.
+    folder, current = fancontrol_config_dir(exe), fancontrol_config_loaded(exe)
+    base_file = folder / current if current and not current.startswith('PCECO-') and (folder / current).is_file() else folder / 'userConfig.json'
+    if not base_file.is_file(): base_file = Path(exe).parent / 'Configurations' / 'userConfig.json'
     base = json.loads(base_file.read_text(encoding='utf-8-sig'))
     rpm = live_fan_rpm()
     profiles, chosen = {}, []
@@ -352,17 +379,19 @@ def build_fan_profiles(exe: str, eco_percent: int) -> tuple[dict[str, dict], lis
             manual = percent is not None and (case_fan or level in ALL_FANS_LEVELS)
             ctl['Enable'] = ctl['ManualControl'] = manual
             if manual:
-                ctl['ManualControlValue'] = PUMP_MIN_PERCENT if level == 'off_pump' and is_pump(nick, ident) else percent
+                # "Pompa al minimo": anche CPU_FAN, dove molti AIO (ARCTIC) hanno pompa e ventole insieme.
+                keep = is_pump(nick, ident) or is_cpu_header(nick, ident)
+                ctl['ManualControlValue'] = PUMP_MIN_PERCENT if level == 'off_pump' and keep else percent
                 ctl['SelectedFanCurve'] = None
                 if level == 'eco': chosen.append(nick)
     return profiles, chosen
 
 def fancontrol_script(exe: str, staging: Path) -> str:
-    dest = Path(exe).parent / 'Configurations'
-    script = ''.join(f"Copy-Item -LiteralPath {_q(staging / f)} -Destination {_q(dest / f)} -Force;" for f in FAN_FILES.values())
+    dests = list(dict.fromkeys([Path(exe).parent / 'Configurations', fancontrol_config_dir(exe)]))
+    script = ''.join(f"Copy-Item -LiteralPath {_q(staging / f)} -Destination {_q(dest / f)} -Force;" for dest in dests for f in FAN_FILES.values())
     sid = user_sid()
     if sid:
-        script += ''.join(f"& icacls.exe {_q(dest / FAN_FILES[k])} /grant {_q('*' + sid + ':(M)')} | Out-Null;" for k in FAN_MANUAL)
+        script += ''.join(f"& icacls.exe {_q(dest / FAN_FILES[k])} /grant {_q('*' + sid + ':(M)')} | Out-Null;" for dest in dests for k in FAN_MANUAL)
     for key, task in FAN_TASKS.items():
         script += task_script(task, exe, f'-c {FAN_FILES[key]}', at_logon=False, start=False)
     return script
@@ -644,7 +673,7 @@ if($nic){
  $ip=Get-NetIPAddress -InterfaceIndex $nic.ifIndex -AddressFamily IPv4 | Select-Object -First 1
  $adv=@{}; Get-NetAdapterAdvancedProperty -Name $nic.Name | ForEach-Object { $adv[$_.RegistryKeyword]=[string]$_.RegistryValue }
  $net=[pscustomobject]@{name=$nic.Name;desc=$nic.InterfaceDescription;mac=$nic.MacAddress;ip=$ip.IPAddress;prefix=[int]$ip.PrefixLength;
-  magic=$adv['*WakeOnMagicPacket'];s5=$adv['S5WakeOnLan']}
+  magic=$adv['*WakeOnMagicPacket'];s5=$adv['S5WakeOnLan'];eee=$adv['*EEE'];green=$adv['EnableGreenEthernet']}
 }
 $cpu=(Get-CimInstance Win32_Processor | Select-Object -First 1).Name
 $gpus=@(Get-CimInstance Win32_VideoController | ForEach-Object { $_.Name })
@@ -696,7 +725,10 @@ def hardware_inventory() -> dict:
                       'ip': net.get('ip') or '', 'broadcast': broadcast_of(net.get('ip') or '', net.get('prefix') or 24),
                       # Valori registro del driver: 1 = attivo; None = il driver non espone l'opzione.
                       'wol_magic': None if net.get('magic') is None else net.get('magic') == '1',
-                      'wol_shutdown': None if net.get('s5') is None else net.get('s5') == '1'}
+                      'wol_shutdown': None if net.get('s5') is None else net.get('s5') == '1',
+                      # Risparmio energetico Ethernet (Realtek EEE / Green Ethernet): a PC spento il collegamento
+                      # si addormenta e il pacchetto magico spesso non arriva.
+                      'wol_eee': net.get('eee') == '1' or net.get('green') == '1'}
     gpus = raw.get('gpus') or []
     cpu = re.sub(r'\s+', ' ', str(raw.get('cpu') or '')).strip()
     inv['hardware'] = {'cpu': re.sub(r'\s+\d+-Core Processor$|\(R\)|\(TM\)', '', cpu).strip(),
@@ -710,4 +742,5 @@ def wol_enable_script(adapter: str) -> str:
     return (f"Set-NetAdapterAdvancedProperty -Name {a} -RegistryKeyword '*WakeOnMagicPacket' -RegistryValue 1 -ErrorAction SilentlyContinue;"
             f"Set-NetAdapterAdvancedProperty -Name {a} -RegistryKeyword 'S5WakeOnLan' -RegistryValue 1 -ErrorAction SilentlyContinue;"
             f"Set-NetAdapterPowerManagement -Name {a} -WakeOnMagicPacket Enabled -ErrorAction SilentlyContinue;"
+            f"Set-NetAdapterAdvancedProperty -Name {a} -RegistryKeyword '*EEE' -RegistryValue 0 -ErrorAction SilentlyContinue;Set-NetAdapterAdvancedProperty -Name {a} -RegistryKeyword 'EnableGreenEthernet' -RegistryValue 0 -ErrorAction SilentlyContinue;Set-NetAdapterAdvancedProperty -Name {a} -RegistryKeyword 'AdvancedEEE' -RegistryValue 0 -ErrorAction SilentlyContinue;"
             f"$d=Get-PnpDevice -FriendlyName (Get-NetAdapter -Name {a}).InterfaceDescription; powercfg /deviceenablewake $d.FriendlyName")
