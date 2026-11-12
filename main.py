@@ -369,6 +369,11 @@ def fan_name(data: FanName):
     try: return {'ok':True,'message':controller.fan_name(data.id,data.name)}
     except ValueError as ex: raise HTTPException(400,str(ex))
 
+@app.post('/api/fans/check',dependencies=[Depends(authorized)])
+def fans_check():
+    try: return {'ok':True,**controller.fans_check()}
+    except (RuntimeError,OSError) as ex: raise HTTPException(400,str(ex))
+
 @app.post('/api/fans/setup',dependencies=[Depends(authorized),Depends(pin_gate)])
 def fans_setup(request: Request):
     admin = elevator(request)

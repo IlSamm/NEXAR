@@ -4023,3 +4023,10 @@ html.calm .vli::before,html.calm .vli::after,html.calm .vli-ring,html.calm .vli-
 .linkish{background:none;border:0;padding:0;color:#5eead4;font:inherit;font-weight:700;cursor:pointer;text-decoration:underline;text-underline-offset:2px}
 .fs-rename-box{display:flex;gap:8px;margin:4px 0 6px}
 .fs-rename-box input{flex:1;min-width:0;background:rgba(15,23,42,.6);border:1px solid rgba(148,163,184,.3);border-radius:10px;color:#e2e8f0;padding:7px 10px;font:inherit}
+
+/* controlla ventole */
+.fan-check-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.fan-check{list-style:none;margin:10px 0 0;padding:0;display:grid;gap:6px}
+.fan-check li{display:flex;gap:8px;align-items:flex-start;font-size:12.5px;color:#cbd5e1;line-height:1.4;overflow-wrap:anywhere}
+.fan-check li .i{flex:none;width:16px;height:16px;margin-top:1px;color:#94a3b8}
+.fan-check li.ok .i{color:#34d399}.fan-check li.bad .i{color:#fbbf24}.fan-check li.bad span{color:#fde68a}

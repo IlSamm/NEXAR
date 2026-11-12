@@ -1068,14 +1068,83 @@ class Control:
 
     CONN_RETRY = 120   # secondi fra due tentativi sullo stesso collegamento
 
+    def fans_key_now(self):
+        """Il profilo NEXAR che Fan Control dovrebbe avere caricato adesso (livello scelto o regolazione a mano)."""
+        import discovery
+        level = self.state.get('fans_level') or 'normal'
+        if self.state.get('fans_custom') and self.state.get('fans_slot') in discovery.FAN_MANUAL: return self.state['fans_slot']
+        if level == 'off': return 'off_pump' if self.state.get('fans_pump') else 'off'
+        return level if level in discovery.FAN_TASKS else 'normal'
+
     def fans_task_now(self):
         """L'attività di Fan Control che rimette le ventole come le avevi lasciate."""
         import discovery
-        level = self.state.get('fans_level') or 'normal'
-        if self.state.get('fans_custom') and self.state.get('fans_slot') in discovery.FAN_MANUAL: key = self.state['fans_slot']
-        elif level == 'off': key = 'off_pump' if self.state.get('fans_pump') else 'off'
-        else: key = level if level in discovery.FAN_TASKS else 'normal'
-        return discovery.FAN_TASKS[key]
+        return discovery.FAN_TASKS[self.fans_key_now()]
+
+    def fans_keep(self):
+        """Controllo automatico (ogni 2 minuti): se Fan Control ha caricato un profilo NEXAR diverso da quello scelto,
+        glielo rimanda. Un profilo dell'utente (non PCECO-) non si tocca."""
+        import discovery
+        cfg = self.config.get('fans', {})
+        exe = cfg.get('fancontrol_exe', '')
+        if not cfg.get('enabled') or not exe or windows_shutting_down(): return ''
+        if time.monotonic() - self.fan_sent[0] < 60: return ''  # appena mandato: lo sta caricando
+        key = self.fans_key_now()
+        want, loaded = discovery.FAN_FILES[key], discovery.fancontrol_config_loaded(exe)
+        if not loaded.startswith('PCECO-') or loaded == want or not discovery.fancontrol_running(): return ''
+        if not discovery.task_exists(discovery.FAN_TASKS[key]): return ''
+        self.fan_send(key)
+        msg = f'Ventole: Fan Control aveva {loaded}, rimesso {want}'
+        self.log_event(msg)
+        return msg
+
+    def fans_check(self, repair=True, wait=15, sleep=time.sleep):
+        """Pulsante "Controlla ventole": verifica Fan Control, profili, attività e profilo caricato; ripara ciò che
+        si può senza conferme (rimanda il profilo). Se i profili vanno rifatti lo dice (serve una conferma UAC)."""
+        import discovery
+        cfg = self.config.get('fans', {})
+        exe = cfg.get('fancontrol_exe', '')
+        items = []
+        def add(ok, text): items.append({'ok': ok if ok is None else bool(ok), 'text': text})
+        if not cfg.get('enabled') or not exe or not Path(exe).is_file():
+            add(False, 'Fan Control non collegato: collegalo dalla pagina Collegamenti')
+            return {'items': items, 'setup': False, 'message': 'Fan Control non collegato'}
+        running = discovery.fancontrol_running()
+        add(running, 'Fan Control acceso' + (' (servizio)' if discovery.process_running('FanControl.Service.exe') else '') if running
+            else 'Fan Control spento: lo riavvio con il profilo scelto')
+        folder = discovery.fancontrol_config_dir(exe)
+        files = [k for k, f in discovery.FAN_FILES.items() if not any((d / f).is_file() for d in discovery.fancontrol_dirs(exe))]
+        tasks = [k for k, t in discovery.FAN_TASKS.items() if not discovery.task_exists(t)]
+        self.fans_ready_cache = (0.0, False)
+        outdated = self.fans_profiles_outdated()
+        setup = bool(files or tasks or outdated)
+        add(not setup, f'Profili NEXAR in {folder}' if not setup else
+            'Profili da rifare' + (f' (mancano {len(files)} file)' if files else '') + (f' (mancano {len(tasks)} attività)' if tasks else '') +
+            (' (versione vecchia)' if outdated and not files and not tasks else '') + ': premi "Rifai profili" (una conferma)')
+        key = self.fans_key_now()
+        want = discovery.FAN_FILES[key]
+        loaded = discovery.fancontrol_config_loaded(exe)
+        fixed = ''
+        if repair and (loaded != want or not running) and key not in tasks and (want not in [discovery.FAN_FILES[k] for k in files]):
+            try:
+                self.fan_send(key, sleep=sleep)
+                for _ in range(wait):
+                    sleep(1)
+                    loaded = discovery.fancontrol_config_loaded(exe)
+                    if loaded == want: break
+                fixed = 'rimandato'
+            except RuntimeError as ex: add(False, str(ex))
+        name = FAN_LEVEL_NAMES.get(self.state.get('fans_level') or 'normal', '')
+        if self.fan_sent[1]: add(None, f'Ultimo profilo mandato da NEXAR: {self.fan_sent[1]} alle {getattr(self, "fan_sent_at", "?")}')
+        if loaded == want: add(True, f'Profilo caricato: {want} ({name})' + (' · rimesso adesso' if fixed else ''))
+        elif loaded: add(False, f'Fan Control ha {loaded}, NEXAR vuole {want}' + (': rimandato ma non caricato. Apri Fan Control e controlla che non mostri errori' if fixed else ''))
+        else: add(None, 'Profilo caricato non leggibile (Fan Control senza file CACHE)')
+        duty = [f for f in collect_sensors(self.config.get('sensors', {}).get('libre_hardware_monitor', '')).get('fans') or [] if f.get('rpm', 0) > 0]
+        add(bool(duty), f'{len(duty)} ventole in movimento' if duty else 'Nessuna ventola in movimento adesso')
+        bad = [i for i in items if i['ok'] is False]
+        msg = 'Ventole a posto' if not bad else bad[0]['text']
+        self.log_event('Controllo ventole: ' + msg)
+        return {'items': items, 'setup': setup, 'message': msg}
 
     def connections_check(self, tries, age, now=None):
         """Sensori, Fan Control e OpenRGB devono funzionare senza premere "Collega".
@@ -1098,6 +1167,9 @@ class Control:
             # Prima guardava solo la finestra FanControl.exe: col servizio di Fan Control 285 la finestra è chiusa,
             # NEXAR lo credeva spento e ogni 2 minuti ricaricava il profilo (le regolazioni a mano saltavano).
             ok = discovery.fancontrol_running()
+            if ok:
+                try: self.fans_keep()
+                except Exception: logging.exception('Controllo profilo ventole')
             task = self.fans_task_now()
             if not ok and due('fans') and discovery.task_exists(task) and not windows_shutting_down():
                 tries['fans'] = now
@@ -1530,6 +1602,8 @@ class Control:
             if wait > 0: sleep(wait)
             if not discovery.task_restart(discovery.FAN_TASKS[key]): raise RuntimeError('Fan Control: attività non avviata')
             self.fan_sent = stamp = (time.monotonic(), want)
+            self.fan_sent_at = datetime.now().strftime('%H:%M:%S')
+            logging.info('Ventole: mandato %s a Fan Control', want)
         if not discovery.fancontrol_config_loaded(exe): return  # versione di Fan Control senza CACHE: niente verifica
         def verify():
             for attempt in (1, 2):

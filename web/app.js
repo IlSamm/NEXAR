@@ -638,6 +638,22 @@ function fanRename(save){
  if(demo){f.label=name||f.auto_label;notify('Anteprima: nome cambiato solo qui.');return;}
  req('/api/fans/name','POST',{id:f.key||f.ctl||f.name,name}).then(r=>{notify('✓ '+r.message);refresh();}).catch(ex=>notify('⚠ '+ex.message,true));
 }
+// Controlla ventole: Fan Control acceso, profili presenti e aggiornati, profilo caricato giusto (se no lo rimanda).
+async function fansCheck(){
+ const b=$('fans-check'),list=$('fans-check-list');
+ if(demo){renderFanCheck({items:[{ok:true,text:'Fan Control acceso (servizio)'},{ok:true,text:'Profili NEXAR aggiornati'},{ok:false,text:'Fan Control ha PCECO-Spente.json, NEXAR vuole PCECO-Normale.json'}],setup:false});return;}
+ b.disabled=true;b.lastChild.textContent='Controllo…';
+ try{const r=await req('/api/fans/check','POST',{});renderFanCheck(r);notify((r.items.some(i=>i.ok===false)?'⚠ ':'✓ ')+r.message,r.items.some(i=>i.ok===false));await refresh();}
+ catch(ex){notify('⚠ '+ex.message,true);}
+ finally{b.disabled=false;b.lastChild.textContent='Controlla ventole';}
+}
+function renderFanCheck(r){
+ const list=$('fans-check-list');list.hidden=false;
+ list.replaceChildren(...r.items.map(i=>{const li=el('li',i.ok===true?'ok':i.ok===false?'bad':'');li.append(icon(i.ok===true?'check':i.ok===false?'alert':'info'),el('span','',i.text));return li;}));
+ $('fans-check-setup').hidden=!r.setup||!!current?.remote;
+}
+$('fans-check').addEventListener('click',fansCheck);
+$('fans-check-setup').addEventListener('click',()=>{$('fans-check-setup').hidden=true;post('/api/fans/setup',{});});
 $('fs-rename').addEventListener('click',()=>fanRename(false));
 $('fs-rename-ok').addEventListener('click',()=>fanRename(true));
 $('fs-rename-in').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();fanRename(true);}if(e.key==='Escape'){e.preventDefault();e.stopPropagation();$('fs-rename-box').hidden=true;$('fs-name').hidden=false;}});

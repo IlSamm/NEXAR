@@ -188,3 +188,42 @@ def test_profiles_go_where_fan_control_reads_them(tmp_path, monkeypatch):
     assert discovery.fancontrol_config_dir(str(exe)) == custom
     script = discovery.fancontrol_script(str(exe), tmp_path / 'staging')
     assert str(custom / 'PCECO-Eco.json') in script and str(exe.parent / 'Configurations' / 'PCECO-Eco.json') in script
+
+def _fc(tmp_path, monkeypatch, loaded):
+    c, core = _controller(tmp_path, monkeypatch)
+    exe = tmp_path / 'FanControl' / 'FanControl.exe'; (exe.parent / 'Configurations').mkdir(parents=True); exe.write_text('')
+    for f in discovery.FAN_FILES.values(): (exe.parent / 'Configurations' / f).write_text('{}')
+    c.config['fans'] = {'enabled': True, 'fancontrol_exe': str(exe), 'profiles_version': discovery.FAN_PROFILES_VERSION}
+    c.events = []; c.log_event = c.events.append
+    state = {'loaded': loaded}; sent = []
+    monkeypatch.setattr(discovery, 'fancontrol_config_loaded', lambda e: state['loaded'])
+    monkeypatch.setattr(discovery, 'fancontrol_running', lambda: True)
+    monkeypatch.setattr(discovery, 'process_running', lambda n: True)
+    monkeypatch.setattr(discovery, 'task_exists', lambda t='': True)
+    def restart(t):
+        sent.append(t); state['loaded'] = next(f for k, f in discovery.FAN_FILES.items() if discovery.FAN_TASKS[k] == t); return True
+    monkeypatch.setattr(discovery, 'task_restart', restart)
+    monkeypatch.setattr(core, 'FAN_SPACING', 0)
+    monkeypatch.setattr(core, 'collect_sensors', lambda url: {'fans': [{'name': 'System Fan #2', 'rpm': 700, 'ctl': 'x'}]})
+    monkeypatch.setattr(core.threading, 'Thread', lambda target, **k: type('T', (), {'start': lambda self: None})())
+    return c, core, sent
+
+def test_keeper_puts_back_the_chosen_profile(tmp_path, monkeypatch):
+    c, core, sent = _fc(tmp_path, monkeypatch, 'PCECO-Spente.json')
+    c.state['fans_level'] = 'normal'
+    assert 'rimesso PCECO-Normale.json' in c.fans_keep() and sent == [discovery.FAN_TASKS['normal']]
+    assert c.fans_keep() == ''  # appena mandato: non insiste
+    c.fan_sent = (-1e9, ''); sent.clear()
+    assert c.fans_keep() == '' and sent == []  # ora è giusto
+    c2, _, sent2 = _fc(tmp_path / 'b', monkeypatch, 'MioProfilo.json')
+    assert c2.fans_keep() == '' and sent2 == []  # profilo dell'utente: non si tocca
+
+def test_check_button_repairs_and_reports(tmp_path, monkeypatch):
+    c, core, sent = _fc(tmp_path, monkeypatch, 'PCECO-Spente.json')
+    c.state['fans_level'] = 'eco'
+    r = c.fans_check(sleep=lambda s: None)
+    assert sent == [discovery.FAN_TASKS['eco']] and not r['setup']
+    assert any('PCECO-Eco.json' in i['text'] and i['ok'] for i in r['items']) and r['message'] == 'Ventole a posto'
+    c.config['fans']['profiles_version'] = 1
+    r = c.fans_check(sleep=lambda s: None)
+    assert r['setup'] and 'Rifai profili' in r['message']
