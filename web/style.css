@@ -4030,3 +4030,25 @@ html.calm .vli::before,html.calm .vli::after,html.calm .vli-ring,html.calm .vli-
 .fan-check li{display:flex;gap:8px;align-items:flex-start;font-size:12.5px;color:#cbd5e1;line-height:1.4;overflow-wrap:anywhere}
 .fan-check li .i{flex:none;width:16px;height:16px;margin-top:1px;color:#94a3b8}
 .fan-check li.ok .i{color:#34d399}.fan-check li.bad .i{color:#fbbf24}.fan-check li.bad span{color:#fde68a}
+
+/* profili ventole tuoi */
+.fan-presets{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:14px;max-width:100%}
+.fp-label{width:100%;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#94a3b8}
+.fp-list{display:contents}
+.fp-item{display:inline-flex;align-items:stretch;max-width:100%;border-radius:13px;background:rgba(0,0,0,.3);border:1px solid rgba(255,255,255,.08);backdrop-filter:blur(12px);transition:background .3s,box-shadow .3s,border-color .3s}
+.fp-item.selected{background:linear-gradient(145deg,color-mix(in srgb,var(--a,#22d3ee) 65%,#fff),var(--a,#22d3ee));border-color:transparent;box-shadow:0 10px 26px -10px var(--a,#22d3ee)}
+.fp-chip,.fp-del,.fp-add{font:inherit;border:0;background:transparent;cursor:pointer;color:#cbd5e1}
+.fp-chip{display:inline-flex;align-items:center;gap:7px;min-width:0;height:36px;padding:0 6px 0 13px;font-size:13px;font-weight:650}
+.fp-chip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fp-chip .i{flex:none;width:15px;height:15px}
+.fp-del{display:inline-grid;place-items:center;width:30px;height:36px;padding:0 6px 0 2px;color:#64748b;border-radius:0 13px 13px 0}
+.fp-del .i{width:13px;height:13px}
+.fp-del:hover{color:#f87171}
+.fp-chip:hover{color:#fff}
+.fp-item.selected .fp-chip,.fp-item.selected .fp-del{color:#0b0d12}
+.fp-add{display:inline-flex;align-items:center;gap:7px;height:36px;padding:0 13px;border-radius:13px;font-size:13px;font-weight:600;border:1px dashed rgba(148,163,184,.4)}
+.fp-add .i{width:15px;height:15px}
+.fp-add:hover{color:#fff;border-color:rgba(255,255,255,.6)}
+.fp-save-box{display:flex;gap:8px;width:100%;max-width:420px}
+.fp-save-box input{flex:1;min-width:0;background:rgba(15,23,42,.6);border:1px solid rgba(148,163,184,.3);border-radius:10px;color:#e2e8f0;padding:7px 10px;font:inherit}
+.fp-hint{width:100%;margin:0;font-size:12px;color:#94a3b8;line-height:1.4}

@@ -57,7 +57,7 @@ let tgApp=null;let current=null,busy=false,rgbTouched=false,schedKind='shutdown'
 const hist={cpu:[],gpu:[],power:[],ram:[],fan:[]};let curView='home';
 const COMP={cpu:'#38bdf8',gpu:'#a78bfa',board:'#94a3b8',ram:'#2dd4bf',disks:'#fbbf24',cooling:'#34d399',rgb:'#f472b6',usb:'#fb923c',monitor:'#e2e8f0'};
 const statusDemo={connected:true,fps:142,version:'1.0.0',update:new URLSearchParams(location.search).has('upd')?{supported:true,available:true,latest:'1.0.31',checked_at:'2026-11-03T21:10:00'}:{supported:true,available:false,checked_at:'2026-11-03T21:10:00'},mode:'gaming',fans_level:'max',fans_levels_ready:true,cpu:12,cpu_temp:46,gpu:6,gpu_temp:38,gpu_watts:24,ram:34,ram_used:10.9,ram_total:31.1,eco_cpu_max_percent:90,
- fans:[{name:'CPU Fan',rpm:930,ctl:'/lpc/demo/control/0'},{name:'System Fan #1',rpm:0,ctl:'/lpc/demo/control/1'},{name:'System Fan #2',rpm:740,ctl:'/lpc/demo/control/2'},{name:'System Fan #3',rpm:750,ctl:'/lpc/demo/control/3'},{name:'Pump Fan',rpm:2400,ctl:'/lpc/demo/control/4'}],fans_manual_ready:true,fans_custom:{'/lpc/demo/control/2':45},
+ fans:[{name:'CPU Fan',rpm:930,ctl:'/lpc/demo/control/0'},{name:'System Fan #1',rpm:0,ctl:'/lpc/demo/control/1'},{name:'System Fan #2',rpm:740,ctl:'/lpc/demo/control/2'},{name:'System Fan #3',rpm:750,ctl:'/lpc/demo/control/3'},{name:'Pump Fan',rpm:2400,ctl:'/lpc/demo/control/4'}],fans_manual_ready:true,fans_custom:{'/lpc/demo/control/2':45},fans_presets:[{id:'p1',name:'Notte',base:'eco',n:3},{id:'p2',name:'Render',base:'normal',n:2}],fans_preset:'',
  temps:[{kind:'cpu',name:'AMD Ryzen 7 9800X3D',rows:[{id:'/amdcpu/0/temperature/2',name:'Processore',value:46,max:88,hot:80,crit:90},{id:'/amdcpu/0/temperature/3',name:'CCD 1',value:41,max:86,hot:80,crit:90}]},
   {kind:'gpu',name:'NVIDIA GeForce RTX 3060 Ti',rows:[{id:'/gpu-nvidia/0/temperature/0',name:'Chip',value:38,max:74,hot:75,crit:85},{id:'/gpu-nvidia/0/temperature/2',name:'Punto più caldo',value:49,max:96,hot:90,crit:100}]},
   {kind:'board',name:'Scheda madre',rows:[{id:'/lpc/nct6687dr/0/temperature/1',name:'Sistema',value:44,max:47,hot:60,crit:75},{id:'/lpc/nct6687dr/0/temperature/2',name:'VRM (alimentazione CPU)',value:52,max:61,hot:75,crit:95},{id:'/lpc/nct6687dr/0/temperature/3',name:'Chipset',value:58,max:62,hot:60,crit:75}]},
@@ -378,17 +378,18 @@ function render(s){
  ['rgb-eco','rgb-normal','rgb-apply-all','q-rgb-off','q-rgb-on'].forEach(id=>$(id).disabled=!s.rgb_enabled);
  ['fans-eco','fans-normal','q-fans-eco','q-fans-normal'].forEach(id=>$(id).disabled=!s.fans_enabled);
  ['fans-off','fans-max'].forEach(id=>$(id).disabled=!s.fans_enabled||!s.fans_levels_ready);
- ['off','eco','normal','max'].forEach(l=>$('fans-'+l).classList.toggle('selected',s.fans_level===l));
+ ['off','eco','normal','max'].forEach(l=>$('fans-'+l).classList.toggle('selected',s.fans_level===l&&!fanPreset(s)));
+ renderFanPresets(s);
  const upgrade=s.fans_enabled&&(!s.fans_levels_ready||s.fans_profiles_outdated);$('fans-upgrade').hidden=!upgrade;
  $('fans-upgrade-title').textContent=s.fans_levels_ready?'Nuovo Massimo: tutte le ventole al 100%':'Nuovi profili Spente e Massimo';
  const fanN=(s.fans||[]).filter(f=>f.rpm>0).length;
- $('cool-title').textContent=!s.fans_enabled?'Gestione del BIOS':{off:'Ventole spente',eco:'Profilo silenzioso',max:'Tutte al massimo'}[s.fans_level]||'Profilo normale';
+ $('cool-title').textContent=!s.fans_enabled?'Gestione del BIOS':fanPreset(s)?'Profilo '+fanPreset(s).name:{off:'Ventole spente',eco:'Profilo silenzioso',max:'Tutte al massimo'}[s.fans_level]||'Profilo normale';
  $('cool-sub').textContent=fanN?`${fanN} ventole in funzione${avg?` · media ${avg} RPM`:''} · CPU ${deg(s.cpu_temp)} · GPU ${deg(s.gpu_temp)}${boardTemp(s)!=null?` · scheda madre ${deg(boardTemp(s))}`:''}`:'Nessuna ventola rilevata: collega i sensori in Collegamenti';
  $('cool-hero').dataset.level=s.fans_enabled?(s.fans_level||'normal'):'bios';
  // la ventola disegnata dietro gira alla velocità media di quelle vere
  $('cool-hero').style.setProperty('--spin',avg?Math.max(.5,Math.min(8,2400/avg)).toFixed(2)+'s':'0s');$('cool-hero').classList.toggle('still',!avg);
  $('rgb-title').textContent=!s.rgb_enabled?'OpenRGB non collegato':s.rgb_off?'LED spenti':'LED accesi';
- $('fan-profile').textContent=!s.fans_enabled?'Gestione BIOS':{off:'Ventole spente',eco:'Profilo silenzioso',max:'Al massimo'}[s.fans_level]||'Profilo normale';
+ $('fan-profile').textContent=!s.fans_enabled?'Gestione BIOS':fanPreset(s)?'Profilo '+fanPreset(s).name:{off:'Ventole spente',eco:'Profilo silenzioso',max:'Al massimo'}[s.fans_level]||'Profilo normale';
  $('rgb-label').textContent=!s.rgb_enabled?'OpenRGB non collegato':(s.rgb_off?'LED spenti: scegli un colore per riaccenderli':'Colore e luminosità per tutti i dispositivi');
  if(!rgbTouched&&s.rgb_color){$('rgb-color').value=s.rgb_color;$('rgb-bright').value=s.rgb_brightness??100;$('rgb-bright-val').textContent=$('rgb-bright').value+'%';}
  renderPalette(s.rgb_palette||[]);
@@ -654,6 +655,46 @@ function renderFanCheck(r){
 }
 $('fans-check').addEventListener('click',fansCheck);
 $('fans-check-setup').addEventListener('click',()=>{$('fans-check-setup').hidden=true;post('/api/fans/setup',{});});
+// I tuoi profili: le velocità regolate a mano salvate con un nome, accanto a Spente/Silenziose/Normali/Massimo.
+function fanPreset(s){return (s?.fans_presets||[]).find(p=>p.id&&p.id===s.fans_preset);}
+function renderFanPresets(s){
+ const box=$('fan-presets'),list=$('fp-list'),ps=s.fans_presets||[],custom=Object.keys(s.fans_custom||{}).length;
+ box.hidden=!s.fans_enabled||(!s.fans_manual_ready&&!ps.length);if(box.hidden)return;
+ const key=JSON.stringify([ps,s.fans_preset]);
+ if(list._k!==key){list._k=key;
+  list.replaceChildren(...ps.map(p=>{const w=el('span','fp-item'+(p.id===s.fans_preset?' selected':''));
+   const b=el('button','fp-chip');b.type='button';b.title=`Base ${({off:'Spente',eco:'Silenziose',normal:'Normali',max:'Massimo'})[p.base]||'Normali'} · ${p.n} ventole regolate`;
+   b.append(icon('fan'),el('span','',p.name));b.addEventListener('click',()=>fanPresetApply(p));
+   const x=el('button','fp-del');x.type='button';x.setAttribute('aria-label','Elimina '+p.name);x.append(icon('x'));x.addEventListener('click',()=>fanPresetDelete(p));
+   w.append(b,x);return w;}));}
+ const editing=!$('fp-save-box').hidden,full=ps.length>=4&&!fanPreset(s);
+ $('fp-save').hidden=editing||!custom||!!fanPreset(s)||full;
+ $('fp-hint').textContent=fanPreset(s)?'':!custom?(ps.length?'':'Tocca una ventola qui sotto e scegli la sua velocità: poi salvi la combinazione qui, come un profilo tuo.')
+  :full?'Hai già 4 profili tuoi: eliminane uno per salvarne un altro.':'';
+ $('fp-hint').hidden=!$('fp-hint').textContent;
+}
+async function fanPresetApply(p){
+ if(demo){current.fans_preset=p.id;render(current);notify(`✓ Ventole: profilo "${p.name}"`);return;}
+ if(busy)return;busy=true;try{const r=await req('/api/fans/preset','POST',{action:'apply',id:p.id});notify('✓ '+r.message);await refresh();}catch(ex){notify('⚠ '+ex.message,true);}finally{busy=false;}
+}
+async function fanPresetDelete(p){
+ if(!await ask(`Eliminare "${p.name}"?`,'Il profilo sparisce dall\'elenco. Le ventole restano come sono adesso.',{ico:'fan',yes:'Elimina'}))return;
+ if(demo){current.fans_presets=current.fans_presets.filter(x=>x.id!==p.id);render(current);return;}
+ const r=await req('/api/fans/preset','POST',{action:'delete',id:p.id}).catch(ex=>{notify('⚠ '+ex.message,true);});if(r){notify('✓ '+r.message);await refresh();}
+}
+function fanPresetSaveBox(open){
+ $('fp-save-box').hidden=!open;$('fp-save').hidden=open;
+ if(open){const n=$('fp-name');n.value='';n.focus();}else if(current)renderFanPresets(current);
+}
+async function fanPresetSave(){
+ const name=$('fp-name').value.trim();if(!name){$('fp-name').focus();return;}
+ if(demo){const id='p'+Date.now();current.fans_presets=[...current.fans_presets,{id,name,base:current.fans_level,n:Object.keys(current.fans_custom).length}];current.fans_preset=id;fanPresetSaveBox(false);render(current);notify(`✓ Profilo ventole "${name}" salvato`);return;}
+ try{const r=await req('/api/fans/preset','POST',{action:'save',name});fanPresetSaveBox(false);notify('✓ '+r.message);await refresh();}catch(ex){notify('⚠ '+ex.message,true);}
+}
+$('fp-save').addEventListener('click',()=>fanPresetSaveBox(true));
+$('fp-save-no').addEventListener('click',()=>fanPresetSaveBox(false));
+$('fp-save-ok').addEventListener('click',fanPresetSave);
+$('fp-name').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();fanPresetSave();}if(e.key==='Escape'){e.preventDefault();e.stopPropagation();fanPresetSaveBox(false);}});
 $('fs-rename').addEventListener('click',()=>fanRename(false));
 $('fs-rename-ok').addEventListener('click',()=>fanRename(true));
 $('fs-rename-in').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();fanRename(true);}if(e.key==='Escape'){e.preventDefault();e.stopPropagation();$('fs-rename-box').hidden=true;$('fs-name').hidden=false;}});
@@ -668,7 +709,7 @@ $('fs-apply').addEventListener('click',async()=>{
  const f=fanSheet.f;if(!f)return;
  if(!current?.fans_manual_ready){closeFan();post('/api/fans/setup',{});return;}
  const percent=fanSheet.mode==='manual'?fanSheet.val:null,curve=fanSheet.mode==='curve'?{src:fanSheet.src,pts:fanSheet.pts.map(p=>[...p])}:null;closeFan();
- if(demo){current.fans_custom[f.ctl]=curve||percent;if(curve==null&&percent==null)delete current.fans_custom[f.ctl];
+ if(demo){current.fans_preset='';current.fans_custom[f.ctl]=curve||percent;if(curve==null&&percent==null)delete current.fans_custom[f.ctl];
   notify(`✓ ${fanLabel(f)}: `+(curve?`curva sulla ${srcLabel(curve.src)}`:percent==null?'torna al profilo':`${percent}% fisso`));return;}
  post('/api/fans/one',{id:f.ctl,percent,curve});
 });

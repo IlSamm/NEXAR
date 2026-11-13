@@ -369,6 +369,20 @@ def fan_name(data: FanName):
     try: return {'ok':True,'message':controller.fan_name(data.id,data.name)}
     except ValueError as ex: raise HTTPException(400,str(ex))
 
+class FanPreset(BaseModel):
+    action: str
+    id: str = ''
+    name: str = ''
+@app.post('/api/fans/preset',dependencies=[Depends(authorized)])
+def fan_preset(data: FanPreset):
+    try:
+        if data.action == 'save': msg = controller.fan_preset_save(data.name)
+        elif data.action == 'apply': msg = controller.fan_preset_apply(data.id)
+        elif data.action == 'delete': msg = controller.fan_preset_delete(data.id)
+        else: raise ValueError('Azione non valida')
+        return {'ok':True,'message':msg}
+    except (RuntimeError,OSError,ValueError) as ex: raise HTTPException(400,str(ex))
+
 @app.post('/api/fans/check',dependencies=[Depends(authorized)])
 def fans_check():
     try: return {'ok':True,**controller.fans_check()}

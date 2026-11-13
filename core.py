@@ -66,6 +66,7 @@ FAN_SAFETY_TEMP_GPU = 78
 FAN_OFF_LIMIT = 75      # ventole tutte spente: oltre questa temperatura tornano normali
 FAN_GUARD_SECONDS = 2
 FAN_VERIFY_SECONDS = 15  # tempo concesso a Fan Control per caricare un profilo prima di riprovare
+FAN_PRESETS_MAX = 4  # profili ventole tuoi
 FAN_SPACING = 3          # secondi minimi fra due profili mandati a Fan Control (due avvii insieme lo bloccano)
 
 def windows_shutting_down():
@@ -1539,6 +1540,7 @@ class Control:
             with self.lock:
                 # Un livello scelto azzera le regolazioni fatte a mano sulle singole ventole.
                 self.state.update(fans_level=level, fans_pump=bool(level == 'off' and keep_pump), fans_eco=level in ('eco','off'), fans_custom={})
+                self.state.pop('fans_preset', None)
                 json_save(STATE_FILE, self.state)
             detail = {'normal': ' (BIOS)', 'max': ' (tutte: case, radiatore, pompa e scheda video al 100%)',
                       'off': ' (tutte ferme' + (f', pompa e radiatore AIO al {discovery.PUMP_MIN_PERCENT}%' if keep_pump else ', anche la pompa') +
@@ -1666,19 +1668,87 @@ class Control:
         value = curve if curve is not None else percent
         if value is None: custom.pop(ident, None)
         else: custom[ident] = value
+        slot = self.fan_custom_send(prof, custom)
+        with self.lock:
+            # Cambiata una ventola: non è più esattamente il profilo tuo che avevi scelto.
+            self.state.update(fans_custom=custom, fans_slot=slot); self.state.pop('fans_preset', None); json_save(STATE_FILE, self.state)
+        nice = (self.config.get('fans', {}).get('names') or {}).get(ident) or name.replace('CPU Fan', 'Radiatore').replace('Pump Fan', 'Pompa').replace('System Fan', 'Ventola case')
+        msg = f'{nice}: ' + (f'{percent}% fisso' if percent is not None else
+                             f"curva sulla temperatura {self.sensor_name(curve['src'])}" if curve is not None else 'torna al profilo ' + FAN_LEVEL_NAMES.get(level, level))
+        self.log_event('Ventole · ' + msg)
+        return msg
+
+    def fan_custom_send(self, prof, custom):
+        """Profilo del livello + regolazioni a mano, scritto in uno dei due file Manuale (a turno) e mandato a Fan Control."""
+        import discovery
+        folder = discovery.fancontrol_config_dir(self.config.get('fans', {}).get('fancontrol_exe', ''))
         temp_ids = collect_sensors(self.config.get('sensors', {}).get('libre_hardware_monitor', '')).get('temp_ids') or {}
         discovery.apply_fan_custom(prof, custom, temp_ids)
         slot = 'manual_b' if self.state.get('fans_slot') == 'manual_a' else 'manual_a'
         with self.fan_lock:  # A e B a turno: non riscrivere il file mentre Fan Control lo sta caricando
             (folder / discovery.FAN_FILES[slot]).write_text(json.dumps(prof, indent=2), encoding='utf-8')
         self.fan_send(slot)
+        return slot
+
+    # ---------- profili tuoi: una combinazione di velocità salvata, accanto a Spente/Silenziose/Normali/Massimo ----------
+    def fan_presets(self):
+        return [p for p in self.config.get('fans', {}).get('presets') or [] if isinstance(p, dict) and p.get('id')]
+
+    def fan_preset_save(self, name):
+        """Salva le ventole come sono adesso (livello di partenza + quelle regolate a mano) con un nome.
+        Con un nome già usato lo aggiorna."""
+        name = re.sub(r'\s+', ' ', str(name or '')).strip()
+        if not 1 <= len(name) <= 20: raise ValueError('Nome del profilo: da 1 a 20 caratteri')
+        custom = {k: v for k, v in (self.state.get('fans_custom') or {}).items() if isinstance(v, (int, dict))}
+        if not custom: raise ValueError("Prima regola almeno una ventola: toccala nell'elenco qui sotto e scegli la velocità")
+        level = self.state.get('fans_level') or 'normal'
         with self.lock:
-            self.state.update(fans_custom=custom, fans_slot=slot); json_save(STATE_FILE, self.state)
-        nice = (self.config.get('fans', {}).get('names') or {}).get(ident) or name.replace('CPU Fan', 'Radiatore').replace('Pump Fan', 'Pompa').replace('System Fan', 'Ventola case')
-        msg = f'{nice}: ' + (f'{percent}% fisso' if percent is not None else
-                             f"curva sulla temperatura {self.sensor_name(curve['src'])}" if curve is not None else 'torna al profilo ' + FAN_LEVEL_NAMES.get(level, level))
-        self.log_event('Ventole · ' + msg)
+            presets = self.config.setdefault('fans', {}).setdefault('presets', [])
+            same = next((p for p in presets if str(p.get('name', '')).lower() == name.lower()), None)
+            if not same and len(presets) >= FAN_PRESETS_MAX:
+                raise ValueError(f'Al massimo {FAN_PRESETS_MAX} profili tuoi: eliminane uno prima')
+            p = same or {'id': 'p' + secrets.token_hex(4)}
+            p.update(name=name, base=level, pump=bool(self.state.get('fans_pump')), custom=json.loads(json.dumps(custom)))
+            if not same: presets.append(p)
+            json_save(CONFIG_FILE, self.config)
+            self.state['fans_preset'] = p['id']; json_save(STATE_FILE, self.state)
+        msg = f'Profilo ventole "{name}" ' + ('aggiornato' if same else 'salvato')
+        self.log_event(msg)
         return msg
+
+    def fan_preset_apply(self, pid):
+        import discovery
+        p = next((p for p in self.fan_presets() if p['id'] == pid), None)
+        if not p: raise ValueError('Profilo non trovato')
+        cfg = self.config.get('fans', {})
+        if not cfg.get('enabled'): raise RuntimeError('Gestione ventole non attiva')
+        if not self.fans_manual_ready():
+            self.fans_manual_cache = (0.0, False)
+            raise RuntimeError('Per usare i tuoi profili premi "Aggiorna profili" nella pagina Ventole (una conferma)')
+        base = p.get('base') if p.get('base') in FAN_LEVEL_NAMES else 'normal'
+        pump = bool(base == 'off' and p.get('pump'))
+        profile = ('off_pump' if pump else 'off') if base == 'off' else base
+        folder = discovery.fancontrol_config_dir(cfg.get('fancontrol_exe', ''))
+        prof = json.loads((folder / discovery.FAN_FILES.get(profile, discovery.FAN_FILES['normal'])).read_text(encoding='utf-8-sig'))
+        custom = {k: v for k, v in (p.get('custom') or {}).items() if isinstance(v, (int, dict))}
+        slot = self.fan_custom_send(prof, custom)
+        with self.lock:
+            self.state.update(fans_level=base, fans_pump=pump, fans_eco=base in ('eco', 'off'), fans_custom=custom,
+                              fans_slot=slot, fans_preset=p['id'])
+            json_save(STATE_FILE, self.state)
+        msg = f'Ventole: profilo "{p["name"]}"'
+        self.log_event(msg)
+        return msg
+
+    def fan_preset_delete(self, pid):
+        """Toglie il profilo dall'elenco; le ventole restano come sono adesso."""
+        with self.lock:
+            presets = self.config.setdefault('fans', {}).get('presets') or []
+            p = next((p for p in presets if p.get('id') == pid), None)
+            if not p: raise ValueError('Profilo non trovato')
+            presets.remove(p); json_save(CONFIG_FILE, self.config)
+            if self.state.get('fans_preset') == pid: self.state.pop('fans_preset', None); json_save(STATE_FILE, self.state)
+        return f'Profilo "{p.get("name", "")}" eliminato'
 
     def fan_guard_loop(self, stop_event):
         """Con le ventole spente (anche radiatore e pompa) la CPU può scaldare in pochi secondi:
@@ -2123,6 +2193,8 @@ class Control:
             'fans_levels_ready':self.fans_levels_ready() if self.config.get('fans',{}).get('enabled') else False,
             'fans_manual_ready':self.fans_manual_ready() if self.config.get('fans',{}).get('enabled') else False,
             'fans_custom':dict(self.state.get('fans_custom') or {}),
+            'fans_presets':[{'id':p['id'],'name':p.get('name',''),'base':p.get('base','normal'),'n':len(p.get('custom') or {})} for p in self.fan_presets()],
+            'fans_preset':self.state.get('fans_preset') or '',
             'fans_profiles_outdated':self.fans_profiles_outdated() if self.config.get('fans',{}).get('enabled') else False,
             'pc':self.pc_info(),
             'live':self.history.latest(),

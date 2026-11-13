@@ -107,6 +107,44 @@ def test_fan_set_writes_alternate_manual_profiles(tmp_path, monkeypatch):
     assert set(c.state['fans_custom']) == {'/lpc/x/control/0'}
 
 
+def test_fan_presets_save_apply_and_delete(tmp_path, monkeypatch):
+    c, core = _controller(tmp_path, monkeypatch)
+    folder = tmp_path / 'FanControl' / 'Configurations'; folder.mkdir(parents=True)
+    exe = tmp_path / 'FanControl' / 'FanControl.exe'; exe.write_text('')
+    for k in ('normal', 'eco'): (folder / discovery.FAN_FILES[k]).write_text(json.dumps(_profile()), encoding='utf-8')
+    c.config['fans'] = {'enabled': True, 'fancontrol_exe': str(exe), 'eco_profile': discovery.FAN_FILES['eco'], 'normal_profile': discovery.FAN_FILES['normal']}
+    ran = []
+    monkeypatch.setattr(discovery, 'task_restart', lambda task: ran.append(task) or True)
+    monkeypatch.setattr(discovery, 'task_exists', lambda task: True)
+    monkeypatch.setattr(core, 'FAN_SPACING', 0)
+    monkeypatch.setattr(c, 'fans_manual_ready', lambda: True)
+    monkeypatch.setattr(core, 'collect_sensors', lambda url: {'temp_ids': {}})
+    with pytest.raises(ValueError): c.fan_preset_save('Notte')            # niente regolato a mano: niente da salvare
+    c.state['fans_level'] = 'eco'
+    c.fan_set('/lpc/x/control/1', 25)
+    assert 'salvato' in c.fan_preset_save('  Notte  ')
+    pid = c.fan_presets()[0]['id']
+    assert c.fan_presets()[0] == {'id': pid, 'name': 'Notte', 'base': 'eco', 'pump': False, 'custom': {'/lpc/x/control/1': 25}}
+    assert c.state['fans_preset'] == pid
+    assert 'aggiornato' in c.fan_preset_save('notte') and len(c.fan_presets()) == 1
+    c.fans_level('normal')                                                # un livello normale toglie il profilo tuo
+    assert c.state['fans_custom'] == {} and 'fans_preset' not in c.state
+    ran.clear()
+    assert c.fan_preset_apply(pid) == 'Ventole: profilo "notte"'
+    assert c.state['fans_level'] == 'eco' and c.state['fans_custom'] == {'/lpc/x/control/1': 25} and c.state['fans_preset'] == pid
+    slot = c.state['fans_slot']
+    assert ran == [discovery.FAN_TASKS[slot]] and c.fans_key_now() == slot
+    prof = json.loads((folder / discovery.FAN_FILES[slot]).read_text(encoding='utf-8'))
+    assert prof['FanControl']['Controls'][1]['ManualControlValue'] == 25
+    c.fan_set('/lpc/x/control/1', 30)                                     # ritoccato: non è più "notte"
+    assert 'fans_preset' not in c.state
+    for i in range(3): c.fan_preset_save(f'P{i}')
+    with pytest.raises(ValueError): c.fan_preset_save('Troppi')
+    assert 'eliminato' in c.fan_preset_delete(pid) and pid not in [p['id'] for p in c.fan_presets()]
+    with pytest.raises(ValueError): c.fan_preset_apply(pid)
+    with pytest.raises(ValueError): c.fan_preset_save('x' * 21)
+
+
 def test_net_history_and_alerts(tmp_path, monkeypatch):
     c, _ = _controller(tmp_path, monkeypatch)
     def n(ms, q='ottima', loss=0): return {'at': 0, 'internet': {'ms': ms, 'loss': loss}, 'router': {'ms': 1}, 'dns_ms': 20, 'quality': q}
