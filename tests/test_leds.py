@@ -164,3 +164,24 @@ def test_mode_change_keeps_leds_turned_off_by_hand(tmp_path, monkeypatch):
     c.rgb_mode('eco')
     assert c.state['rgb_off_by'] == 'mode'
     assert c.rgb_mode('normal') == 'RGB: riaccensione LED in corso' and c.state['rgb_off'] is False
+
+def test_mode_change_during_led_command_does_not_freeze(tmp_path, monkeypatch):
+    """Spegnimento LED in corso (tiene rgb_lock e poi vuole lo stato) mentre parte un cambio di modalità che cambia
+    colore ai LED: prima set_mode teneva self.lock e aspettava rgb_lock → NEXAR bloccato per sempre."""
+    import threading, time
+    c, _ = control(tmp_path, monkeypatch, {})
+    led_has_lock, mode_has_lock = threading.Event(), threading.Event()
+    def led_command():
+        with c.rgb_lock:
+            led_has_lock.set(); mode_has_lock.wait(2); time.sleep(0.05)
+            with c.lock: c.state['led_done'] = True
+    def power(value): mode_has_lock.set()
+    monkeypatch.setattr(c, 'apply_power', power)
+    monkeypatch.setattr(c, 'rgb_mode', lambda value: c.rgb_lock.acquire() and c.rgb_lock.release() or 'luci')
+    monkeypatch.setattr(c, 'fans_level', lambda level: '')
+    monkeypatch.setattr(c, 'eco_settings', lambda: {'fans_quiet': False, 'leds_off': False})
+    c.booster = type('B', (), {'running': None, 'start': lambda self: '', 'stop': lambda self: ''})()
+    t = threading.Thread(target=led_command, daemon=True); t.start(); led_has_lock.wait(2)
+    m = threading.Thread(target=lambda: c.set_mode('normal'), daemon=True); m.start()
+    t.join(3); m.join(3)
+    assert not t.is_alive() and not m.is_alive() and c.state.get('led_done')

@@ -140,8 +140,11 @@ def lhm_enable_webserver(exe: str) -> bool:
 def task_restart(name: str) -> bool:
     """Riavvia un'attività di NEXAR senza UAC: la chiude (se gira) e la rilancia."""
     if os.name != 'nt' or not task_exists(name): return False
-    subprocess.run(['schtasks', '/end', '/tn', name], capture_output=True, **_no_window())
-    return subprocess.run(['schtasks', '/run', '/tn', name], capture_output=True, **_no_window()).returncode == 0
+    # Con un limite: schtasks bloccato teneva fermi tutti i comandi delle ventole (fan_lock).
+    try:
+        subprocess.run(['schtasks', '/end', '/tn', name], capture_output=True, timeout=20, **_no_window())
+        return subprocess.run(['schtasks', '/run', '/tn', name], capture_output=True, timeout=20, **_no_window()).returncode == 0
+    except subprocess.TimeoutExpired: return False
 
 def fancontrol_running() -> bool:
     """Fan Control dalla versione 285 gira come servizio di Windows (FanControl.Service.exe): la finestra
@@ -163,7 +166,8 @@ def process_running(exe_name: str) -> bool:
 
 def task_exists(name=LHM_TASK) -> bool:
     if os.name != 'nt': return False
-    r = subprocess.run(['schtasks', '/query', '/tn', name], capture_output=True, **_no_window())
+    try: r = subprocess.run(['schtasks', '/query', '/tn', name], capture_output=True, timeout=20, **_no_window())
+    except subprocess.TimeoutExpired: return False
     return r.returncode == 0
 
 def lhm_start(exe: str, allow_uac: bool) -> str:

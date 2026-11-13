@@ -267,6 +267,9 @@ class Control:
         # Un comando LED alla volta: il guardiano non deve mai riaccendere mentre si spegne (o viceversa).
         self.rgb_lock = threading.RLock()
         self.fan_lock = threading.Lock()
+        # Un cambio di modalità alla volta. Luci e ventole si applicano FUORI da self.lock: prima set_mode teneva
+        # self.lock e aspettava rgb_lock, mentre lo spegnimento LED teneva rgb_lock e aspettava self.lock → NEXAR bloccato.
+        self.mode_lock = threading.RLock()
         self.fan_sent = (-1e9, '')  # (quando, profilo) dell'ultimo profilo mandato a Fan Control
         self.rgb_user_at = -1e9
         self.jobs = {}
@@ -1733,14 +1736,15 @@ class Control:
 
     def set_mode(self, value, manual=True, reason='', quiet=False):
         if value not in MODES: raise ValueError('Modalità sconosciuta')
-        with self.lock:
-            # Se powercfg fallisce non modificare luci o ventole.
-            self.apply_power(value)
-            if manual:
-                self.manual_override = True
-                # Scelta dell'utente: il Gaming automatico non la contraddice finché il gioco resta aperto.
-                self.gaming_declined = value != 'gaming' and bool(self.booster.running)
-                self.gaming_owned = False
+        with self.mode_lock:
+            with self.lock:
+                # Se powercfg fallisce non modificare luci o ventole.
+                self.apply_power(value)
+                if manual:
+                    self.manual_override = True
+                    # Scelta dell'utente: il Gaming automatico non la contraddice finché il gioco resta aperto.
+                    self.gaming_declined = value != 'gaming' and bool(self.booster.running)
+                    self.gaming_owned = False
             notes = ['Energia: '+MODES[value]]
             fans = {'eco':'eco' if self.eco_settings()['fans_quiet'] else 'normal','normal':'normal','gaming':self.config.get('fans',{}).get('gaming_level','normal')}[value]
             # Gaming Boost: parte con Gaming e rimette tutto com'era quando si passa ad altra modalità.
