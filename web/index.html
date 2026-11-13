@@ -517,6 +517,12 @@
        <button type="button" data-action="fans-eco" id="fans-eco"><svg class="i"><use href="#i-moon"/></svg><span>Silenziose</span></button>
        <button type="button" data-action="fans-normal" id="fans-normal"><svg class="i"><use href="#i-fan"/></svg><span>Normali</span></button>
        <button type="button" data-action="fans-max" id="fans-max"><svg class="i"><use href="#i-max"/></svg><span>Massimo</span></button>
+       <button type="button" id="fans-mine"><svg class="i"><use href="#i-sliders"/></svg><span class="fm-long">Personalizzate</span><span class="fm-short">Mie</span></button>
+      </div>
+      <div class="fan-mine" id="fan-mine" hidden>
+       <div class="fm-row"><span class="fm-lbl">Tutte al</span><input type="range" class="fs-range fm-range" id="fm-range" min="0" max="100" step="5" value="40" aria-label="Velocità di tutte le ventole"><b class="fm-val" id="fm-val">40%</b><button class="btn small primary" type="button" id="fm-all">Applica a tutte</button></div>
+       <p class="fp-hint" id="fm-hint"></p>
+       <button class="fp-add" type="button" id="fm-each"><svg class="i"><use href="#i-sliders"/></svg><span>Regola una ventola per volta</span></button>
       </div>
       <div class="fan-presets" id="fan-presets" hidden>
        <small class="fp-label">I tuoi profili</small>
@@ -1065,7 +1071,7 @@
    <div class="fs-presets fs-cpresets" id="fs-cpresets"><button type="button" data-c="quiet">Silenziosa</button><button type="button" data-c="bal">Bilanciata</button><button type="button" data-c="perf">Prestazioni</button></div>
    <p class="fs-note" id="fs-cnote"></p>
   </div>
-  <p class="fs-auto" id="fs-auto">Segue il livello scelto nella pagina (Spente, ECO, Normale o Massimo).</p>
+  <p class="fs-auto" id="fs-auto">Segue il livello scelto nella pagina (Spente, Silenziose, Normali o Massimo).</p>
  </div>
  <div class="fs-setup" id="fs-setup" hidden><span class="fs-setup-ico"><svg class="i"><use href="#i-lock"/></svg></span><p id="fs-setup-text"></p></div>
  <div class="sheet-actions"><button class="btn" type="button" id="fs-cancel">Chiudi</button><button class="btn primary" type="button" id="fs-apply">Applica</button></div>

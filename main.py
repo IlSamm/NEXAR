@@ -383,6 +383,13 @@ def fan_preset(data: FanPreset):
         return {'ok':True,'message':msg}
     except (RuntimeError,OSError,ValueError) as ex: raise HTTPException(400,str(ex))
 
+class FanMine(BaseModel):
+    percent: int | None = None
+@app.post('/api/fans/mine',dependencies=[Depends(authorized)])
+def fan_mine(data: FanMine):
+    try: return {'ok':True,'message':controller.fans_mine(data.percent)}
+    except (RuntimeError,OSError,ValueError) as ex: raise HTTPException(400,str(ex))
+
 @app.post('/api/fans/check',dependencies=[Depends(authorized)])
 def fans_check():
     try: return {'ok':True,**controller.fans_check()}

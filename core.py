@@ -67,6 +67,12 @@ FAN_OFF_LIMIT = 75      # ventole tutte spente: oltre questa temperatura tornano
 FAN_GUARD_SECONDS = 2
 FAN_VERIFY_SECONDS = 15  # tempo concesso a Fan Control per caricare un profilo prima di riprovare
 FAN_PRESETS_MAX = 4  # profili ventole tuoi
+
+
+def fans_mine_slow(custom):
+    """Personalizzate con qualche ventola sotto il 50%: valgono le stesse protezioni di Silenziose (CPU calda → Normali)."""
+    return any(isinstance(v, int) and v < 50 for v in (custom or {}).values())
+
 FAN_SPACING = 3          # secondi minimi fra due profili mandati a Fan Control (due avvii insieme lo bloccano)
 
 def windows_shutting_down():
@@ -1540,7 +1546,7 @@ class Control:
             with self.lock:
                 # Un livello scelto azzera le regolazioni fatte a mano sulle singole ventole.
                 self.state.update(fans_level=level, fans_pump=bool(level == 'off' and keep_pump), fans_eco=level in ('eco','off'), fans_custom={})
-                self.state.pop('fans_preset', None)
+                self.state.pop('fans_preset', None); self.state.pop('fans_mine', None)
                 json_save(STATE_FILE, self.state)
             detail = {'normal': ' (BIOS)', 'max': ' (tutte: case, radiatore, pompa e scheda video al 100%)',
                       'off': ' (tutte ferme' + (f', pompa e radiatore AIO al {discovery.PUMP_MIN_PERCENT}%' if keep_pump else ', anche la pompa') +
@@ -1671,7 +1677,13 @@ class Control:
         slot = self.fan_custom_send(prof, custom)
         with self.lock:
             # Cambiata una ventola: non è più esattamente il profilo tuo che avevi scelto.
-            self.state.update(fans_custom=custom, fans_slot=slot); self.state.pop('fans_preset', None); json_save(STATE_FILE, self.state)
+            self.state.update(fans_custom=custom, fans_slot=slot); self.state.pop('fans_preset', None)
+            if self.state.get('fans_mine'):
+                # In Personalizzate la modifica è la modalità stessa: resta salvata per la prossima volta.
+                self.config.setdefault('fans', {})['mine'] = {'custom': json.loads(json.dumps(custom))}
+                self.state['fans_eco'] = fans_mine_slow(custom)
+                json_save(CONFIG_FILE, self.config)
+            json_save(STATE_FILE, self.state)
         nice = (self.config.get('fans', {}).get('names') or {}).get(ident) or name.replace('CPU Fan', 'Radiatore').replace('Pump Fan', 'Pompa').replace('System Fan', 'Ventola case')
         msg = f'{nice}: ' + (f'{percent}% fisso' if percent is not None else
                              f"curva sulla temperatura {self.sensor_name(curve['src'])}" if curve is not None else 'torna al profilo ' + FAN_LEVEL_NAMES.get(level, level))
@@ -1732,6 +1744,7 @@ class Control:
         with self.lock:
             self.state.update(fans_level=base, fans_pump=pump, fans_eco=base in ('eco', 'off'), fans_custom=custom,
                               fans_slot=slot, fans_preset=p['id'])
+            self.state.pop('fans_mine', None)
             json_save(STATE_FILE, self.state)
         msg = f'Ventole: profilo "{p["name"]}"'
         self.log_event(msg)
@@ -1747,6 +1760,7 @@ class Control:
     def fans_reapply(self):
         """Dopo "Rifai profili": Fan Control ha ancora in memoria il profilo vecchio. Gli rimanda la scelta di adesso
         (profilo tuo, regolazioni a mano o livello) letta dai file nuovi."""
+        if self.state.get('fans_mine'): return self.fans_mine()
         pid = self.state.get('fans_preset')
         if pid and any(p['id'] == pid for p in self.fan_presets()): return self.fan_preset_apply(pid)
         level = self.state.get('fans_level') or 'normal'
@@ -1758,6 +1772,44 @@ class Control:
             with self.lock: self.state['fans_slot'] = slot; json_save(STATE_FILE, self.state)
             return 'Ventole: regolazioni a mano rimesse'
         return self.fans_level(level, keep_pump=pump if level == 'off' else None)
+
+    # ---------- Personalizzate: la quinta scelta accanto a Spente/Silenziose/Normali/Massimo, decisa da te ----------
+    def fans_mine_saved(self):
+        m = self.config.get('fans', {}).get('mine') or {}
+        return {k: v for k, v in (m.get('custom') or {}).items() if isinstance(v, (int, dict))}
+
+    def fans_mine(self, percent=None):
+        """Senza percent rimette le velocità salvate in Personalizzate; con percent porta tutte le ventole a quella
+        velocità (pompa e radiatore AIO mai sotto il minimo) e la salva. Le ventole non regolate seguono Normali."""
+        import discovery
+        if not self.config.get('fans', {}).get('enabled'): raise RuntimeError('Gestione ventole non attiva')
+        if percent is not None and (type(percent) is not int or not 0 <= percent <= 100): raise ValueError('Velocità 0–100%')
+        if not self.fans_manual_ready():
+            self.fans_manual_cache = (0.0, False)
+            raise RuntimeError('Per Personalizzate premi "Rifai profili" nella pagina Temperature (una conferma)')
+        prof = self.fan_base_profile('normal', False)
+        if percent is None:
+            # La prima volta parte da come hai già regolato le ventole a mano.
+            custom = self.fans_mine_saved() or {k: v for k, v in (self.state.get('fans_custom') or {}).items() if isinstance(v, (int, dict))}
+        else:
+            nick = {str(c.get('Identifier', '')): str(c.get('NickName') or '') for c in prof.get('FanControl', {}).get('Controls', [])}
+            rows = [f for f in self.fan_rows(collect_sensors(self.config.get('sensors', {}).get('libre_hardware_monitor', '')).get('fans') or [])
+                    if f.get('show') and f['key'] in nick]
+            if not rows: raise RuntimeError('Nessuna ventola letta: serve LibreHardwareMonitor acceso')
+            low = lambda f: discovery.is_pump(nick[f['key']], f['key']) or f['kind'] in ('aio', 'pump', 'cpu')
+            custom = {f['key']: max(percent, discovery.PUMP_MIN_PERCENT) if low(f) else percent for f in rows}
+        slot = self.fan_custom_send(prof, custom)
+        with self.lock:
+            self.config.setdefault('fans', {})['mine'] = {'custom': json.loads(json.dumps(custom))}
+            json_save(CONFIG_FILE, self.config)
+            self.state.update(fans_level='normal', fans_pump=False, fans_eco=fans_mine_slow(custom), fans_custom=custom,
+                              fans_slot=slot, fans_mine=True)
+            self.state.pop('fans_preset', None)
+            json_save(STATE_FILE, self.state)
+        msg = ('Ventole personalizzate: ' + (f'tutte al {percent}%' + (f' (pompa e radiatore AIO almeno al {discovery.PUMP_MIN_PERCENT}%)' if percent < discovery.PUMP_MIN_PERCENT else '')
+               if percent is not None else f'{len(custom)} regolate da te' if custom else 'tocca una ventola per sceglierne la velocità'))
+        self.log_event(msg)
+        return msg
 
     def fan_preset_delete(self, pid):
         """Toglie il profilo dall'elenco; le ventole restano come sono adesso."""
@@ -1839,9 +1891,12 @@ class Control:
                     self.gaming_owned = False
             notes = ['Energia: '+MODES[value]]
             fans = {'eco':'eco' if self.eco_settings()['fans_quiet'] else 'normal','normal':'normal','gaming':self.config.get('fans',{}).get('gaming_level','normal')}[value]
+            # Personalizzate è una scelta tua: AI ECO e Normale non la toccano (Gaming solo se gli hai dato un livello suo).
+            mine = self.state.get('fans_mine') and not (value == 'gaming' and fans != 'normal')
+            fan_cb = (lambda: 'Ventole: restano personalizzate') if mine else (lambda: self.fans_level(fans))
             # Gaming Boost: parte con Gaming e rimette tutto com'era quando si passa ad altra modalità.
             boost = (lambda: self.booster.start()) if value == 'gaming' else (lambda: self.booster.stop())
-            for cb in (lambda: self.rgb_mode(value), lambda: self.fans_level(fans), boost):
+            for cb in (lambda: self.rgb_mode(value), fan_cb, boost):
                 try:
                     note = cb()
                     if note: notes.append(note)
@@ -2217,6 +2272,8 @@ class Control:
             'fans_custom':dict(self.state.get('fans_custom') or {}),
             'fans_presets':[{'id':p['id'],'name':p.get('name',''),'base':p.get('base','normal'),'n':len(p.get('custom') or {})} for p in self.fan_presets()],
             'fans_preset':self.state.get('fans_preset') or '',
+            'fans_mine':bool(self.state.get('fans_mine')),
+            'fans_mine_n':len(self.fans_mine_saved()),
             'fans_profiles_outdated':self.fans_profiles_outdated() if self.config.get('fans',{}).get('enabled') else False,
             'pc':self.pc_info(),
             'live':self.history.latest(),

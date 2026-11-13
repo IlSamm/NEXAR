@@ -289,3 +289,40 @@ def test_check_button_repairs_and_reports(tmp_path, monkeypatch):
     c.config['fans']['profiles_version'] = 1
     r = c.fans_check(sleep=lambda s: None)
     assert r['setup'] and 'Rifai profili' in r['message']
+
+
+def test_fans_mine_all_and_one_by_one_stay_saved(tmp_path, monkeypatch):
+    """Personalizzate: tutte al 20% (pompa e CPU almeno al 40%), poi una ventola cambiata resta salvata;
+    un livello la lascia, un tocco la rimette uguale."""
+    c, core = _controller(tmp_path, monkeypatch)
+    folder = tmp_path / 'FanControl' / 'Configurations'; folder.mkdir(parents=True)
+    exe = tmp_path / 'FanControl' / 'FanControl.exe'; exe.write_text('')
+    for k in ('normal', 'eco'): (folder / discovery.FAN_FILES[k]).write_text(json.dumps(_profile()), encoding='utf-8')
+    c.config['fans'] = {'enabled': True, 'fancontrol_exe': str(exe), 'eco_profile': discovery.FAN_FILES['eco'], 'normal_profile': discovery.FAN_FILES['normal']}
+    ran = []
+    monkeypatch.setattr(discovery, 'task_restart', lambda task: ran.append(task) or True)
+    monkeypatch.setattr(discovery, 'task_exists', lambda task: True)
+    monkeypatch.setattr(core, 'FAN_SPACING', 0)
+    monkeypatch.setattr(c, 'fans_manual_ready', lambda: True)
+    fans = [{'name': 'CPU Fan', 'rpm': 800, 'ctl': '/lpc/x/control/0'}, {'name': 'System Fan #1', 'rpm': 700, 'ctl': '/lpc/x/control/1'},
+            {'name': 'Pump Fan', 'rpm': 2000, 'ctl': '/lpc/x/control/2'}]
+    monkeypatch.setattr(core, 'collect_sensors', lambda url: {'temp_ids': {}, 'fans': fans})
+    assert 'tutte al 20%' in c.fans_mine(20)
+    mine = {'/lpc/x/control/0': 40, '/lpc/x/control/1': 20, '/lpc/x/control/2': 40}
+    assert c.state['fans_custom'] == mine and c.state['fans_mine'] and c.state['fans_eco']
+    assert c.config['fans']['mine'] == {'custom': mine}
+    slot = c.state['fans_slot']
+    prof = json.loads((folder / discovery.FAN_FILES[slot]).read_text(encoding='utf-8'))
+    assert [x['ManualControlValue'] for x in prof['FanControl']['Controls']] == [40, 20, 40]
+    c.fan_set('/lpc/x/control/1', 55)                                     # in Personalizzate la modifica resta salvata
+    assert c.config['fans']['mine']['custom']['/lpc/x/control/1'] == 55 and c.state['fans_mine']
+    c.fans_level('eco')
+    assert 'fans_mine' not in c.state and c.state['fans_custom'] == {}
+    c.fan_set('/lpc/x/control/1', 10)                                     # fuori da Personalizzate: non la tocca
+    assert c.config['fans']['mine']['custom']['/lpc/x/control/1'] == 55
+    ran.clear()
+    assert '3 regolate' in c.fans_mine()
+    assert c.state['fans_custom']['/lpc/x/control/1'] == 55 and c.state['fans_level'] == 'normal' and len(ran) == 1
+    ran.clear(); c.fans_reapply()                                         # dopo "Rifai profili" torna Personalizzate
+    assert c.state['fans_mine'] and len(ran) == 1
+    with pytest.raises(ValueError): c.fans_mine(101)

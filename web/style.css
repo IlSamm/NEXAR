@@ -4052,3 +4052,15 @@ html.calm .vli::before,html.calm .vli::after,html.calm .vli-ring,html.calm .vli-
 .fp-save-box{display:flex;gap:8px;width:100%;max-width:420px}
 .fp-save-box input{flex:1;min-width:0;background:rgba(15,23,42,.6);border:1px solid rgba(148,163,184,.3);border-radius:10px;color:#e2e8f0;padding:7px 10px;font:inherit}
 .fp-hint{width:100%;margin:0;font-size:12px;color:#94a3b8;line-height:1.4}
+
+/* Personalizzate: quinta scelta delle ventole */
+.vx-cool[data-level=mine]{--a:#2dd4bf;--b:#a78bfa}
+.vx-seg .fm-short{display:none}
+@media (max-width:480px){.vx-seg .fm-long{display:none}.vx-seg .fm-short{display:inline}}
+.fan-mine{display:flex;flex-direction:column;align-items:flex-start;gap:8px;width:min(560px,100%);margin-top:14px;padding:14px 16px;border-radius:16px;background:rgba(0,0,0,.3);border:1px solid rgba(255,255,255,.08);backdrop-filter:blur(12px)}
+.fm-row{display:flex;align-items:center;gap:12px;width:100%}
+.fm-lbl{flex:none;font-size:13px;font-weight:650;color:#cbd5e1}
+.fm-range{flex:1;min-width:0;margin:0}
+.fm-val{flex:none;min-width:44px;text-align:right;font-size:18px;font-variant-numeric:tabular-nums}
+.fan-mine .fp-hint{margin:0}
+@media (max-width:480px){.fm-row{flex-wrap:wrap}.fm-range{flex:1 1 0}.fm-row .btn{width:100%}}

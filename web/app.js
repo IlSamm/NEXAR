@@ -57,7 +57,7 @@ let tgApp=null;let current=null,busy=false,rgbTouched=false,schedKind='shutdown'
 const hist={cpu:[],gpu:[],power:[],ram:[],fan:[]};let curView='home';
 const COMP={cpu:'#38bdf8',gpu:'#a78bfa',board:'#94a3b8',ram:'#2dd4bf',disks:'#fbbf24',cooling:'#34d399',rgb:'#f472b6',usb:'#fb923c',monitor:'#e2e8f0'};
 const statusDemo={connected:true,fps:142,version:'1.0.0',update:new URLSearchParams(location.search).has('upd')?{supported:true,available:true,latest:'1.0.31',checked_at:'2026-11-03T21:10:00'}:{supported:true,available:false,checked_at:'2026-11-03T21:10:00'},mode:'gaming',fans_level:'max',fans_levels_ready:true,cpu:12,cpu_temp:46,gpu:6,gpu_temp:38,gpu_watts:24,ram:34,ram_used:10.9,ram_total:31.1,eco_cpu_max_percent:90,
- fans:[{name:'CPU Fan',rpm:930,ctl:'/lpc/demo/control/0'},{name:'System Fan #1',rpm:0,ctl:'/lpc/demo/control/1'},{name:'System Fan #2',rpm:740,ctl:'/lpc/demo/control/2'},{name:'System Fan #3',rpm:750,ctl:'/lpc/demo/control/3'},{name:'Pump Fan',rpm:2400,ctl:'/lpc/demo/control/4'}],fans_manual_ready:true,fans_custom:{'/lpc/demo/control/2':45},fans_presets:[{id:'p1',name:'Notte',base:'eco',n:3},{id:'p2',name:'Render',base:'normal',n:2}],fans_preset:'',
+ fans:[{name:'CPU Fan',rpm:930,ctl:'/lpc/demo/control/0'},{name:'System Fan #1',rpm:0,ctl:'/lpc/demo/control/1'},{name:'System Fan #2',rpm:740,ctl:'/lpc/demo/control/2'},{name:'System Fan #3',rpm:750,ctl:'/lpc/demo/control/3'},{name:'Pump Fan',rpm:2400,ctl:'/lpc/demo/control/4'}],fans_manual_ready:true,fans_custom:{'/lpc/demo/control/2':45},fans_presets:[{id:'p1',name:'Notte',base:'eco',n:3},{id:'p2',name:'Render',base:'normal',n:2}],fans_preset:'',fans_mine:false,fans_mine_n:0,
  temps:[{kind:'cpu',name:'AMD Ryzen 7 9800X3D',rows:[{id:'/amdcpu/0/temperature/2',name:'Processore',value:46,max:88,hot:80,crit:90},{id:'/amdcpu/0/temperature/3',name:'CCD 1',value:41,max:86,hot:80,crit:90}]},
   {kind:'gpu',name:'NVIDIA GeForce RTX 3060 Ti',rows:[{id:'/gpu-nvidia/0/temperature/0',name:'Chip',value:38,max:74,hot:75,crit:85},{id:'/gpu-nvidia/0/temperature/2',name:'Punto più caldo',value:49,max:96,hot:90,crit:100}]},
   {kind:'board',name:'Scheda madre',rows:[{id:'/lpc/nct6687dr/0/temperature/1',name:'Sistema',value:44,max:47,hot:60,crit:75},{id:'/lpc/nct6687dr/0/temperature/2',name:'VRM (alimentazione CPU)',value:52,max:61,hot:75,crit:95},{id:'/lpc/nct6687dr/0/temperature/3',name:'Chipset',value:58,max:62,hot:60,crit:75}]},
@@ -378,18 +378,19 @@ function render(s){
  ['rgb-eco','rgb-normal','rgb-apply-all','q-rgb-off','q-rgb-on'].forEach(id=>$(id).disabled=!s.rgb_enabled);
  ['fans-eco','fans-normal','q-fans-eco','q-fans-normal'].forEach(id=>$(id).disabled=!s.fans_enabled);
  ['fans-off','fans-max'].forEach(id=>$(id).disabled=!s.fans_enabled||!s.fans_levels_ready);
- ['off','eco','normal','max'].forEach(l=>$('fans-'+l).classList.toggle('selected',s.fans_level===l&&!fanPreset(s)));
- renderFanPresets(s);renderFanSetup(s);
+ ['off','eco','normal','max'].forEach(l=>$('fans-'+l).classList.toggle('selected',s.fans_level===l&&!fanPreset(s)&&!s.fans_mine));
+ $('fans-mine').disabled=!s.fans_enabled;$('fans-mine').classList.toggle('selected',!!s.fans_mine);
+ renderFanPresets(s);renderFanSetup(s);renderFanMine(s);
  const upgrade=s.fans_enabled&&(!s.fans_levels_ready||s.fans_profiles_outdated);$('fans-upgrade').hidden=!upgrade;
  $('fans-upgrade-title').textContent=s.fans_levels_ready?'Nuovo Massimo: tutte le ventole al 100%':'Nuovi profili Spente e Massimo';
  const fanN=(s.fans||[]).filter(f=>f.rpm>0).length;
- $('cool-title').textContent=!s.fans_enabled?'Gestione del BIOS':fanPreset(s)?'Profilo '+fanPreset(s).name:{off:'Ventole spente',eco:'Profilo silenzioso',max:'Tutte al massimo'}[s.fans_level]||'Profilo normale';
+ $('cool-title').textContent=!s.fans_enabled?'Gestione del BIOS':s.fans_mine?'Personalizzate':fanPreset(s)?'Profilo '+fanPreset(s).name:{off:'Ventole spente',eco:'Profilo silenzioso',max:'Tutte al massimo'}[s.fans_level]||'Profilo normale';
  $('cool-sub').textContent=fanN?`${fanN} ventole in funzione${avg?` · media ${avg} RPM`:''} · CPU ${deg(s.cpu_temp)} · GPU ${deg(s.gpu_temp)}${boardTemp(s)!=null?` · scheda madre ${deg(boardTemp(s))}`:''}`:'Nessuna ventola rilevata: collega i sensori in Collegamenti';
- $('cool-hero').dataset.level=s.fans_enabled?(s.fans_level||'normal'):'bios';
+ $('cool-hero').dataset.level=!s.fans_enabled?'bios':s.fans_mine?'mine':(s.fans_level||'normal');
  // la ventola disegnata dietro gira alla velocità media di quelle vere
  $('cool-hero').style.setProperty('--spin',avg?Math.max(.5,Math.min(8,2400/avg)).toFixed(2)+'s':'0s');$('cool-hero').classList.toggle('still',!avg);
  $('rgb-title').textContent=!s.rgb_enabled?'OpenRGB non collegato':s.rgb_off?'LED spenti':'LED accesi';
- $('fan-profile').textContent=!s.fans_enabled?'Gestione BIOS':fanPreset(s)?'Profilo '+fanPreset(s).name:{off:'Ventole spente',eco:'Profilo silenzioso',max:'Al massimo'}[s.fans_level]||'Profilo normale';
+ $('fan-profile').textContent=!s.fans_enabled?'Gestione BIOS':s.fans_mine?'Personalizzate':fanPreset(s)?'Profilo '+fanPreset(s).name:{off:'Ventole spente',eco:'Profilo silenzioso',max:'Al massimo'}[s.fans_level]||'Profilo normale';
  $('rgb-label').textContent=!s.rgb_enabled?'OpenRGB non collegato':(s.rgb_off?'LED spenti: scegli un colore per riaccenderli':'Colore e luminosità per tutti i dispositivi');
  if(!rgbTouched&&s.rgb_color){$('rgb-color').value=s.rgb_color;$('rgb-bright').value=s.rgb_brightness??100;$('rgb-bright-val').textContent=$('rgb-bright').value+'%';}
  renderPalette(s.rgb_palette||[]);
@@ -630,6 +631,7 @@ function openFan(f){
   :current?.remote?'Per regolare ogni ventola a mano serve una conferma da amministratore, una volta sola: falla dalla app sul PC.'
   :'Per regolare ogni ventola a mano serve una conferma da amministratore, una volta sola: rifaccio i profili di Fan Control e aggiungo quello manuale.';
  const ap=$('fs-apply');ap.hidden=!enabled||(!ready&&!!current?.remote);ap.textContent=ready?'Applica':'Attiva regolazione';
+ $('fs-auto').textContent=current?.fans_mine?'Segue il profilo Normali. Sei in Personalizzate: quello che scegli qui resta salvato lì.':'Segue il livello scelto nella pagina (Spente, Silenziose, Normali o Massimo).';
  if(!d.open)d.showModal();
 }
 function fanRename(save){
@@ -701,6 +703,28 @@ async function fanPresetSave(){
  if(demo){const id='p'+Date.now();current.fans_presets=[...current.fans_presets,{id,name,base:current.fans_level,n:Object.keys(current.fans_custom).length}];current.fans_preset=id;fanPresetSaveBox(false);render(current);notify(`✓ Profilo ventole "${name}" salvato`);return;}
  try{const r=await req('/api/fans/preset','POST',{action:'save',name});fanPresetSaveBox(false);notify('✓ '+r.message);await refresh();}catch(ex){notify('⚠ '+ex.message,true);}
 }
+// Personalizzate: la quinta scelta. Un tocco rimette le velocità che hai deciso tu; si cambiano qui (tutte insieme)
+// o toccando una ventola: in Personalizzate ogni modifica resta salvata.
+let fmTouched=false;
+function renderFanMine(s){
+ const box=$('fan-mine');box.hidden=!s.fans_enabled||!s.fans_mine;if(box.hidden){fmTouched=false;return;}
+ const vals=Object.values(s.fans_custom||{}),nums=vals.filter(v=>typeof v==='number'),n=vals.length;
+ if(!fmTouched&&nums.length){const v=Math.min(...nums.filter(v=>v>=0));if(isFinite(v))fmShow(Math.round(v/5)*5);}
+ $('fm-hint').textContent=!n?'Scegli una velocità per tutte qui sopra, oppure regola le ventole una per una. Quello che scegli resta salvato: la prossima volta basta toccare Personalizzate.'
+  :`${n===1?'1 ventola decisa':n+' ventole decise'} da te: le cambi quando vuoi, tutte insieme qui sopra o una per volta, e restano salvate. Pompa e radiatore AIO non scendono sotto il 40%.`;
+}
+function fmShow(v){$('fm-range').value=v;$('fm-val').textContent=v+'%';}
+async function fanMine(percent){
+ if(demo){current.fans_mine=true;current.fans_preset='';
+  if(percent!=null){(current.fans||[]).filter(fanShown).forEach(f=>{current.fans_custom[f.ctl]=fanPumpish(f)?Math.max(40,percent):percent;});}
+  current.fans_mine_n=Object.keys(current.fans_custom).length;render(current);notify(percent!=null?`✓ Ventole personalizzate: tutte al ${percent}%`:'✓ Ventole personalizzate');return;}
+ if(busy)return;if(!key&&!tgInit){loginScreen(true);return;}
+ busy=true;try{const r=await req('/api/fans/mine','POST',percent!=null?{percent}:{});fmTouched=false;notify('✓ '+r.message);await refresh();}catch(ex){notify('⚠ '+ex.message,true);}finally{busy=false;}
+}
+$('fans-mine').addEventListener('click',()=>fanMine(null));
+$('fm-range').addEventListener('input',()=>{fmTouched=true;fmShow(+$('fm-range').value);});
+$('fm-all').addEventListener('click',()=>fanMine(+$('fm-range').value));
+$('fm-each').addEventListener('click',()=>$('fan-list').scrollIntoView({behavior:'smooth',block:'center'}));
 $('fp-save').addEventListener('click',()=>fanPresetSaveBox(true));
 $('fp-save-no').addEventListener('click',()=>fanPresetSaveBox(false));
 $('fp-save-ok').addEventListener('click',fanPresetSave);
@@ -719,7 +743,7 @@ $('fs-apply').addEventListener('click',async()=>{
  const f=fanSheet.f;if(!f)return;
  if(!current?.fans_manual_ready){closeFan();post('/api/fans/setup',{});return;}
  const percent=fanSheet.mode==='manual'?fanSheet.val:null,curve=fanSheet.mode==='curve'?{src:fanSheet.src,pts:fanSheet.pts.map(p=>[...p])}:null;closeFan();
- if(demo){current.fans_preset='';current.fans_custom[f.ctl]=curve||percent;if(curve==null&&percent==null)delete current.fans_custom[f.ctl];
+ if(demo){current.fans_preset='';current.fans_custom[f.ctl]=curve||percent;if(current.fans_mine)current.fans_mine_n=Object.keys(current.fans_custom).length;if(curve==null&&percent==null)delete current.fans_custom[f.ctl];
   notify(`✓ ${fanLabel(f)}: `+(curve?`curva sulla ${srcLabel(curve.src)}`:percent==null?'torna al profilo':`${percent}% fisso`));return;}
  post('/api/fans/one',{id:f.ctl,percent,curve});
 });
