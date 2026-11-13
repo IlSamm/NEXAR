@@ -379,7 +379,7 @@ function render(s){
  ['fans-eco','fans-normal','q-fans-eco','q-fans-normal'].forEach(id=>$(id).disabled=!s.fans_enabled);
  ['fans-off','fans-max'].forEach(id=>$(id).disabled=!s.fans_enabled||!s.fans_levels_ready);
  ['off','eco','normal','max'].forEach(l=>$('fans-'+l).classList.toggle('selected',s.fans_level===l&&!fanPreset(s)));
- renderFanPresets(s);
+ renderFanPresets(s);renderFanSetup(s);
  const upgrade=s.fans_enabled&&(!s.fans_levels_ready||s.fans_profiles_outdated);$('fans-upgrade').hidden=!upgrade;
  $('fans-upgrade-title').textContent=s.fans_levels_ready?'Nuovo Massimo: tutte le ventole al 100%':'Nuovi profili Spente e Massimo';
  const fanN=(s.fans||[]).filter(f=>f.rpm>0).length;
@@ -651,10 +651,20 @@ async function fansCheck(){
 function renderFanCheck(r){
  const list=$('fans-check-list');list.hidden=false;
  list.replaceChildren(...r.items.map(i=>{const li=el('li',i.ok===true?'ok':i.ok===false?'bad':'');li.append(icon(i.ok===true?'check':i.ok===false?'alert':'info'),el('span','',i.text));return li;}));
- $('fans-check-setup').hidden=!r.setup||!!current?.remote;
+ fanSetupNeeded=!!r.setup;if(current)renderFanSetup(current);
+}
+// "Rifai profili" sempre a portata: evidenziato quando serve davvero (file o attività mancanti, versione vecchia).
+let fanSetupNeeded=false;
+function renderFanSetup(s){
+ const b=$('fans-check-setup'),need=fanSetupNeeded||(s.fans_enabled&&(!s.fans_levels_ready||s.fans_profiles_outdated)),run=s.jobs?.['fans-setup']?.state==='running';
+ b.hidden=!s.fans_enabled||!!s.remote;b.classList.toggle('primary',need);b.classList.toggle('glass',!need);
+ b.disabled=run;b.lastChild.textContent=run?'Profili in corso…':'Rifai profili';
 }
 $('fans-check').addEventListener('click',fansCheck);
-$('fans-check-setup').addEventListener('click',()=>{$('fans-check-setup').hidden=true;post('/api/fans/setup',{});});
+$('fans-check-setup').addEventListener('click',async()=>{
+ if(!await ask('Rifare i profili delle ventole?','NEXAR ricrea in Fan Control Spente, Silenziose, Normali e Massimo con le ventole di adesso, poi rimette quello che hai scelto. I tuoi profili restano. Serve una conferma da amministratore sul PC.',{danger:false,ico:'fan',yes:'Rifai profili'}))return;
+ fanSetupNeeded=false;post('/api/fans/setup',{});
+});
 // I tuoi profili: le velocità regolate a mano salvate con un nome, accanto a Spente/Silenziose/Normali/Massimo.
 function fanPreset(s){return (s?.fans_presets||[]).find(p=>p.id&&p.id===s.fans_preset);}
 function renderFanPresets(s){

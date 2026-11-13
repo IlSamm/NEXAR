@@ -145,6 +145,30 @@ def test_fan_presets_save_apply_and_delete(tmp_path, monkeypatch):
     with pytest.raises(ValueError): c.fan_preset_save('x' * 21)
 
 
+def test_fans_reapply_after_new_profiles(tmp_path, monkeypatch):
+    """Dopo "Rifai profili" Fan Control ricarica la scelta di adesso dai file nuovi."""
+    c, core = _controller(tmp_path, monkeypatch)
+    folder = tmp_path / 'FanControl' / 'Configurations'; folder.mkdir(parents=True)
+    exe = tmp_path / 'FanControl' / 'FanControl.exe'; exe.write_text('')
+    for k in ('normal', 'eco'): (folder / discovery.FAN_FILES[k]).write_text(json.dumps(_profile()), encoding='utf-8')
+    c.config['fans'] = {'enabled': True, 'fancontrol_exe': str(exe), 'eco_profile': discovery.FAN_FILES['eco'], 'normal_profile': discovery.FAN_FILES['normal']}
+    ran = []
+    monkeypatch.setattr(discovery, 'task_restart', lambda task: ran.append(task) or True)
+    monkeypatch.setattr(discovery, 'task_exists', lambda task: True)
+    monkeypatch.setattr(core, 'FAN_SPACING', 0)
+    monkeypatch.setattr(c, 'fans_manual_ready', lambda: True)
+    monkeypatch.setattr(core, 'collect_sensors', lambda url: {'temp_ids': {}})
+    c.state['fans_level'] = 'eco'
+    assert 'silenziose' in c.fans_reapply() and ran == [discovery.FAN_TASKS['eco']]
+    c.fan_set('/lpc/x/control/1', 35); ran.clear()
+    c.fans_reapply()                                                      # regolazioni a mano: di nuovo nel file Manuale
+    slot = c.state['fans_slot']
+    assert ran == [discovery.FAN_TASKS[slot]] and c.state['fans_custom'] == {'/lpc/x/control/1': 35}
+    assert json.loads((folder / discovery.FAN_FILES[slot]).read_text(encoding='utf-8'))['FanControl']['Controls'][1]['ManualControlValue'] == 35
+    c.fan_preset_save('Notte'); ran.clear()
+    assert c.fans_reapply() == 'Ventole: profilo "Notte"' and len(ran) == 1
+
+
 def test_net_history_and_alerts(tmp_path, monkeypatch):
     c, _ = _controller(tmp_path, monkeypatch)
     def n(ms, q='ottima', loss=0): return {'at': 0, 'internet': {'ms': ms, 'loss': loss}, 'router': {'ms': 1}, 'dns_ms': 20, 'quality': q}

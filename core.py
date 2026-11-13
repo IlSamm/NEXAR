@@ -1727,11 +1727,8 @@ class Control:
             raise RuntimeError('Per usare i tuoi profili premi "Aggiorna profili" nella pagina Ventole (una conferma)')
         base = p.get('base') if p.get('base') in FAN_LEVEL_NAMES else 'normal'
         pump = bool(base == 'off' and p.get('pump'))
-        profile = ('off_pump' if pump else 'off') if base == 'off' else base
-        folder = discovery.fancontrol_config_dir(cfg.get('fancontrol_exe', ''))
-        prof = json.loads((folder / discovery.FAN_FILES.get(profile, discovery.FAN_FILES['normal'])).read_text(encoding='utf-8-sig'))
         custom = {k: v for k, v in (p.get('custom') or {}).items() if isinstance(v, (int, dict))}
-        slot = self.fan_custom_send(prof, custom)
+        slot = self.fan_custom_send(self.fan_base_profile(base, pump), custom)
         with self.lock:
             self.state.update(fans_level=base, fans_pump=pump, fans_eco=base in ('eco', 'off'), fans_custom=custom,
                               fans_slot=slot, fans_preset=p['id'])
@@ -1739,6 +1736,28 @@ class Control:
         msg = f'Ventole: profilo "{p["name"]}"'
         self.log_event(msg)
         return msg
+
+    def fan_base_profile(self, level, pump):
+        """Il profilo NEXAR del livello (Spente con o senza pompa, Silenziose, Normali, Massimo) letto dal file."""
+        import discovery
+        profile = ('off_pump' if pump else 'off') if level == 'off' else level
+        folder = discovery.fancontrol_config_dir(self.config.get('fans', {}).get('fancontrol_exe', ''))
+        return json.loads((folder / discovery.FAN_FILES.get(profile, discovery.FAN_FILES['normal'])).read_text(encoding='utf-8-sig'))
+
+    def fans_reapply(self):
+        """Dopo "Rifai profili": Fan Control ha ancora in memoria il profilo vecchio. Gli rimanda la scelta di adesso
+        (profilo tuo, regolazioni a mano o livello) letta dai file nuovi."""
+        pid = self.state.get('fans_preset')
+        if pid and any(p['id'] == pid for p in self.fan_presets()): return self.fan_preset_apply(pid)
+        level = self.state.get('fans_level') or 'normal'
+        level = level if level in FAN_LEVEL_NAMES else 'normal'
+        pump = bool(self.state.get('fans_pump'))
+        custom = {k: v for k, v in (self.state.get('fans_custom') or {}).items() if isinstance(v, (int, dict))}
+        if custom and self.fans_manual_ready():
+            slot = self.fan_custom_send(self.fan_base_profile(level, pump), custom)
+            with self.lock: self.state['fans_slot'] = slot; json_save(STATE_FILE, self.state)
+            return 'Ventole: regolazioni a mano rimesse'
+        return self.fans_level(level, keep_pump=pump if level == 'off' else None)
 
     def fan_preset_delete(self, pid):
         """Toglie il profilo dall'elenco; le ventole restano come sono adesso."""
@@ -1799,7 +1818,10 @@ class Control:
             self.config.setdefault('fans', {}).update(eco_profile=discovery.FAN_FILES['eco'], normal_profile=discovery.FAN_FILES['normal'],
                                                       profiles_version=discovery.FAN_PROFILES_VERSION)
             json_save(CONFIG_FILE, self.config)
+        self.fans_manual_cache = (0.0, False)
         self.discover()
+        try: self.fans_reapply()
+        except Exception as ex: logging.warning('Ventole: scelta non rimandata dopo i profili nuovi (%s)', ex)
         msg = f'Ventole configurate: ECO porta al {percent}% ' + ', '.join(chosen) + ' (radiatore e pompa esclusi)'
         self.log_event(msg)
         return msg
