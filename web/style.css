@@ -4064,3 +4064,30 @@ html.calm .vli::before,html.calm .vli::after,html.calm .vli-ring,html.calm .vli-
 .fm-val{flex:none;min-width:44px;text-align:right;font-size:18px;font-variant-numeric:tabular-nums}
 .fan-mine .fp-hint{margin:0}
 @media (max-width:480px){.fm-row{flex-wrap:wrap}.fm-range{flex:1 1 0}.fm-row .btn{width:100%}}
+
+/* Luci: interruttore Accesi/Spenti, colori che si applicano subito */
+.lx-power{margin-top:22px}
+.lx-power button{min-width:120px}
+.lx-now{margin:10px 0 0;font-size:12.5px;color:#94a3b8;min-height:1em}
+.lc-custom{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.lc-custom .color-input{flex:1 1 200px;min-width:0}
+.rgb-dev2{grid-template-columns:minmax(0,1fr) auto}
+.rd-color{display:grid;place-items:center;width:46px;height:46px;border-radius:50%;cursor:pointer;background:var(--dc);box-shadow:0 0 0 3px #0b0e14,0 0 0 5px color-mix(in srgb,var(--dc) 70%,#fff),0 0 22px -2px var(--dc);transition:transform .2s}
+.rd-color:hover{transform:scale(1.08)}
+.rd-color input{width:100%;height:100%;opacity:0;cursor:pointer;border:0;padding:0}
+/* Altre app di ventole e luci */
+.apps-card{margin-top:16px}
+.ac-auto{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;border-radius:14px;background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.07);margin-bottom:12px}
+.ac-auto>div{display:flex;flex-direction:column;min-width:0}
+.ac-auto small{font-size:11.5px;color:#94a3b8}
+.ac-list{display:flex;flex-direction:column;gap:8px}
+.ac-row{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:12px;padding:11px 14px;border-radius:14px;background:rgba(255,255,255,.025);border:1px solid rgba(255,255,255,.06)}
+.ac-dot{width:9px;height:9px;border-radius:50%;background:#34d399;box-shadow:0 0 8px #34d399}
+.ac-row.on .ac-dot{background:#f87171;box-shadow:0 0 8px #f87171;animation:hm-ping-c 1.8s infinite}
+.ac-txt{display:flex;flex-direction:column;gap:2px;min-width:0}
+.ac-txt b{font-size:13.5px}
+.ac-txt small{font-size:11.5px;color:#94a3b8}
+.ac-list .fineprint{margin:4px 0 0}
+.apps-fix{margin-top:16px}
+.apps-fix>div{display:flex;flex-direction:column;gap:2px;flex:1;min-width:0}
+@media (max-width:480px){.lx-power{width:100%}.lx-power button{min-width:0}.ac-row{grid-template-columns:auto minmax(0,1fr)}.ac-row .btn{grid-column:2;justify-self:start}}

@@ -477,31 +477,39 @@
       <span class="vx-tag"><span class="vx-ico"><svg class="i"><use href="#i-bulb"/></svg></span>Luci</span>
       <h2 class="vx-title" id="rgb-title">LED</h2>
       <p class="vx-sub" id="rgb-label">—</p>
-      <div class="vx-acts">
-       <button class="btn primary" type="button" id="rgb-apply-all"><svg class="i"><use href="#i-check"/></svg>Applica a tutti</button>
-       <button class="btn glass" type="button" data-action="rgb-eco" id="rgb-eco"><svg class="i"><use href="#i-moon"/></svg>Spegni</button>
-       <button class="btn glass" type="button" data-action="rgb-normal" id="rgb-normal"><svg class="i"><use href="#i-bulb"/></svg>Riaccendi</button>
+      <div class="vx-seg lx-power" role="group" aria-label="LED">
+       <button type="button" data-action="rgb-normal" id="rgb-normal"><svg class="i"><use href="#i-bulb"/></svg><span>Accesi</span></button>
+       <button type="button" data-action="rgb-eco" id="rgb-eco"><svg class="i"><use href="#i-moon"/></svg><span>Spenti</span></button>
       </div>
+      <p class="lx-now" id="rgb-now"></p>
      </div>
      <div class="vli" id="rgb-orb" aria-hidden="true">
       <div class="vli-ring"><i style="--k:0"></i><i style="--k:1"></i><i style="--k:2"></i><i style="--k:3"></i><i style="--k:4"></i><i style="--k:5"></i><i style="--k:6"></i><i style="--k:7"></i><i style="--k:8"></i><i style="--k:9"></i><i style="--k:10"></i><i style="--k:11"></i><i style="--k:12"></i><i style="--k:13"></i><i style="--k:14"></i><i style="--k:15"></i><i style="--k:16"></i><i style="--k:17"></i><i style="--k:18"></i><i style="--k:19"></i><i style="--k:20"></i><i style="--k:21"></i><i style="--k:22"></i><i style="--k:23"></i><i style="--k:24"></i><i style="--k:25"></i><i style="--k:26"></i><i style="--k:27"></i><i style="--k:28"></i><i style="--k:29"></i><i style="--k:30"></i><i style="--k:31"></i></div>
       <div class="vli-core"><svg class="i"><use href="#i-bulb"/></svg></div>
      </div>
     </section>
+    <div class="notice apps-fix" id="apps-fix-lights" hidden><div><b>Sistema ventole e luci</b><small class="af-text"></small></div><button class="btn small primary af-btn" type="button">Sistema adesso</button></div>
     <div class="lights-grid">
      <section class="card lc-color">
-      <div class="card-head"><div><h3>Colore</h3><p>Scegli, salva i preferiti e regola la luminosità</p></div></div>
-      <label class="color-input"><input type="color" id="rgb-color" value="#ffffff" aria-label="Colore LED"><span id="rgb-hex">#FFFFFF</span><small>tocca per scegliere</small></label>
+      <div class="card-head"><div><h3>Colore per tutti</h3><p>Tocca un colore: si accende subito su tutti i LED</p></div></div>
       <div class="swatches" id="rgb-swatches"></div>
-      <div class="palette-tools"><button class="btn small" type="button" id="palette-save"><svg class="i"><use href="#i-check"/></svg>Salva colore</button><button class="btn small" type="button" id="palette-edit">Modifica</button></div>
+      <div class="lc-custom">
+       <label class="color-input"><input type="color" id="rgb-color" value="#ffffff" aria-label="Scegli un altro colore"><span id="rgb-hex">#FFFFFF</span><small>Altro colore</small></label>
+       <div class="palette-tools"><button class="btn small" type="button" id="palette-save"><svg class="i"><use href="#i-check"/></svg>Salva</button><button class="btn small" type="button" id="palette-edit">Modifica</button></div>
+      </div>
       <label class="range lum"><span>Luminosità</span><input type="range" id="rgb-bright" min="5" max="100" step="5" value="100"><b id="rgb-bright-val">100%</b></label>
-      <p class="fineprint">Il colore viene ricordato: dopo AI ECO i LED tornano così.</p>
+      <p class="fineprint">Si applica appena lasci il dito. Il colore resta ricordato: dopo AI ECO i LED tornano così.</p>
      </section>
      <section class="card lc-devs">
-      <div class="card-head"><div><h3>Dispositivi</h3><p>Un colore diverso per ogni componente</p></div><button class="icon-btn" type="button" id="rgb-reload" aria-label="Ricarica"><svg class="i"><use href="#i-refresh"/></svg></button></div>
+      <div class="card-head"><div><h3>Un colore per dispositivo</h3><p>Tocca il pallino colorato di un dispositivo</p></div><button class="icon-btn" type="button" id="rgb-reload" aria-label="Ricarica i dispositivi"><svg class="i"><use href="#i-refresh"/></svg></button></div>
       <div class="rgb-devices" id="rgb-devices"><p class="muted">Caricamento…</p></div>
      </section>
     </div>
+    <section class="card apps-card" id="apps-lights">
+     <div class="card-head"><div><h3>Altre app di ventole e luci</h3><p>Due programmi sugli stessi LED o sulle stesse ventole si intralciano: NEXAR chiude gli altri</p></div></div>
+     <div class="ac-auto"><div><b>Chiudile da solo</b><small class="ac-note">Appena si aprono, anche all'accensione</small></div><button class="toggle ac-toggle" type="button" role="switch" aria-checked="true" aria-label="Chiudi da solo le app in conflitto"><span></span></button></div>
+     <div class="ac-list"></div>
+    </section>
    </section>
 
    <!-- VENTOLE -->
@@ -542,6 +550,7 @@
      </div>
      <p class="fineprint cool-note">Allo spegnimento Windows chiude Fan Control: negli ultimi secondi le ventole seguono la curva del BIOS. Per tenerle silenziose anche lì, nel BIOS (Hardware Monitor) scegli la curva <b>Silent</b> per le ventole del case.</p>
     </section>
+    <div class="notice apps-fix" id="apps-fix-cooling" hidden><div><b>Sistema ventole e luci</b><small class="af-text"></small></div><button class="btn small primary af-btn" type="button">Sistema adesso</button></div>
     <div class="notice" id="fans-upgrade" hidden><div><b id="fans-upgrade-title">Nuovi profili Spente e Massimo</b><small>Spente e Massimo su tutte le ventole, anche radiatore, pompa e scheda video. Si creano una volta in Fan Control: serve una conferma da amministratore.</small></div><button class="btn small primary" type="button" id="fans-upgrade-btn">Aggiorna profili</button></div>
     <section class="card tp-card" id="tp-card">
      <div class="card-head"><div><h3>Tutte le temperature</h3><p id="tp-sub">Dal vivo · la tacca bianca è il massimo da quando hai acceso il PC</p></div><span class="tp-sum" id="tp-sum" hidden></span></div>
@@ -555,6 +564,11 @@
      <div class="card-head"><div><h3>Le tue ventole</h3><p>Giri al minuto in tempo reale</p></div><span class="tag" id="fan-free" hidden>—</span></div>
      <div class="fan-grid" id="fan-list"></div>
      <p class="fineprint">Massimo: tutte al 100%. Spente: tutte ferme, con la scelta di tenere la pompa al minimo; con le ventole spente NEXAR controlla le temperature ogni 2 secondi e a 75 °C le riaccende. Silenziose: solo quelle del case. Sicurezza: con CPU sopra 80 °C (o GPU sopra 78 °C con le ventole spente) tornano da sole al profilo normale.</p>
+    </section>
+    <section class="card apps-card" id="apps-cooling">
+     <div class="card-head"><div><h3>Altre app di ventole e luci</h3><p>Due programmi sugli stessi LED o sulle stesse ventole si intralciano: NEXAR chiude gli altri</p></div></div>
+     <div class="ac-auto"><div><b>Chiudile da solo</b><small class="ac-note">Appena si aprono, anche all'accensione</small></div><button class="toggle ac-toggle" type="button" role="switch" aria-checked="true" aria-label="Chiudi da solo le app in conflitto"><span></span></button></div>
+     <div class="ac-list"></div>
     </section>
    </section>
 

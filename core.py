@@ -780,7 +780,15 @@ class Control:
 
     def admin_setup(self):
         """Una conferma UAC sul PC: da quel momento le azioni da amministratore funzionano anche da lontano."""
-        import admin_helper, discovery, optimizer, pc_power
+        import discovery
+        if not discovery.run_elevated(self.admin_script(), wait=True):
+            raise RuntimeError('Conferma amministratore annullata')
+        if not self.admin.active(): raise RuntimeError('Attività NEXAR Admin non creata')
+        self.log_event('🛡 Amministratore da remoto attivato')
+        return 'Amministratore da remoto attivo'
+
+    def admin_script(self):
+        import admin_helper, discovery, optimizer
         folder = admin_helper.root()
         exe = sys.executable
         fan_exe = self.config.get('fans', {}).get('fancontrol_exe') or discovery.find_fancontrol()
@@ -789,13 +797,10 @@ class Control:
             DATA_DIR / 'admin-request.json', folder / 'result.json', exe, clean, discovery.WINGET,
             fans_script=discovery.fancontrol_script(fan_exe, ROOT / 'fan_profiles') if fan_exe else '',
             trim=optimizer.TRIM_SCRIPT, autostart=discovery.autostart_task_script(exe), approved=optimizer.APPROVED,
-            rule=gateway.FIREWALL_RULE, port=gateway.GATEWAY_PORT, autostart_task=discovery.AUTOSTART_TASK)
+            rule=gateway.FIREWALL_RULE, port=gateway.GATEWAY_PORT, autostart_task=discovery.AUTOSTART_TASK,
+            apps=discovery.close_apps_table())
         user = f"{os.environ.get('USERDOMAIN', '')}\\{os.environ.get('USERNAME', '')}".strip('\\')
-        if not discovery.run_elevated(admin_helper.setup_script(folder, runner, user), wait=True):
-            raise RuntimeError('Conferma amministratore annullata')
-        if not self.admin.active(): raise RuntimeError('Attività NEXAR Admin non creata')
-        self.log_event('🛡 Amministratore da remoto attivato')
-        return 'Amministratore da remoto attivo'
+        return admin_helper.setup_script(folder, runner, user)
 
     def admin_remove(self):
         import admin_helper, discovery
@@ -1189,13 +1194,120 @@ class Control:
         rgb = self.config.get('rgb', {})
         if rgb.get('enabled') and rgb.get('openrgb_exe'):
             ok = discovery.port_open(discovery.OPENRGB_PORT)
-            if not ok and age >= 20 and due('rgb') and discovery.task_exists(discovery.OPENRGB_TASK):
+            if not ok and age >= 20 and due('rgb') and discovery.task_exists(discovery.OPENRGB_TASK) \
+                    and discovery.openrgb_service().get('status') not in ('running', 'start_pending'):
                 tries['rgb'] = now
                 discovery.task_restart(discovery.OPENRGB_TASK)
                 logging.info('Collegamenti: OpenRGB riavviato')
             state['rgb'] = ok
+        if self.config.get('conflicts', {}).get('auto_close', True) and not windows_shutting_down():
+            try:
+                if discovery.conflicts_running(): self.apps_close(auto=True)
+            except Exception: logging.exception('Chiusura delle app in conflitto')
         self.refresh_integrations(state)
         return state
+
+    # ---------- altre app che comandano ventole e luci ----------
+    def apps_close(self, keys=None, auto=False):
+        """Chiude le app in conflitto (tutte, o quelle scelte). Quelle avviate come amministratore le chiude
+        NEXAR Admin. Restituisce il messaggio per l'utente."""
+        import discovery, psutil
+        running = discovery.conflicts_running()
+        keys = [k for k in (keys if keys is not None else list(running)) if k in running]
+        if not keys: return 'Nessuna app in conflitto aperta'
+        closed, denied = [], []
+        for k in keys:
+            ok = True
+            for pid in running[k]:
+                try: psutil.Process(pid).kill()
+                except psutil.NoSuchProcess: pass
+                except (psutil.AccessDenied, OSError): ok = False
+            (closed if ok else denied).append(k)
+        why = ''
+        if denied:
+            if self.admin.active() and self.admin.current():
+                try: self.admin.call('close_apps', keys=denied); closed += denied; denied = []
+                except RuntimeError as ex: why = str(ex)
+            else: why = 'avviate come amministratore: premi "Sistema" nella pagina Luci (una conferma)'
+        self.apps_cache = (0.0, None)
+        label = lambda ks: ', '.join(discovery.app_label(k)[0] for k in ks)
+        if closed:
+            now, at = datetime.now().strftime('%H:%M'), time.monotonic()
+            with self.lock:
+                seen = self.state.setdefault('apps_closed', {})
+                for k in closed: seen[k] = now
+                json_save(STATE_FILE, self.state)
+            logged = getattr(self, 'apps_logged', {})
+            fresh = [k for k in closed if not auto or at - logged.get(k, -1e9) > 1800]
+            for k in closed: logged[k] = at
+            self.apps_logged = logged
+            if fresh: self.log_event('Chiuse perché comandavano ventole o luci insieme a NEXAR: ' + label(fresh))
+        if denied:
+            if not auto: raise RuntimeError(f'Non chiuse: {label(denied)} ({why})')
+            if time.monotonic() - getattr(self, 'apps_warned', -1e9) > 1800:  # controllo ogni minuto: avviso ogni mezz'ora
+                self.apps_warned = time.monotonic()
+                logging.warning('App in conflitto non chiuse (%s): %s', label(denied), why)
+        return 'Chiuse: ' + label(closed)
+
+    def apps_fix_needed(self):
+        """Una conferma da amministratore sistema tutto: Fan Control nascosto, OpenRGB in una copia sola, NEXAR Admin aggiornato."""
+        import discovery
+        at, need = getattr(self, 'apps_fix_cache', (0.0, None))
+        if need is None or time.monotonic() - at > 60:
+            need = []
+            if self.fans_tasks_outdated(): need.append('fans')
+            if discovery.openrgb_service() and discovery.task_exists(discovery.OPENRGB_TASK): need.append('openrgb')
+            if self.admin.active() and not self.admin.current(): need.append('admin')
+            self.apps_fix_cache = (time.monotonic(), need)
+        return need
+
+    def fans_tasks_outdated(self):
+        import discovery
+        cfg = self.config.get('fans', {})
+        return bool(cfg.get('enabled')) and int(cfg.get('tasks_version', 1)) < discovery.FAN_TASKS_VERSION
+
+    def apps_fix_script(self):
+        """Il pezzo da amministratore che va insieme ai profili ventole: OpenRGB in una copia sola e NEXAR Admin aggiornato."""
+        import discovery
+        return discovery.openrgb_fix_script() + (self.admin_script() if self.admin.active() else '')
+
+    def apps_fix(self):
+        """Pulsante "Sistema": una sola conferma UAC sul PC."""
+        import discovery
+        fans = self.config.get('fans', {})
+        if fans.get('enabled') and (fans.get('fancontrol_exe') or discovery.find_fancontrol()):
+            msg = self.setup_fans()
+        else:
+            script = self.apps_fix_script()
+            if script and not discovery.run_elevated(script, wait=True): raise RuntimeError('Conferma da amministratore annullata')
+            msg = 'OpenRGB sistemato'
+        self.apps_fix_cache = (0.0, None)
+        try: self.apps_close(auto=True)
+        except Exception: logging.exception('Chiusura delle app in conflitto')
+        return msg
+
+    def apps_info(self):
+        """Per la dashboard (cache 10 s: la chiede ogni 4 s)."""
+        import discovery
+        at, info = getattr(self, 'apps_cache', (0.0, None))
+        if info is None or time.monotonic() - at > 10:
+            running = discovery.conflicts_running()
+            closed = self.state.get('apps_closed') or {}
+            rows = []
+            for k in dict.fromkeys([*running, *closed]):
+                name, what = discovery.app_label(k)
+                rows.append({'key': k, 'name': name, 'what': what, 'running': k in running, 'closed_at': closed.get(k, '')})
+            svc = discovery.openrgb_service()
+            info = {'apps': rows, 'openrgb_service': svc.get('status', ''),
+                    'msi_center': discovery.process_running('LEDKeeper2.exe') or discovery.process_running('MSI.CentralServer.exe')}
+            self.apps_cache = (time.monotonic(), info)
+        return dict(info, auto_close=bool(self.config.get('conflicts', {}).get('auto_close', True)), fix=self.apps_fix_needed(),
+                    admin=self.admin.active())
+
+    def set_apps_auto(self, on):
+        with self.lock:
+            self.config.setdefault('conflicts', {})['auto_close'] = bool(on); json_save(CONFIG_FILE, self.config)
+        return 'Chiusura automatica ' + ('attiva' if on else 'spenta')
 
     CONN_OK = {'sensors': 'Temperature e RPM collegati', 'rgb': 'Server RGB collegato', 'fans': None}
 
@@ -1555,7 +1667,7 @@ class Control:
             return 'Ventole: ' + FAN_LEVEL_NAMES[level] + detail[level]
         opts = dict(cwd=str(exe.parent), stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         if os.name == 'nt': opts['creationflags'] = subprocess.CREATE_NO_WINDOW
-        subprocess.Popen([str(exe),'-c',name],**opts)
+        subprocess.Popen([str(exe),'-c',name,'-m'],**opts)
         return 'Ventole: richiesto profilo '+name+' (AIO escluso nei profili utente)'
 
     def fan_rows(self, fans):
@@ -1864,12 +1976,14 @@ class Control:
         exe = cfg.get('fancontrol_exe') or discovery.find_fancontrol()
         if not exe: raise RuntimeError('Fan Control non trovato')
         percent = int(cfg.get('eco_percent', 40))
-        chosen = discovery.fancontrol_setup(exe, percent, ROOT / 'fan_profiles', admin)
+        chosen = discovery.fancontrol_setup(exe, percent, ROOT / 'fan_profiles', admin, extra='' if admin else self.apps_fix_script())
         self.fans_ready_cache = (0.0, False)
         with self.lock:
             self.config.setdefault('fans', {}).update(eco_profile=discovery.FAN_FILES['eco'], normal_profile=discovery.FAN_FILES['normal'],
-                                                      profiles_version=discovery.FAN_PROFILES_VERSION)
+                                                      profiles_version=discovery.FAN_PROFILES_VERSION,
+                                                      **({} if admin and not self.admin.current() else {'tasks_version': discovery.FAN_TASKS_VERSION}))
             json_save(CONFIG_FILE, self.config)
+        self.apps_fix_cache = (0.0, None)
         self.fans_manual_cache = (0.0, False)
         self.discover()
         try: self.fans_reapply()
@@ -2273,6 +2387,7 @@ class Control:
             'fans_presets':[{'id':p['id'],'name':p.get('name',''),'base':p.get('base','normal'),'n':len(p.get('custom') or {})} for p in self.fan_presets()],
             'fans_preset':self.state.get('fans_preset') or '',
             'fans_mine':bool(self.state.get('fans_mine')),
+            'apps':self.apps_info(),
             'fans_mine_n':len(self.fans_mine_saved()),
             'fans_profiles_outdated':self.fans_profiles_outdated() if self.config.get('fans',{}).get('enabled') else False,
             'pc':self.pc_info(),

@@ -390,6 +390,24 @@ def fan_mine(data: FanMine):
     try: return {'ok':True,'message':controller.fans_mine(data.percent)}
     except (RuntimeError,OSError,ValueError) as ex: raise HTTPException(400,str(ex))
 
+class AppsReq(BaseModel):
+    action: str
+    key: str = ''
+    enabled: bool = True
+@app.post('/api/conflicts',dependencies=[Depends(authorized)])
+def conflicts(data: AppsReq):
+    try:
+        if data.action == 'close': msg = controller.apps_close([data.key] if data.key else None)
+        elif data.action == 'auto': msg = controller.set_apps_auto(data.enabled)
+        else: raise ValueError('Azione non valida')
+        return {'ok':True,'message':msg}
+    except (RuntimeError,OSError,ValueError) as ex: raise HTTPException(400,str(ex))
+
+@app.post('/api/conflicts/fix',dependencies=[Depends(authorized),Depends(local_only)])
+def conflicts_fix():
+    try: return {'ok':True,'message':controller.run_job('apps-fix',controller.apps_fix)}
+    except RuntimeError as ex: raise HTTPException(409,str(ex))
+
 @app.post('/api/fans/check',dependencies=[Depends(authorized)])
 def fans_check():
     try: return {'ok':True,**controller.fans_check()}

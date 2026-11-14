@@ -36,6 +36,7 @@ $res = @@RES@@
 $exe = @@EXE@@
 $clean = @{ @@CLEAN@@ }
 $pkg = @{ @@PKG@@ }
+$apps = @{ @@APPS@@ }
 $r = $null
 function Reply($ok, $msg) {
   $id = ''
@@ -103,6 +104,19 @@ try {
     'fans' {
       @@FANS@@
     }
+    'close_apps' {
+      foreach ($k in @($a.keys)) {
+        if ([string]$k -ceq 'openrgb_extra') {
+          if ((Get-Service OpenRGB -ErrorAction SilentlyContinue).Status -eq 'Running') {
+            Get-Process -Name OpenRGB -ErrorAction SilentlyContinue | Where-Object { $_.SessionId -ne 0 } | Stop-Process -Force -ErrorAction SilentlyContinue
+          }
+          continue
+        }
+        $names = $apps[[string]$k]
+        if (-not $names) { throw 'App non prevista' }
+        foreach ($n in $names.Split('|')) { Get-Process -Name $n -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue }
+      }
+    }
     default { throw 'Azione non prevista' }
   }
   Reply $true 'ok'
@@ -113,12 +127,12 @@ try {
 
 
 def runner_text(request: Path, result: Path, exe: str, clean: dict, packages: dict, fans_script: str = '', trim: str = '',
-                autostart: str = '', approved: str = '', rule: str = '', port: int = 0, autostart_task: str = '') -> str:
+                autostart: str = '', approved: str = '', rule: str = '', port: int = 0, autostart_task: str = '', apps: dict | None = None) -> str:
     table = lambda d: '; '.join(f'{q(k)} = {q(v)}' for k, v in d.items())
     fans = fans_script or "throw 'Fan Control non era presente: riattiva Amministratore da remoto sul PC'"
     values = {'@@REQ@@': q(request), '@@RES@@': q(result), '@@EXE@@': q(exe), '@@CLEAN@@': table(clean), '@@PKG@@': table(packages),
               '@@TRIM@@': trim, '@@APPROVED@@': q('HKLM:\\' + approved), '@@RULE@@': q(rule), '@@PORT@@': str(port),
-              '@@AUTOSTART@@': autostart, '@@AUTOTASK@@': q(autostart_task), '@@FANS@@': fans}
+              '@@AUTOSTART@@': autostart, '@@AUTOTASK@@': q(autostart_task), '@@FANS@@': fans, '@@APPS@@': table(apps or {})}
     text = RUNNER
     for key, value in values.items(): text = text.replace(key, value)
     return text
@@ -169,6 +183,11 @@ class AdminHelper:
 
     def info(self) -> dict:
         return {'active': self.active()}
+
+    def current(self) -> bool:
+        """Il runner sa fare le azioni di questa versione (creato da una NEXAR vecchia: va rifatto con una conferma)."""
+        try: return "'close_apps'" in (self.folder / 'runner.ps1').read_text(encoding='utf-8-sig')
+        except OSError: return False
 
     def _read_result(self):
         try: return json.loads(self.result.read_text(encoding='utf-8-sig'))

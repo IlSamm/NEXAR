@@ -180,8 +180,72 @@ def port_open(port: int) -> bool:
     except OSError: return False
 
 def openrgb_start(exe: str, allow_uac: bool) -> str:
-    """Server OpenRGB come amministratore (serve per la RAM), ridotto a icona, a ogni accesso."""
+    """Server OpenRGB come amministratore (serve per la RAM), ridotto a icona, a ogni accesso.
+    Se OpenRGB gira già come servizio di Windows non ne avvia una seconda copia."""
+    if openrgb_service().get('status') in ('running', 'start_pending'): return 'avviato'
     return elevated_task(OPENRGB_TASK, exe, '--server --startminimized', allow_uac)
+
+def openrgb_service() -> dict:
+    """Il servizio di Windows che OpenRGB 1.x installa: {'status': 'running'|'stopped'|…, 'pid': n}, {} se non c'è.
+    Con il servizio acceso una seconda copia (l'attività di NEXAR) scrive sugli stessi LED e li fa impazzire."""
+    if os.name != 'nt': return {}
+    try:
+        import psutil
+        d = psutil.win_service_get('OpenRGB').as_dict()
+        return {'status': str(d.get('status') or ''), 'pid': d.get('pid')}
+    except Exception: return {}
+
+def openrgb_fix_script() -> str:
+    """Con il servizio OpenRGB: via l'attività di NEXAR che all'accesso apriva la seconda copia, e chiusa quella aperta."""
+    if not openrgb_service(): return ''
+    return (f"Unregister-ScheduledTask -TaskName {_q(OPENRGB_TASK)} -Confirm:$false -ErrorAction SilentlyContinue;"
+            "if ((Get-Service OpenRGB -ErrorAction SilentlyContinue).Status -eq 'Running') {"
+            " Get-Process -Name OpenRGB -ErrorAction SilentlyContinue | Where-Object { $_.SessionId -ne 0 } | Stop-Process -Force -ErrorAction SilentlyContinue };")
+
+# ---------- altre app che comandano ventole e luci ----------
+# Due programmi che scrivono sugli stessi controller (SMBus della RAM, USB, attacchi delle ventole) si annullano a
+# vicenda: LED che si riaccendono o cambiano colore da soli, ventole che saltano. NEXAR chiude questi programmi
+# (solo i programmi, mai i servizi di Windows). MSI Center resta: comanda i LED dell'ARCTIC, che OpenRGB non sa accendere.
+CONFLICT_APPS = {
+    'armoury': ('ASUS Armoury Crate', 'luci della RAM e dei dispositivi ASUS',
+                ('ArmouryCrate', 'ArmouryCrate.UserSessionHelper', 'asus_framework', 'ArmourySwAgent', 'ArmourySocketServer')),
+    'aisuite': ('ASUS AI Suite', 'ventole', ('AISuite3',)),
+    'icue': ('Corsair iCUE', 'ventole e luci', ('iCUE',)),
+    'cam': ('NZXT CAM', 'ventole e luci', ('NZXT CAM',)),
+    'signalrgb': ('SignalRGB', 'luci', ('SignalRgb', 'SignalRgbLauncher')),
+    'lconnect': ('Lian Li L-Connect', 'ventole e luci', ('L-Connect 3', 'L-Connect')),
+    'ttrgb': ('Thermaltake TT RGB Plus', 'ventole e luci', ('TT RGB Plus',)),
+    'rgbfusion': ('Gigabyte RGB Fusion', 'luci', ('RGBFusion',)),
+    'argus': ('Argus Monitor', 'ventole', ('ArgusMonitor',)),
+    'speedfan': ('SpeedFan', 'ventole', ('speedfan',)),
+}
+OPENRGB_EXTRA = 'openrgb_extra'
+
+def app_label(key: str) -> tuple[str, str]:
+    if key == OPENRGB_EXTRA: return 'Seconda copia di OpenRGB', 'luci (la prima gira già come servizio)'
+    name, what, _ = CONFLICT_APPS.get(key, (key, '', ()))
+    return name, what
+
+def conflicts_running() -> dict:
+    """{chiave: [pid…]} delle app in conflitto aperte adesso, compresa una seconda copia di OpenRGB."""
+    if os.name != 'nt': return {}
+    import psutil
+    want = {n.lower() + '.exe': k for k, (_, _, names) in CONFLICT_APPS.items() for n in names}
+    svc = openrgb_service()
+    spid = svc.get('pid') if svc.get('status') == 'running' else None
+    found = {}
+    for p in psutil.process_iter(['name', 'pid', 'ppid']):
+        try:
+            n = (p.info['name'] or '').lower()
+            if n in want: found.setdefault(want[n], []).append(p.info['pid'])
+            elif n == 'openrgb.exe' and spid and spid not in (p.info['pid'], p.info['ppid']):
+                found.setdefault(OPENRGB_EXTRA, []).append(p.info['pid'])
+        except Exception: continue
+    return found
+
+def close_apps_table() -> dict:
+    """Per il runner di NEXAR Admin: chiave → nomi dei processi (senza .exe) separati da |."""
+    return {k: '|'.join(names) for k, (_, _, names) in CONFLICT_APPS.items()}
 
 def _q(s): return "'" + str(s).replace("'", "''") + "'"
 
@@ -260,6 +324,8 @@ FAN_LEVELS = {'off': 0, 'off_pump': 0, 'eco': None, 'normal': None, 'max': 100}
 # "off_pump" è Spente con la pompa AIO al minimo. ECO resta solo sulle ventole del case.
 ALL_FANS_LEVELS = ('max', 'off', 'off_pump')
 PUMP_MIN_PERCENT = 40
+# Attività che lanciano Fan Control: 2 = con -m (ridotto a icona, lavora nascosto, niente finestra a ogni cambio).
+FAN_TASKS_VERSION = 2
 FAN_PROFILES_VERSION = 4  # 2 = Massimo su tutte; 3 = Spente su tutte + variante con pompa al minimo; 4 = AIO su CPU_FAN al minimo
 FAN_EXCLUDE = ('cpu', 'pump', 'aio', 'nvidia', 'gpu', 'chipset')
 
@@ -397,10 +463,10 @@ def fancontrol_script(exe: str, staging: Path) -> str:
     if sid:
         script += ''.join(f"& icacls.exe {_q(dest / FAN_FILES[k])} /grant {_q('*' + sid + ':(M)')} | Out-Null;" for dest in dests for k in FAN_MANUAL)
     for key, task in FAN_TASKS.items():
-        script += task_script(task, exe, f'-c {FAN_FILES[key]}', at_logon=False, start=False)
+        script += task_script(task, exe, f'-c {FAN_FILES[key]} -m', at_logon=False, start=False)
     return script
 
-def fancontrol_setup(exe: str, eco_percent: int, staging: Path, admin=None) -> list[str]:
+def fancontrol_setup(exe: str, eco_percent: int, staging: Path, admin=None, extra: str = '') -> list[str]:
     """Scrive i profili nella cartella protetta di Fan Control e crea le attività per cambiarli senza UAC."""
     profiles, chosen = build_fan_profiles(exe, eco_percent)
     if not chosen: raise RuntimeError('Nessuna ventola del case rilevata (servono i sensori collegati)')
@@ -411,7 +477,7 @@ def fancontrol_setup(exe: str, eco_percent: int, staging: Path, admin=None) -> l
     if admin:
         admin.call('fans')
         return chosen
-    if not run_elevated(fancontrol_script(exe, staging), wait=True): raise RuntimeError('Conferma da amministratore annullata')
+    if not run_elevated(fancontrol_script(exe, staging) + extra, wait=True): raise RuntimeError('Conferma da amministratore annullata')
     return chosen
 
 def winget_install(section: str, admin=None) -> str:

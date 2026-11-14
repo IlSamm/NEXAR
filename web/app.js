@@ -57,7 +57,7 @@ let tgApp=null;let current=null,busy=false,rgbTouched=false,schedKind='shutdown'
 const hist={cpu:[],gpu:[],power:[],ram:[],fan:[]};let curView='home';
 const COMP={cpu:'#38bdf8',gpu:'#a78bfa',board:'#94a3b8',ram:'#2dd4bf',disks:'#fbbf24',cooling:'#34d399',rgb:'#f472b6',usb:'#fb923c',monitor:'#e2e8f0'};
 const statusDemo={connected:true,fps:142,version:'1.0.0',update:new URLSearchParams(location.search).has('upd')?{supported:true,available:true,latest:'1.0.31',checked_at:'2026-11-03T21:10:00'}:{supported:true,available:false,checked_at:'2026-11-03T21:10:00'},mode:'gaming',fans_level:'max',fans_levels_ready:true,cpu:12,cpu_temp:46,gpu:6,gpu_temp:38,gpu_watts:24,ram:34,ram_used:10.9,ram_total:31.1,eco_cpu_max_percent:90,
- fans:[{name:'CPU Fan',rpm:930,ctl:'/lpc/demo/control/0'},{name:'System Fan #1',rpm:0,ctl:'/lpc/demo/control/1'},{name:'System Fan #2',rpm:740,ctl:'/lpc/demo/control/2'},{name:'System Fan #3',rpm:750,ctl:'/lpc/demo/control/3'},{name:'Pump Fan',rpm:2400,ctl:'/lpc/demo/control/4'}],fans_manual_ready:true,fans_custom:{'/lpc/demo/control/2':45},fans_presets:[{id:'p1',name:'Notte',base:'eco',n:3},{id:'p2',name:'Render',base:'normal',n:2}],fans_preset:'',fans_mine:false,fans_mine_n:0,
+ fans:[{name:'CPU Fan',rpm:930,ctl:'/lpc/demo/control/0'},{name:'System Fan #1',rpm:0,ctl:'/lpc/demo/control/1'},{name:'System Fan #2',rpm:740,ctl:'/lpc/demo/control/2'},{name:'System Fan #3',rpm:750,ctl:'/lpc/demo/control/3'},{name:'Pump Fan',rpm:2400,ctl:'/lpc/demo/control/4'}],fans_manual_ready:true,fans_custom:{'/lpc/demo/control/2':45},fans_presets:[{id:'p1',name:'Notte',base:'eco',n:3},{id:'p2',name:'Render',base:'normal',n:2}],fans_preset:'',fans_mine:false,fans_mine_n:0,apps:{apps:[{key:'armoury',name:'ASUS Armoury Crate',what:'luci della RAM e dei dispositivi ASUS',running:true,closed_at:''},{key:'openrgb_extra',name:'Seconda copia di OpenRGB',what:'luci (la prima gira già come servizio)',running:false,closed_at:'12:42'}],openrgb_service:'running',msi_center:true,auto_close:true,fix:['fans','openrgb'],admin:true},
  temps:[{kind:'cpu',name:'AMD Ryzen 7 9800X3D',rows:[{id:'/amdcpu/0/temperature/2',name:'Processore',value:46,max:88,hot:80,crit:90},{id:'/amdcpu/0/temperature/3',name:'CCD 1',value:41,max:86,hot:80,crit:90}]},
   {kind:'gpu',name:'NVIDIA GeForce RTX 3060 Ti',rows:[{id:'/gpu-nvidia/0/temperature/0',name:'Chip',value:38,max:74,hot:75,crit:85},{id:'/gpu-nvidia/0/temperature/2',name:'Punto più caldo',value:49,max:96,hot:90,crit:100}]},
   {kind:'board',name:'Scheda madre',rows:[{id:'/lpc/nct6687dr/0/temperature/1',name:'Sistema',value:44,max:47,hot:60,crit:75},{id:'/lpc/nct6687dr/0/temperature/2',name:'VRM (alimentazione CPU)',value:52,max:61,hot:75,crit:95},{id:'/lpc/nct6687dr/0/temperature/3',name:'Chipset',value:58,max:62,hot:60,crit:75}]},
@@ -375,7 +375,10 @@ function render(s){
  $('auto-toggle').setAttribute('aria-checked',s.auto_enabled?'true':'false');
  $('auto-note').textContent=s.auto_enabled?'AI ECO parte da sola quando lavorano':'Spenta: cambi modalità solo a mano';
  // Luci e ventole
- ['rgb-eco','rgb-normal','rgb-apply-all','q-rgb-off','q-rgb-on'].forEach(id=>$(id).disabled=!s.rgb_enabled);
+ ['rgb-eco','rgb-normal','q-rgb-off','q-rgb-on'].forEach(id=>$(id).disabled=!s.rgb_enabled);
+ $('rgb-normal').classList.toggle('selected',!!s.rgb_enabled&&!s.rgb_off);$('rgb-eco').classList.toggle('selected',!!s.rgb_enabled&&!!s.rgb_off);
+ $('rgb-now').textContent=!s.rgb_enabled?'':s.rgb_off?'Tocca Accesi per riaccenderli col colore di prima':`Adesso ${(s.rgb_color||'#ffffff').toUpperCase()} al ${s.rgb_brightness??100}%`;
+ renderConflicts(s);
  ['fans-eco','fans-normal','q-fans-eco','q-fans-normal'].forEach(id=>$(id).disabled=!s.fans_enabled);
  ['fans-off','fans-max'].forEach(id=>$(id).disabled=!s.fans_enabled||!s.fans_levels_ready);
  ['off','eco','normal','max'].forEach(l=>$('fans-'+l).classList.toggle('selected',s.fans_level===l&&!fanPreset(s)&&!s.fans_mine));
@@ -658,7 +661,7 @@ function renderFanCheck(r){
 // "Rifai profili" sempre a portata: evidenziato quando serve davvero (file o attività mancanti, versione vecchia).
 let fanSetupNeeded=false;
 function renderFanSetup(s){
- const b=$('fans-check-setup'),need=fanSetupNeeded||(s.fans_enabled&&(!s.fans_levels_ready||s.fans_profiles_outdated)),run=s.jobs?.['fans-setup']?.state==='running';
+ const b=$('fans-check-setup'),need=fanSetupNeeded||(s.fans_enabled&&(!s.fans_levels_ready||s.fans_profiles_outdated||(s.apps?.fix||[]).includes('fans'))),run=s.jobs?.['fans-setup']?.state==='running';
  b.hidden=!s.fans_enabled||!!s.remote;b.classList.toggle('primary',need);b.classList.toggle('glass',!need);
  b.disabled=run;b.lastChild.textContent=run?'Profili in corso…':'Rifai profili';
 }
@@ -725,6 +728,40 @@ $('fans-mine').addEventListener('click',()=>fanMine(null));
 $('fm-range').addEventListener('input',()=>{fmTouched=true;fmShow(+$('fm-range').value);});
 $('fm-all').addEventListener('click',()=>fanMine(+$('fm-range').value));
 $('fm-each').addEventListener('click',()=>$('fan-list').scrollIntoView({behavior:'smooth',block:'center'}));
+// Altre app di ventole e luci: stessa scheda in Luci e in Temperature.
+function renderConflicts(s){
+ const a=s.apps||{apps:[],fix:[]},remote=!!s.remote,fix=(a.fix||[]).filter(k=>k!=='fans'||s.fans_enabled);
+ const what={fans:'Fan Control lavorerà nascosto, senza aprirti la finestra a ogni cambio',openrgb:'OpenRGB in una copia sola: adesso ne partono due e i LED impazziscono',admin:'NEXAR Admin impara a chiudere le app avviate come amministratore'};;
+ ['lights','cooling'].forEach(page=>{
+  const n=$('apps-fix-'+page);n.hidden=!fix.length;
+  if(fix.length){n.querySelector('.af-text').textContent=fix.map(k=>what[k]).filter(Boolean).join(' · ')+(remote?'. Fallo dalla app sul PC: serve una conferma da amministratore.':'. Una sola conferma da amministratore.');
+   const b=n.querySelector('.af-btn');b.hidden=remote;const run=s.jobs?.['apps-fix']?.state==='running'||s.jobs?.['fans-setup']?.state==='running';b.disabled=run;b.textContent=run?'In corso…':'Sistema adesso';}
+  const card=$('apps-'+page),t=card.querySelector('.ac-toggle');t.setAttribute('aria-checked',a.auto_close!==false?'true':'false');
+  const list=card.querySelector('.ac-list'),key=JSON.stringify([a.apps,a.openrgb_service,a.msi_center,a.auto_close]);if(list._k===key)return;list._k=key;
+  const rows=(a.apps||[]).map(x=>{const r=el('div','ac-row'+(x.running?' on':''));r.append(el('i','ac-dot'));
+   const tx=el('div','ac-txt');tx.append(el('b','',x.name),el('small','',x.running?`Aperta · comanda ${x.what}`:`Chiusa da NEXAR${x.closed_at?' alle '+x.closed_at:''} · comandava ${x.what}`));r.append(tx);
+   if(x.running){const b=el('button','btn small','Chiudi');b.type='button';b.addEventListener('click',()=>conflictClose(x));r.append(b);}
+   return r;});
+  if(!rows.length)rows.push(el('p','muted ac-empty','Nessun\'altra app di ventole o luci aperta: NEXAR è l\'unico a comandarle.'));
+  if(a.openrgb_service==='running')rows.push(el('p','fineprint',"OpenRGB gira come servizio di Windows: NEXAR usa quello e non ne apre un'altra copia."));
+  if(a.msi_center)rows.push(el('p','fineprint',"MSI Center resta acceso: comanda i LED dell'ARCTIC sulla scheda madre, che OpenRGB non sa accendere."));
+  list.replaceChildren(...rows);
+ });
+}
+async function conflictClose(x){
+ if(demo){current.apps.apps=current.apps.apps.map(y=>y.key===x.key?{...y,running:false,closed_at:'12:42'}:y);render(current);notify('✓ Chiuse: '+x.name);return;}
+ post('/api/conflicts',{action:'close',key:x.key});
+}
+document.querySelectorAll('.ac-toggle').forEach(t=>t.addEventListener('click',()=>{
+ const on=t.getAttribute('aria-checked')!=='true';
+ if(demo){current.apps.auto_close=on;render(current);return;}
+ post('/api/conflicts',{action:'auto',enabled:on});
+}));
+document.querySelectorAll('.af-btn').forEach(b=>b.addEventListener('click',async()=>{
+ if(!await ask('Sistemare ventole e luci?','Una conferma da amministratore: rifaccio le attività di Fan Control (ridotto a icona), tengo OpenRGB in una copia sola e aggiorno NEXAR Admin. Le tue scelte di ventole e luci restano.',{danger:false,ico:'fan',yes:'Sistema adesso'}))return;
+ if(demo){current.apps.fix=[];render(current);notify('✓ Sistemato');return;}
+ post('/api/conflicts/fix',{});
+}));
 $('fp-save').addEventListener('click',()=>fanPresetSaveBox(true));
 $('fp-save-no').addEventListener('click',()=>fanPresetSaveBox(false));
 $('fp-save-ok').addEventListener('click',fanPresetSave);
@@ -947,7 +984,10 @@ async function applyColor(color,device){
 }
 async function loadRgbDevices(){
  const box=$('rgb-devices');
- if(demo){box.replaceChildren(el('p','muted','Anteprima: dispositivi non disponibili.'));return;}
+ if(demo){box.replaceChildren();[['Kingston FURY DDR5',10,'#ff0000'],['NVIDIA GeForce RTX 3060 Ti',12,'#8b5cf6'],['Logitech G502',2,'#22d3ee']].forEach(([n,l,col],i)=>{
+   const row=el('div','rgb-dev2');row.style.setProperty('--dc',col);row.style.setProperty('--i',i);const strip=el('div','led-strip');for(let k=0;k<Math.max(4,l);k++){const dot=el('i');dot.style.setProperty('--k',k);strip.append(dot);}
+   const t=el('div','rd-txt');t.append(el('b','',n),el('small','',`circa ${l} LED`),strip);const sw=el('label','rd-color');const c=el('input');c.type='color';c.value=col;sw.append(c);
+   c.addEventListener('input',()=>row.style.setProperty('--dc',c.value));row.append(t,sw);box.append(row);});return;}
  if((!key&&!tgInit)||!current?.rgb_enabled){box.replaceChildren(el('p','muted','OpenRGB non collegato: vedi Collegamenti.'));return;}
  try{
   const data=await req('/api/rgb/devices');box.replaceChildren();
@@ -955,11 +995,10 @@ async function loadRgbDevices(){
    const row=el('div','rgb-dev2');const col=d.color||$('rgb-color').value;row.style.setProperty('--dc',col);row.style.setProperty('--i',i);
    const strip=el('div','led-strip');for(let k=0;k<Math.max(4,Math.min(16,d.leds||6));k++){const dot=el('i');dot.style.setProperty('--k',k);strip.append(dot);}
    const t=el('div','rd-txt');t.append(el('b','',d.name),el('small','',d.leds?`circa ${d.leds} LED`:'periferica'),strip);
-   const sw=el('label','rd-color');const c=el('input');c.type='color';c.value=col;c.setAttribute('aria-label','Colore '+d.name);sw.append(c);
+   const sw=el('label','rd-color');const c=el('input');c.type='color';c.value=col;c.setAttribute('aria-label','Colore di '+d.name);sw.append(c);
    c.addEventListener('input',()=>row.style.setProperty('--dc',c.value));
-   const b=el('button','icon-btn rd-apply');b.type='button';b.title='Applica a '+d.name;b.setAttribute('aria-label',b.title);b.append(icon('check'));
-   b.addEventListener('click',()=>applyColor(c.value,d.key));
-   row.append(t,sw,b);box.append(row);
+   c.addEventListener('change',()=>applyColor(c.value,d.key));
+   row.append(t,sw);box.append(row);
   });
   (current?.rgb_excluded||[]).forEach(n=>box.append(el('p','fineprint',/mystic|msi/i.test(n)
    ?`${n}: attacchi ARGB della scheda madre (qui c'è l'ARCTIC). Li comanda MSI Center → Mystic Light, che riapplica il suo effetto a ogni avvio e quando lo schermo si riaccende: NEXAR non può spegnerli. Per tenerli spenti scegli "Spento" su quegli attacchi in MSI Center.`
@@ -967,8 +1006,9 @@ async function loadRgbDevices(){
  }catch(ex){box.replaceChildren(el('p','muted','Dispositivi non disponibili: '+ex.message));}
 }
 $('rgb-color').addEventListener('input',()=>{rgbTouched=true;paintOrb(false);});
+$('rgb-color').addEventListener('change',()=>applyColor($('rgb-color').value));
 $('rgb-bright').addEventListener('input',()=>{rgbTouched=true;$('rgb-bright-val').textContent=$('rgb-bright').value+'%';paintOrb(false);});
-$('rgb-apply-all').addEventListener('click',()=>applyColor($('rgb-color').value));
+$('rgb-bright').addEventListener('change',()=>applyColor($('rgb-color').value));
 $('rgb-reload').addEventListener('click',loadRgbDevices);
 
 /* ---------- accensione ---------- */
