@@ -307,6 +307,30 @@ def msi_lights_ready() -> bool:
 def msi_lights_run(action: str) -> bool:
     return subprocess.run(['schtasks', '/run', '/tn', MSI_TASKS[action]], capture_output=True, **_no_window()).returncode == 0
 
+# MSI Center è un'app dello Store: si apre dal suo AppUserModelID (nome della famiglia + "!App")
+MSI_CENTER_FAMILY = '9426MICRO-STARINTERNATION.MSICenter_kzh8wxbdkxb8p'
+APP_REPOSITORY = r'Software\Classes\Local Settings\Software\Microsoft\Windows\CurrentVersion\AppModel\Repository\Packages'
+
+def msi_center_app() -> str:
+    """AppUserModelID di MSI Center se è installato, altrimenti ''."""
+    import winreg
+    name, _, publisher = MSI_CENTER_FAMILY.partition('_')
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, APP_REPOSITORY) as k:
+            i = 0
+            while True:
+                try: full = winreg.EnumKey(k, i)
+                except OSError: return ''
+                i += 1
+                if full.startswith(name + '_') and full.endswith('__' + publisher): return MSI_CENTER_FAMILY + '!App'
+    except OSError: return ''
+
+def msi_center_open() -> bool:
+    app = msi_center_app()
+    if not app: return False
+    subprocess.Popen(['explorer.exe', 'shell:AppsFolder\\' + app], **_no_window())
+    return True
+
 # ---------- ventole ----------
 FAN_TASKS = {'eco': 'PC ECO Control - Ventole ECO', 'normal': 'PC ECO Control - Ventole Normali',
              'off': 'PC ECO Control - Ventole Spente', 'off_pump': 'PC ECO Control - Ventole Spente Pompa',

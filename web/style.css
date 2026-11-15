@@ -4117,6 +4117,52 @@ html.calm .vli::before,html.calm .vli::after,html.calm .vli-ring,html.calm .vli-
 .lx-z:hover .lx-hit{fill:rgba(255,255,255,.03);stroke:rgba(255,255,255,.16)}
 .lx-z.sel .lx-hit{stroke:#fff;stroke-dasharray:5 4;animation:lx-dash 1s linear infinite}
 @keyframes lx-dash{to{stroke-dashoffset:-18}}
+/* 1.0.78: il PC disegnato più vero (radiatore con le ventole, tubi, pompa, RAM, scheda video, tastiera a tasti) */
+.lx-shadow{fill:#000;opacity:.4;filter:blur(3px)}
+.lx-foot{fill:#0a0d13}
+.lx-inner{fill:url(#lxInner);stroke:rgba(255,255,255,.04)}
+.lx-dot{fill:#2b3446}
+.lx-metal{fill:url(#lxMetal);stroke:rgba(255,255,255,.08);stroke-width:.8}
+.lx-slot{fill:#05070b;stroke:rgba(255,255,255,.05)}
+.lx-stick{fill:#141a25;stroke:rgba(255,255,255,.1);stroke-width:.8}
+.lx-tube{fill:none;stroke:#05070b;stroke-width:7;stroke-linecap:round}
+.lx-tube-hi{fill:none;stroke:rgba(255,255,255,.08);stroke-width:1.4;stroke-linecap:round;transform:translateY(-1.6px)}
+.lx-pump{fill:url(#lxMetal);stroke:rgba(255,255,255,.12)}
+.lx-pump-top{fill:#0b0e14;stroke:rgba(255,255,255,.08)}
+.lx-rad{fill:#0d1118;stroke:rgba(255,255,255,.07)}
+.lx-fins{fill:url(#lxFins)}
+.lx-frame{fill:#121722;stroke:rgba(255,255,255,.09)}
+.lx-hole{fill:#06080c}
+.lx-spin{transform-origin:0 0;animation:lx-spin 2.6s linear infinite}
+.lx-spin.b{animation-duration:3.4s}
+.lx.off .lx-spin{animation-duration:14s}
+#lxRotor .lx-blades{fill:#1d2533}
+#lxRotor .lx-hub{fill:#273044;stroke:rgba(255,255,255,.1)}
+@keyframes lx-spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.lx-spin{animation:none}}
+.lx-gpu{fill:url(#lxMetal);stroke:rgba(255,255,255,.12)}
+.lx-lines{fill:none;stroke:rgba(255,255,255,.07);stroke-width:2;stroke-linecap:round}
+.lx-psu-tag{fill:rgba(255,255,255,.05)}
+.lx-wheel-m{fill:#0b0e14;stroke:rgba(255,255,255,.1)}
+.lx-keycaps{fill:url(#lxKeys);pointer-events:none}
+.lx-z .lx-led.soft{opacity:.45}
+.lx-z:focus-visible .lx-hit{stroke:#fff;stroke-width:2}
+.lx-badge{display:none;pointer-events:none}
+.lx-badge rect{fill:#0b0e14;stroke:rgba(148,163,184,.5)}
+.lx-badge text{fill:#cbd5e1;font:800 8.5px var(--font-d,system-ui);letter-spacing:.12em;text-anchor:middle}
+.lx-z.msi .lx-badge{display:inline}
+.lx-z.msi .lx-hit{fill:url(#lxHatch)}
+.lx-z.msi:hover .lx-hit{fill:url(#lxHatch);stroke:rgba(148,163,184,.45)}
+.lx-msi{position:relative;display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:16px;background:rgba(0,0,0,.28);border:1px solid rgba(148,163,184,.18)}
+.lx-msi[hidden]{display:none}
+.lx-msi>div{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.lx-msi b{font-size:13px}
+.lx-msi small{font-size:11.5px;color:var(--dim);line-height:1.45}
+.lx-msi .btn{flex:none}
+.lx-msi-ico{flex:none;display:grid;place-items:center;width:38px;height:38px;border-radius:12px;font:800 10px var(--font-d,system-ui);letter-spacing:.1em;color:#cbd5e1;background:repeating-linear-gradient(45deg,rgba(148,163,184,.16) 0 3px,transparent 3px 7px),#0b0e14;border:1px solid rgba(148,163,184,.35)}
+.lx-msi.ping{animation:lx-ping 1.2s ease}
+@keyframes lx-ping{0%,100%{border-color:rgba(148,163,184,.18);box-shadow:none}30%{border-color:#fff;box-shadow:0 0 0 4px rgba(255,255,255,.12)}}
+@media (max-width:520px){.lx-msi{flex-wrap:wrap}.lx-msi .btn{width:100%}}
 .lx-z .lx-led{fill:#262d3a;transition:fill .35s,stroke .35s}
 .lx-z .lx-led.s{fill:none;stroke:#262d3a;stroke-width:3}
 .lx-z .lx-led.soft{opacity:.28}

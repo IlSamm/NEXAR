@@ -253,6 +253,11 @@ def rgb_color(data: RgbColor):
     try: return {'ok':True,'message':controller.rgb_color(data.color,data.brightness,data.device)}
     except (RuntimeError,OSError,ValueError) as ex: raise HTTPException(400,str(ex))
 
+@app.post('/api/rgb/msi-open',dependencies=[Depends(authorized)])
+def rgb_msi_open():
+    try: return {'ok':True,'message':controller.msi_center_open()}
+    except (RuntimeError,OSError) as ex: raise HTTPException(400,str(ex))
+
 class Palette(BaseModel):
     colors: list[str]
 @app.post('/api/rgb/palette',dependencies=[Depends(authorized)])

@@ -1475,6 +1475,12 @@ class Control:
         """Controller lasciati al firmware: OpenRGB 1.1 spegne la MSI MS-7E62 ma non le ridà colore."""
         return tuple(self.config.get('rgb', {}).get('exclude', []))
 
+    def msi_center_open(self):
+        """Le luci sugli attacchi ARGB della scheda MSI (l'ARCTIC) le comanda solo Mystic Light: lo apre sul PC."""
+        import discovery
+        if not discovery.msi_center_open(): raise RuntimeError('MSI Center non è installato su questo PC')
+        return 'MSI Center aperto sul PC: vai in Mystic Light'
+
     def rgb_palette(self):
         return list(self.config.get('rgb', {}).get('palette') or DEFAULT_PALETTE)
 

@@ -118,3 +118,15 @@ def test_fix_needed_lists_what_one_confirmation_repairs(tmp_path, monkeypatch):
     monkeypatch.setattr(c.admin, 'current', lambda: True)
     monkeypatch.setattr(discovery, 'task_exists', lambda t: False)
     assert c.apps_fix_needed() == []
+
+
+def test_msi_center_opens_mystic_light_only_when_installed(tmp_path, monkeypatch):
+    c, core = _controller(tmp_path, monkeypatch)
+    started = []
+    monkeypatch.setattr(discovery.subprocess, 'Popen', lambda args, **k: started.append(args))
+    monkeypatch.setattr(discovery, 'msi_center_app', lambda: discovery.MSI_CENTER_FAMILY + '!App')
+    assert 'Mystic Light' in c.msi_center_open()
+    assert started == [['explorer.exe', 'shell:AppsFolder\\' + discovery.MSI_CENTER_FAMILY + '!App']]
+    monkeypatch.setattr(discovery, 'msi_center_app', lambda: '')
+    with pytest.raises(RuntimeError, match='non è installato'): c.msi_center_open()
+    assert len(started) == 1
