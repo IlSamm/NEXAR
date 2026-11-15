@@ -471,40 +471,87 @@
 
    <!-- LUCI -->
    <section class="page" id="page-lights">
-    <section class="vx vx-lights" id="rgb-hero">
-     <div class="vx-bg" aria-hidden="true"><i class="vx-orb a"></i><i class="vx-orb b"></i></div>
-     <div class="vx-main">
-      <span class="vx-tag"><span class="vx-ico"><svg class="i"><use href="#i-bulb"/></svg></span>Luci</span>
-      <h2 class="vx-title" id="rgb-title">LED</h2>
-      <p class="vx-sub" id="rgb-label">—</p>
+    <section class="lx" id="rgb-studio">
+     <div class="lx-stage">
+      <div class="lx-head">
+       <span class="lx-tag"><svg class="i"><use href="#i-bulb"/></svg>Luci</span>
+       <h2 class="lx-title" id="rgb-title">LED</h2>
+       <p class="lx-sub" id="rgb-label">—</p>
+      </div>
+      <svg class="lx-pc" id="lx-pc" viewBox="0 0 440 300" role="group" aria-label="Il tuo PC: tocca un componente per colorarlo solo lui">
+        <defs>
+         <linearGradient id="lxCase" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1c2333"/><stop offset="1" stop-color="#0a0d14"/></linearGradient>
+         <linearGradient id="lxGlass" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".08"/><stop offset=".42" stop-color="#fff" stop-opacity="0"/></linearGradient>
+         <filter id="lxBlur" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="7"/></filter>
+        </defs>
+        <rect class="lx-case" x="40" y="12" width="238" height="276" rx="18"/>
+        <rect class="lx-board" x="60" y="38" width="156" height="200" rx="8"/>
+        <rect class="lx-part" x="64" y="18" width="150" height="14" rx="4"/>
+        <rect class="lx-part" x="102" y="80" width="34" height="34" rx="7"/>
+        <rect class="lx-part" x="157" y="58" width="11" height="72" rx="2"/><rect class="lx-part" x="170" y="58" width="11" height="72" rx="2"/>
+        <rect class="lx-part" x="66" y="162" width="144" height="40" rx="5"/>
+        <circle class="lx-part" cx="250" cy="74" r="21"/><circle class="lx-part" cx="250" cy="132" r="21"/><circle class="lx-part" cx="250" cy="190" r="21"/>
+        <rect class="lx-shroud" x="46" y="246" width="226" height="36" rx="7"/>
+        <rect class="lx-glass" x="40" y="12" width="238" height="276" rx="18"/>
+        <rect class="lx-part" x="294" y="226" width="136" height="40" rx="9"/>
+        <path class="lx-keys" d="M304 238h116M304 246h116M304 254h116"/>
+        <rect class="lx-part" x="346" y="104" width="44" height="76" rx="22"/><path class="lx-keys" d="M368 106v30"/>
+        <g class="lx-z" data-z="cooler"><title>Raffreddamento</title>
+         <rect class="lx-hit" x="94" y="72" width="50" height="50" rx="10"/><rect class="lx-hit" x="224" y="48" width="52" height="168" rx="12"/>
+         <circle class="lx-blur s" cx="119" cy="97" r="12"/><circle class="lx-blur s" cx="250" cy="74" r="15"/><circle class="lx-blur s" cx="250" cy="132" r="15"/><circle class="lx-blur s" cx="250" cy="190" r="15"/>
+         <circle class="lx-led s" cx="119" cy="97" r="12"/><circle class="lx-led s" cx="250" cy="74" r="15"/><circle class="lx-led s" cx="250" cy="132" r="15"/><circle class="lx-led s" cx="250" cy="190" r="15"/>
+        </g>
+        <g class="lx-z" data-z="ram"><title>RAM</title>
+         <rect class="lx-hit" x="152" y="52" width="34" height="84" rx="6"/>
+         <rect class="lx-blur" x="158.5" y="60" width="8" height="15" rx="2"/><rect class="lx-blur" x="171.5" y="60" width="8" height="15" rx="2"/>
+         <rect class="lx-led" x="158.5" y="60" width="8" height="15" rx="2"/><rect class="lx-led" x="171.5" y="60" width="8" height="15" rx="2"/>
+        </g>
+        <g class="lx-z" data-z="mb"><title>Scheda madre</title>
+         <rect class="lx-hit" x="198" y="48" width="20" height="168" rx="6"/>
+         <rect class="lx-blur" x="205" y="56" width="5" height="150" rx="2.5"/><rect class="lx-led" x="205" y="56" width="5" height="150" rx="2.5"/>
+        </g>
+        <g class="lx-z" data-z="gpu"><title>Scheda video</title>
+         <rect class="lx-hit" x="62" y="156" width="152" height="52" rx="8"/>
+         <rect class="lx-blur" x="72" y="167" width="132" height="4" rx="2"/><rect class="lx-blur" x="72" y="190" width="38" height="4" rx="2"/>
+         <rect class="lx-led" x="72" y="167" width="132" height="4" rx="2"/><rect class="lx-led" x="72" y="190" width="38" height="4" rx="2"/>
+        </g>
+        <g class="lx-z" data-z="strip"><title>Strisce LED</title>
+         <rect class="lx-hit" x="46" y="244" width="226" height="40" rx="8"/>
+         <rect class="lx-blur" x="58" y="252" width="202" height="4" rx="2"/><rect class="lx-led" x="58" y="252" width="202" height="4" rx="2"/>
+        </g>
+        <g class="lx-z" data-z="kbd"><title>Tastiera</title>
+         <rect class="lx-hit" x="288" y="220" width="148" height="56" rx="10"/>
+         <rect class="lx-blur" x="300" y="266" width="124" height="4" rx="2"/><rect class="lx-led soft" x="302" y="232" width="120" height="28" rx="5"/><rect class="lx-led" x="300" y="266" width="124" height="4" rx="2"/>
+        </g>
+        <g class="lx-z" data-z="mouse"><title>Mouse</title>
+         <rect class="lx-hit" x="338" y="96" width="60" height="92" rx="14"/>
+         <rect class="lx-blur" x="365" y="114" width="6" height="16" rx="3"/><circle class="lx-blur" cx="368" cy="160" r="6"/>
+         <rect class="lx-led" x="365" y="114" width="6" height="16" rx="3"/><circle class="lx-led" cx="368" cy="160" r="6"/>
+        </g>
+       </svg>
+      <div class="lx-chips" id="lx-chips" aria-label="Cosa colorare"></div>
+     </div>
+     <div class="lx-panel">
       <div class="vx-seg lx-power" role="group" aria-label="LED">
        <button type="button" data-action="rgb-normal" id="rgb-normal"><svg class="i"><use href="#i-bulb"/></svg><span>Accesi</span></button>
        <button type="button" data-action="rgb-eco" id="rgb-eco"><svg class="i"><use href="#i-moon"/></svg><span>Spenti</span></button>
       </div>
-      <p class="lx-now" id="rgb-now"></p>
-     </div>
-     <div class="vli" id="rgb-orb" aria-hidden="true">
-      <div class="vli-ring"><i style="--k:0"></i><i style="--k:1"></i><i style="--k:2"></i><i style="--k:3"></i><i style="--k:4"></i><i style="--k:5"></i><i style="--k:6"></i><i style="--k:7"></i><i style="--k:8"></i><i style="--k:9"></i><i style="--k:10"></i><i style="--k:11"></i><i style="--k:12"></i><i style="--k:13"></i><i style="--k:14"></i><i style="--k:15"></i><i style="--k:16"></i><i style="--k:17"></i><i style="--k:18"></i><i style="--k:19"></i><i style="--k:20"></i><i style="--k:21"></i><i style="--k:22"></i><i style="--k:23"></i><i style="--k:24"></i><i style="--k:25"></i><i style="--k:26"></i><i style="--k:27"></i><i style="--k:28"></i><i style="--k:29"></i><i style="--k:30"></i><i style="--k:31"></i></div>
-      <div class="vli-core"><svg class="i"><use href="#i-bulb"/></svg></div>
+      <div class="lx-target"><small>Stai colorando</small><b id="lx-target">Tutti i LED</b><button class="linkish" type="button" id="lx-all" hidden>torna a tutti</button></div>
+      <div class="lx-wheel" id="lx-wheel">
+       <div class="lx-ring" id="lx-ring" role="slider" tabindex="0" aria-label="Tinta: trascina sul cerchio" aria-valuemin="0" aria-valuemax="360"></div>
+       <i class="lx-knob" id="lx-knob"></i>
+       <label class="lx-core" id="lx-core"><input type="color" id="rgb-color" value="#ffffff" aria-label="Colore preciso"><b id="rgb-hex">#FFFFFF</b><small>tocca per un colore preciso</small></label>
+      </div>
+      <label class="lx-range"><span>Intensità</span><input type="range" id="lx-sat" min="0" max="100" step="1" value="100" aria-label="Intensità del colore: a sinistra bianco"><b id="lx-sat-val">100%</b></label>
+      <label class="lx-range"><span>Luminosità</span><input type="range" id="rgb-bright" min="5" max="100" step="5" value="100"><b id="rgb-bright-val">100%</b></label>
+      <div class="lx-fav">
+       <div class="lx-fav-head"><small>Preferiti</small><span><button class="linkish" type="button" id="palette-save">+ salva questo</button><button class="linkish" type="button" id="palette-edit">Modifica</button></span></div>
+       <div class="swatches lx-swatches" id="rgb-swatches"></div>
+      </div>
+      <p class="lx-hint">Trascina sul cerchio o tocca un preferito: i LED cambiano appena lasci il dito.</p>
      </div>
     </section>
     <div class="notice apps-fix" id="apps-fix-lights" hidden><div><b>Sistema ventole e luci</b><small class="af-text"></small></div><button class="btn small primary af-btn" type="button">Sistema adesso</button></div>
-    <div class="lights-grid">
-     <section class="card lc-color">
-      <div class="card-head"><div><h3>Colore per tutti</h3><p>Tocca un colore: si accende subito su tutti i LED</p></div></div>
-      <div class="swatches" id="rgb-swatches"></div>
-      <div class="lc-custom">
-       <label class="color-input"><input type="color" id="rgb-color" value="#ffffff" aria-label="Scegli un altro colore"><span id="rgb-hex">#FFFFFF</span><small>Altro colore</small></label>
-       <div class="palette-tools"><button class="btn small" type="button" id="palette-save"><svg class="i"><use href="#i-check"/></svg>Salva</button><button class="btn small" type="button" id="palette-edit">Modifica</button></div>
-      </div>
-      <label class="range lum"><span>Luminosità</span><input type="range" id="rgb-bright" min="5" max="100" step="5" value="100"><b id="rgb-bright-val">100%</b></label>
-      <p class="fineprint">Si applica appena lasci il dito. Il colore resta ricordato: dopo AI ECO i LED tornano così.</p>
-     </section>
-     <section class="card lc-devs">
-      <div class="card-head"><div><h3>Un colore per dispositivo</h3><p>Tocca il pallino colorato di un dispositivo</p></div><button class="icon-btn" type="button" id="rgb-reload" aria-label="Ricarica i dispositivi"><svg class="i"><use href="#i-refresh"/></svg></button></div>
-      <div class="rgb-devices" id="rgb-devices"><p class="muted">Caricamento…</p></div>
-     </section>
-    </div>
     <section class="card apps-card" id="apps-lights">
      <div class="card-head"><div><h3>Altre app di ventole e luci</h3><p>Due programmi sugli stessi LED o sulle stesse ventole si intralciano: NEXAR chiude gli altri</p></div></div>
      <div class="ac-auto"><div><b>Chiudile da solo</b><small class="ac-note">Appena si aprono, anche all'accensione</small></div><button class="toggle ac-toggle" type="button" role="switch" aria-checked="true" aria-label="Chiudi da solo le app in conflitto"><span></span></button></div>

@@ -377,7 +377,6 @@ function render(s){
  // Luci e ventole
  ['rgb-eco','rgb-normal','q-rgb-off','q-rgb-on'].forEach(id=>$(id).disabled=!s.rgb_enabled);
  $('rgb-normal').classList.toggle('selected',!!s.rgb_enabled&&!s.rgb_off);$('rgb-eco').classList.toggle('selected',!!s.rgb_enabled&&!!s.rgb_off);
- $('rgb-now').textContent=!s.rgb_enabled?'':s.rgb_off?'Tocca Accesi per riaccenderli col colore di prima':`Adesso ${(s.rgb_color||'#ffffff').toUpperCase()} al ${s.rgb_brightness??100}%`;
  renderConflicts(s);
  ['fans-eco','fans-normal','q-fans-eco','q-fans-normal'].forEach(id=>$(id).disabled=!s.fans_enabled);
  ['fans-off','fans-max'].forEach(id=>$(id).disabled=!s.fans_enabled||!s.fans_levels_ready);
@@ -394,10 +393,10 @@ function render(s){
  $('cool-hero').style.setProperty('--spin',avg?Math.max(.5,Math.min(8,2400/avg)).toFixed(2)+'s':'0s');$('cool-hero').classList.toggle('still',!avg);
  $('rgb-title').textContent=!s.rgb_enabled?'OpenRGB non collegato':s.rgb_off?'LED spenti':'LED accesi';
  $('fan-profile').textContent=!s.fans_enabled?'Gestione BIOS':s.fans_mine?'Personalizzate':fanPreset(s)?'Profilo '+fanPreset(s).name:{off:'Ventole spente',eco:'Profilo silenzioso',max:'Al massimo'}[s.fans_level]||'Profilo normale';
- $('rgb-label').textContent=!s.rgb_enabled?'OpenRGB non collegato':(s.rgb_off?'LED spenti: scegli un colore per riaccenderli':'Colore e luminosità per tutti i dispositivi');
- if(!rgbTouched&&s.rgb_color){$('rgb-color').value=s.rgb_color;$('rgb-bright').value=s.rgb_brightness??100;$('rgb-bright-val').textContent=$('rgb-bright').value+'%';}
+ $('rgb-label').textContent=!s.rgb_enabled?'OpenRGB non collegato: vedi Collegamenti':s.rgb_off?'Tocca Accesi per riaccenderli col colore di prima, o scegli un colore':`${(s.rgb_color||'#ffffff').toUpperCase()} al ${s.rgb_brightness??100}% · tocca un componente per colorarlo da solo`;
+ if(!rgbTouched&&s.rgb_color){$('rgb-bright').value=s.rgb_brightness??100;if(lxTarget==null)lxSetColor(s.rgb_color);}
  renderPalette(s.rgb_palette||[]);
- paintOrb(s.rgb_off);
+ lxPaint();
  renderFans(s.fans||[]);renderTemps(s.temps||[]);renderPump(s.fans||[]);
  // Telegram e connessione
  const bot=s.telegram_bot||{};
@@ -939,77 +938,119 @@ function renderLinks(items,jobs){
  });
 }
 
-/* ---------- luci ---------- */
-let palette=[],paletteEditing=false;
+/* ---------- luci: lo studio. Il PC disegnato si accende dei colori veri; si colora tutto o un componente alla volta ---------- */
+let palette=[],paletteEditing=false,lxDevs=[],lxTarget=null,lxHue=0,lxSat=0,lxDemoDevs=null;
 const bright=()=>Number.parseInt($('rgb-bright').value,10);
+const LX_ZONE={0:'mb',1:'ram',2:'gpu',3:'cooler',4:'strip',11:'strip',15:'strip',5:'kbd',18:'kbd',6:'mouse',7:'mouse'};
+const LX_KIND={mb:'Scheda madre',ram:'RAM',gpu:'Scheda video',cooler:'Raffreddamento',strip:'Strisce LED',kbd:'Tastiera',mouse:'Mouse'};
+function hexHsv(hex){const n=parseInt(hex.slice(1),16),r=(n>>16&255)/255,g=(n>>8&255)/255,b=(n&255)/255,mx=Math.max(r,g,b),mn=Math.min(r,g,b),d=mx-mn;
+ let h=0;if(d){h=mx===r?((g-b)/d)%6:mx===g?(b-r)/d+2:(r-g)/d+4;h=(h*60+360)%360;}return [h,mx?d/mx*100:0,mx*100];}
+function hsvHex(h,s,v){s/=100;v/=100;const f=n=>{const k=(n+h/60)%6;return v-v*s*Math.max(0,Math.min(k,4-k,1));};return '#'+[f(5),f(3),f(1)].map(x=>Math.round(x*255).toString(16).padStart(2,'0')).join('');}
+const lxColor=()=>$('rgb-color').value.toLowerCase();
+function lxSetColor(hex){hex=(hex||'#ffffff').toLowerCase();const [h,s]=hexHsv(hex);if(s>2)lxHue=h;lxSat=Math.round(s);$('rgb-color').value=hex;lxShow();}
+function lxPick(){$('rgb-color').value=hsvHex(lxHue,lxSat,100);rgbTouched=true;lxShow();}
+function lxShow(){
+ const c=lxColor(),full=hsvHex(lxHue,100,100),w=$('lx-wheel'),R=w.clientWidth/2-14,a=lxHue*Math.PI/180;
+ const k=$('lx-knob');k.style.transform=`translate(${(Math.sin(a)*R).toFixed(1)}px,${(-Math.cos(a)*R).toFixed(1)}px)`;k.style.setProperty('--kc',full);
+ const [r,g,b]=[1,3,5].map(i=>parseInt(c.slice(i,i+2),16));
+ $('lx-core').style.setProperty('--kc',c);$('lx-core').classList.toggle('light',(r*299+g*587+b*114)/1000>150);$('rgb-hex').textContent=c.toUpperCase();
+ $('lx-sat').value=lxSat;$('lx-sat-val').textContent=lxSat+'%';$('lx-sat').style.setProperty('--tr',`linear-gradient(90deg,#fff,${full})`);
+ $('rgb-bright').style.setProperty('--tr',`linear-gradient(90deg,#0b0d12,${c})`);$('rgb-bright-val').textContent=bright()+'%';
+ ['lx-sat','rgb-bright'].forEach(id=>$(id).style.setProperty('--kc',c));
+ const st=$('rgb-studio');st.style.setProperty('--lc',c);st.style.setProperty('--lb',(bright()/100).toFixed(2));
+ document.querySelectorAll('#rgb-swatches .swatch').forEach(s=>s.classList.toggle('selected',s.dataset.color===c));
+ lxPaint();
+}
+const lxDevColor=d=>(d.color||current?.rgb_color||'#ffffff').toLowerCase();
+const lxLive=d=>rgbTouched&&(lxTarget==null||lxTarget===d.key);
+function lxPaint(){
+ const s=current||{},off=!!s.rgb_off&&!rgbTouched,st=$('rgb-studio');st.classList.toggle('off',off||!s.rgb_enabled);
+ const msiOn=(s.rgb_excluded||[]).some(n=>/mystic|msi/i.test(n));
+ document.querySelectorAll('#lx-pc .lx-z').forEach(g=>{
+  const z=g.dataset.z,devs=lxDevs.filter(d=>LX_ZONE[d.type]===z),msi=!devs.length&&msiOn&&(z==='mb'||z==='cooler');
+  const d=devs.find(x=>x.key===lxTarget)||devs[0],col=d?(lxLive(d)?lxColor():lxDevColor(d)):'';
+  g.classList.toggle('on',!!d&&!off);g.classList.toggle('empty',!d&&!msi);g.classList.toggle('msi',msi);g.classList.toggle('sel',!!lxTarget&&devs.some(x=>x.key===lxTarget));
+  if(col)g.style.setProperty('--zc',col);else g.style.removeProperty('--zc');
+  g.querySelector('title').textContent=msi?`${LX_KIND[z]}: LED comandati da MSI Center (qui c'è l'ARCTIC)`:d?`${LX_KIND[z]}: ${devs.map(x=>x.name).join(', ')}`:`${LX_KIND[z]}: nessun LED collegato`;
+ });
+ const t=lxDevs.find(d=>d.key===lxTarget);$('lx-target').textContent=t?t.name:'Tutti i LED';$('lx-all').hidden=!t;
+ document.querySelectorAll('#lx-chips .lx-chip').forEach(ch=>{const d=lxDevs.find(x=>x.key===ch.dataset.key);
+  ch.classList.toggle('sel',(ch.dataset.key||null)===lxTarget);ch.style.setProperty('--cc',off?'#334155':d?(lxLive(d)?lxColor():lxDevColor(d)):(rgbTouched&&!lxTarget?lxColor():(s.rgb_color||'#ffffff')));});
+}
+function lxChips(){
+ const box=$('lx-chips'),mk=(k,name,sub)=>{const b=el('button','lx-chip');b.type='button';if(k)b.dataset.key=k;b.append(el('i'),el('span','',name));if(sub)b.title=sub;b.addEventListener('click',()=>lxSelect(k||null));return b;};
+ const rows=[mk('','Tutti i LED'),...lxDevs.map(d=>mk(d.key,d.name,d.leds?`circa ${d.leds} LED`:''))];
+ if(!lxDevs.length)rows.push(el('small','lx-note',demo?'':current?.rgb_enabled?'Dispositivi non letti: tocca di nuovo la pagina tra poco.':'OpenRGB non collegato: vedi Collegamenti.'));
+ (current?.rgb_excluded||[]).forEach(n=>rows.push(el('small','lx-note',/mystic|msi/i.test(n)?"Scheda madre e ARCTIC: i loro LED li comanda MSI Center, che li rimette a ogni avvio.":`${n}: lasciata al suo programma.`)));
+ box.replaceChildren(...rows);lxPaint();
+}
+function lxSelect(k){lxTarget=k;rgbTouched=false;const d=lxDevs.find(x=>x.key===k);lxSetColor(d?lxDevColor(d):current?.rgb_color);}
+async function applyColor(color,device){
+ device=device===undefined?lxTarget:device;const name=device?lxDevs.find(x=>x.key===device)?.name:'Tutti i LED';
+ if(demo){if(device){const d=lxDevs.find(x=>x.key===device);if(d)d.color=color;}else{lxDevs.forEach(d=>d.color='');current.rgb_color=color;}
+  current.rgb_off=false;current.rgb_brightness=bright();rgbTouched=false;render(current);lxChips();notify(`✓ ${name}: ${color.toUpperCase()} al ${bright()}%`);return;}
+ try{const r=await req('/api/rgb/color','POST',{color,brightness:bright(),device:device||null});notify('✓ '+r.message);
+  if(device){const d=lxDevs.find(x=>x.key===device);if(d)d.color=color;}rgbTouched=false;await refresh();if(!device)loadRgbDevices();else lxPaint();}
+ catch(ex){notify('⚠ '+ex.message,true);}
+}
+async function loadRgbDevices(){
+ requestAnimationFrame(lxShow);
+ if(demo){lxDemoDevs=lxDemoDevs||[{key:'ram',name:'Kingston FURY DDR5',type:1,leds:10,color:''},{key:'gpu',name:'NVIDIA GeForce RTX 3060 Ti',type:2,leds:12,color:'#8b5cf6'},
+  {key:'kbd',name:'Corsair K70 RGB',type:5,leds:104,color:''},{key:'mouse',name:'Logitech G502',type:6,leds:2,color:'#22d3ee'}];lxDevs=lxDemoDevs;lxChips();return;}
+ if((!key&&!tgInit)||!current?.rgb_enabled){lxDevs=[];lxChips();return;}
+ try{lxDevs=(await req('/api/rgb/devices')).devices||[];}catch(ex){lxDevs=[];notify('Luci: '+ex.message,true);}
+ if(lxTarget&&!lxDevs.some(d=>d.key===lxTarget))lxTarget=null;lxChips();
+}
 function renderPalette(list){
  if(JSON.stringify(list)===JSON.stringify(palette))return;
  palette=list;const box=$('rgb-swatches');box.replaceChildren();
  palette.forEach(col=>{
-  const b=el('button','swatch');b.type='button';b.dataset.color=col;b.style.background=col;b.title=col.toUpperCase();b.setAttribute('aria-label','Colore '+col);
+  const b=el('button','swatch');b.type='button';b.dataset.color=col;b.style.setProperty('--sw',col);b.title=col.toUpperCase();b.setAttribute('aria-label','Colore '+col);
   b.addEventListener('click',()=>{
    if(paletteEditing){savePalette(palette.filter(c=>c!==col),'Colore tolto');return;}
-   $('rgb-color').value=col;rgbTouched=true;paintOrb(false);applyColor(col);
+   lxSetColor(col);rgbTouched=true;applyColor(col);
   });
   box.append(b);
  });
- paintOrb(current?.rgb_off);
+ lxShow();
 }
 async function savePalette(list,msg){
  if(demo){renderPalette(list);notify('Anteprima: '+msg.toLowerCase()+' solo qui.');return;}
  try{const r=await req('/api/rgb/palette','POST',{colors:list});renderPalette(r.palette);notify('✓ '+msg);}catch(ex){notify('⚠ '+ex.message,true);}
 }
 $('palette-save').addEventListener('click',()=>{
- const c=$('rgb-color').value.toLowerCase();
- if(palette.includes(c)){notify('Questo colore è già salvato.');return;}
- if(palette.length>=18){notify('Massimo 18 colori: togline uno con Modifica.',true);return;}
+ const c=lxColor();
+ if(palette.includes(c)){notify('Questo colore è già nei preferiti.');return;}
+ if(palette.length>=18){notify('Massimo 18 preferiti: togline uno con Modifica.',true);return;}
  savePalette([...palette,c],'Colore salvato');
 });
 $('palette-edit').addEventListener('click',()=>{
  paletteEditing=!paletteEditing;$('rgb-swatches').classList.toggle('editing',paletteEditing);
- $('palette-edit').classList.toggle('active',paletteEditing);$('palette-edit').textContent=paletteEditing?'Fatto':'Modifica';
- if(paletteEditing)notify('Tocca un colore per toglierlo.');
+ $('palette-edit').textContent=paletteEditing?'Fatto':'Modifica';
+ if(paletteEditing)notify('Tocca un preferito per toglierlo.');
 });
-function paintOrb(off){
- const c=$('rgb-color').value;const orb=$('rgb-orb');orb.style.setProperty('--orb',c);orb.style.opacity=off?1:(.35+.65*bright()/100);orb.classList.toggle('off',!!off&&!rgbTouched);
- $('rgb-hex').textContent=c.toUpperCase();
- const hero=$('rgb-hero');hero.style.setProperty('--hc',off&&!rgbTouched?'#475569':c);hero.classList.toggle('off',!!off&&!rgbTouched);
- $('rgb-bright').style.setProperty('--rc',c);$('rgb-color').closest('.color-input').style.setProperty('--rc',c);
- document.querySelectorAll('.swatch').forEach(s=>s.classList.toggle('selected',s.dataset.color===c));
-}
-async function applyColor(color,device){
- if(demo){notify('Anteprima: comando non attivo.');return;}
- try{const r=await req('/api/rgb/color','POST',{color,brightness:bright(),device:device||null});notify('✓ '+r.message);rgbTouched=false;if(!device)loadRgbDevices();await refresh();}
- catch(ex){notify('⚠ '+ex.message,true);}
-}
-async function loadRgbDevices(){
- const box=$('rgb-devices');
- if(demo){box.replaceChildren();[['Kingston FURY DDR5',10,'#ff0000'],['NVIDIA GeForce RTX 3060 Ti',12,'#8b5cf6'],['Logitech G502',2,'#22d3ee']].forEach(([n,l,col],i)=>{
-   const row=el('div','rgb-dev2');row.style.setProperty('--dc',col);row.style.setProperty('--i',i);const strip=el('div','led-strip');for(let k=0;k<Math.max(4,l);k++){const dot=el('i');dot.style.setProperty('--k',k);strip.append(dot);}
-   const t=el('div','rd-txt');t.append(el('b','',n),el('small','',`circa ${l} LED`),strip);const sw=el('label','rd-color');const c=el('input');c.type='color';c.value=col;sw.append(c);
-   c.addEventListener('input',()=>row.style.setProperty('--dc',c.value));row.append(t,sw);box.append(row);});return;}
- if((!key&&!tgInit)||!current?.rgb_enabled){box.replaceChildren(el('p','muted','OpenRGB non collegato: vedi Collegamenti.'));return;}
- try{
-  const data=await req('/api/rgb/devices');box.replaceChildren();
-  data.devices.forEach((d,i)=>{
-   const row=el('div','rgb-dev2');const col=d.color||$('rgb-color').value;row.style.setProperty('--dc',col);row.style.setProperty('--i',i);
-   const strip=el('div','led-strip');for(let k=0;k<Math.max(4,Math.min(16,d.leds||6));k++){const dot=el('i');dot.style.setProperty('--k',k);strip.append(dot);}
-   const t=el('div','rd-txt');t.append(el('b','',d.name),el('small','',d.leds?`circa ${d.leds} LED`:'periferica'),strip);
-   const sw=el('label','rd-color');const c=el('input');c.type='color';c.value=col;c.setAttribute('aria-label','Colore di '+d.name);sw.append(c);
-   c.addEventListener('input',()=>row.style.setProperty('--dc',c.value));
-   c.addEventListener('change',()=>applyColor(c.value,d.key));
-   row.append(t,sw);box.append(row);
-  });
-  (current?.rgb_excluded||[]).forEach(n=>box.append(el('p','fineprint',/mystic|msi/i.test(n)
-   ?`${n}: attacchi ARGB della scheda madre (qui c'è l'ARCTIC). Li comanda MSI Center → Mystic Light, che riapplica il suo effetto a ogni avvio e quando lo schermo si riaccende: NEXAR non può spegnerli. Per tenerli spenti scegli "Spento" su quegli attacchi in MSI Center.`
-   :`${n}: lasciata al suo programma, non si spegne con AI ECO.`)));
- }catch(ex){box.replaceChildren(el('p','muted','Dispositivi non disponibili: '+ex.message));}
-}
-$('rgb-color').addEventListener('input',()=>{rgbTouched=true;paintOrb(false);});
-$('rgb-color').addEventListener('change',()=>applyColor($('rgb-color').value));
-$('rgb-bright').addEventListener('input',()=>{rgbTouched=true;$('rgb-bright-val').textContent=$('rgb-bright').value+'%';paintOrb(false);});
-$('rgb-bright').addEventListener('change',()=>applyColor($('rgb-color').value));
-$('rgb-reload').addEventListener('click',loadRgbDevices);
+(()=>{const ring=$('lx-ring');let drag=false,kt=0;
+ const at=e=>{const r=ring.getBoundingClientRect(),x=e.clientX-r.left-r.width/2,y=e.clientY-r.top-r.height/2;lxHue=(Math.atan2(x,-y)*180/Math.PI+360)%360;if(lxSat<15)lxSat=100;lxPick();};
+ ring.addEventListener('pointerdown',e=>{drag=true;try{ring.setPointerCapture(e.pointerId);}catch(_){}at(e);});
+ ring.addEventListener('pointermove',e=>{if(drag)at(e);});
+ const end=()=>{if(!drag)return;drag=false;applyColor(lxColor());};
+ ring.addEventListener('pointerup',end);ring.addEventListener('pointercancel',end);
+ ring.addEventListener('keydown',e=>{const d={ArrowRight:5,ArrowUp:5,ArrowLeft:-5,ArrowDown:-5}[e.key];if(!d)return;e.preventDefault();
+  lxHue=(lxHue+d+360)%360;if(lxSat<15)lxSat=100;lxPick();clearTimeout(kt);kt=setTimeout(()=>applyColor(lxColor()),700);});
+})();
+$('lx-sat').addEventListener('input',()=>{lxSat=+$('lx-sat').value;lxPick();});
+$('lx-sat').addEventListener('change',()=>applyColor(lxColor()));
+$('rgb-color').addEventListener('input',()=>{rgbTouched=true;lxSetColor($('rgb-color').value);});
+$('rgb-color').addEventListener('change',()=>applyColor(lxColor()));
+$('rgb-bright').addEventListener('input',()=>{rgbTouched=true;lxShow();});
+$('rgb-bright').addEventListener('change',()=>applyColor(lxColor()));
+$('lx-all').addEventListener('click',()=>lxSelect(null));
+document.querySelectorAll('#lx-pc .lx-z').forEach(g=>g.addEventListener('click',()=>{
+ if(g.classList.contains('msi')){notify("Scheda madre e ARCTIC: i loro LED li comanda MSI Center (Mystic Light), NEXAR non può cambiarli.");return;}
+ const devs=lxDevs.filter(d=>LX_ZONE[d.type]===g.dataset.z);if(!devs.length)return;
+ const i=devs.findIndex(d=>d.key===lxTarget);lxSelect(devs.length===1&&i===0?null:devs[(i+1)%devs.length].key);
+}));
+addEventListener('resize',()=>{if(curView==='lights')lxShow();});
 
 /* ---------- accensione ---------- */
 const POWER_ASK={
