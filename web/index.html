@@ -990,22 +990,24 @@
    <!-- AUDIO -->
    <section class="page" id="page-audio">
     <div class="au">
-     <section class="mx" id="mx" aria-label="Mixer audio">
-      <div class="mx-bg" aria-hidden="true"></div>
-      <header class="mx-top">
-       <div class="mx-title"><small class="au-kicker"><i></i>Mixer dal vivo</small><h2>Banco audio</h2><p id="au-now-sub">—</p></div>
-       <div class="au-viz" id="au-viz" aria-hidden="true"></div>
-       <div class="mx-acts">
-        <button class="mx-act" type="button" id="au-max" title="Cuffie, microfono e ogni app al 100%, senza muto"><svg class="i"><use href="#i-bolt"/></svg><b>Tutto al 100%</b></button>
-        <label class="mx-act" title="Windows non abbassa tutto quando parli su Discord o Teams"><svg class="i"><use href="#i-send"/></svg><b>Volume pieno in chiamata</b><button class="toggle" type="button" id="au-duck" role="switch" aria-label="Non abbassare il volume durante le chiamate"><span></span></button></label>
-        <button class="mx-act amp" type="button" id="au-pill-amp" title="Scegli su quali dispositivi agisce" hidden><svg class="i"><use href="#i-bolt"/></svg><b>Amplificatore attivo</b></button>
+     <section class="au-stage" id="au-stage">
+      <div class="au-stage-bg" aria-hidden="true"></div>
+      <div class="au-stage-main">
+       <div class="au-now">
+        <small class="au-kicker"><i></i>Suono dal vivo</small>
+        <h2 id="au-now-out">—</h2>
+        <p id="au-now-sub">—</p>
+        <div class="au-now-devs">
+         <span class="au-pill" id="au-pill-in"><svg class="i"><use href="#i-mic"/></svg><b>—</b></span>
+         <button class="au-pill amp" type="button" id="au-pill-amp" title="Scegli su quali dispositivi agisce" hidden><svg class="i"><use href="#i-bolt"/></svg><b>Amplificatore attivo</b></button>
+        </div>
        </div>
-      </header>
-      <div class="mx-board">
-       <div class="mx-group"><small class="mx-glab">Dispositivi</small><div class="mx-strips" id="mx-devs"><p class="mx-none">Caricamento…</p></div></div>
-       <div class="mx-group apps"><small class="mx-glab">App</small><div class="mx-strips" id="au-apps"></div></div>
+       <div class="au-viz" id="au-viz" aria-hidden="true"></div>
       </div>
-      <div id="mx-slot"></div>
+      <div class="au-stage-acts">
+       <button class="au-act" type="button" id="au-max"><span class="opt-ico c-amber"><svg class="i"><use href="#i-bolt"/></svg></span><span><b>Tutto al 100%</b><small>Cuffie, microfono e ogni app, senza muto</small></span></button>
+       <label class="au-act"><span class="opt-ico c-violet"><svg class="i"><use href="#i-send"/></svg></span><span><b>Volume pieno in chiamata</b><small>Windows non abbassa tutto quando parli su Discord o Teams</small></span><button class="toggle" type="button" id="au-duck" role="switch" aria-label="Non abbassare il volume durante le chiamate"><span></span></button></label>
+      </div>
      </section>
      <section class="card au-amp" id="au-amp" data-step="none">
       <div class="au-amp-ico" aria-hidden="true"><i></i><i></i><i></i><svg class="i"><use href="#i-vol"/></svg></div>
@@ -1016,6 +1018,11 @@
       </div>
       <button class="btn primary au-amp-btn" type="button" id="au-amp-btn">Installa l'amplificatore</button>
      </section>
+     <div class="au-devs">
+      <section class="card au-card out"><div class="card-head"><div><h3>Cuffie e casse</h3><p>Da dove esce l'audio del PC</p></div></div><div id="au-out"><p class="muted">Caricamento…</p></div></section>
+      <section class="card au-card in"><div class="card-head"><div><h3>Microfono</h3><p>Quello che sentono Discord, giochi e chiamate</p></div></div><div id="au-in"><p class="muted">Caricamento…</p></div></section>
+     </div>
+     <section class="card au-apps"><div class="card-head"><div><h3>Mixer delle app</h3><p>Ogni programma che sta usando l'audio, con il suo volume</p></div></div><div class="au-mixer" id="au-apps"></div></section>
     </div>
    </section>
 

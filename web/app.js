@@ -3881,7 +3881,7 @@ let auSig='';
 async function loadAudio(quiet){
  let next;
  if(demo)next=quiet?auInfo:JSON.parse(JSON.stringify(DEMO_AUDIO));
- else{try{next=await req('/api/audio');}catch(ex){if(!quiet)$('mx-devs').replaceChildren(el('p','mx-none',ex.message));return;}}
+ else{try{next=await req('/api/audio');}catch(ex){if(!quiet){$('au-out').replaceChildren(el('p','muted',ex.message));$('au-in').replaceChildren();}return;}}
  const sig=JSON.stringify(next);if(quiet&&sig===auSig)return;   // niente di nuovo: la pagina resta com'è
  if(quiet&&(auDrag||document.querySelector('#page-audio :is(input,button):focus-visible')))return;
  auSig=sig;auInfo=next;renderAudio();auMicBtn();auLvlLoop();
@@ -3907,84 +3907,47 @@ function auChips(opts,cur,pick,label){
   b.addEventListener('click',()=>{if(v===cur)return;box.querySelectorAll('button').forEach(x=>{x.classList.toggle('on',x===b);x.setAttribute('aria-pressed',x===b?'true':'false');});cur=v;pick(v);});box.append(b);});
  return box;
 }
-// ---- banco da mixer: un canale per cuffie, microfono e ogni app ----
-const AU_KIND={headphones:'Cuffie',headset:'Cuffie',speakers:'Casse',hdmi:'Schermo',spdif:'Digitale',line:'Linea'};
-function auKind(d,flow){return flow==='in'?'Microfono':AU_KIND[d.kind]||'Uscita';}
-function auBtn(cls,txt,label,fn){const b=el('button','mx-b '+cls,txt);b.type='button';if(label){b.setAttribute('aria-label',label);b.title=label;}if(fn)b.addEventListener('click',fn);return b;}
-// fader verticale con la scala a sinistra e il VU meter a LED a destra
-function auFader(val,lvl,label,send,set){
- const fz=el('div','mx-fz'),out=el('output','mx-val',val+'%'),sc=el('span','mx-scale');sc.setAttribute('aria-hidden','true');
- ['100','75','50','25','0'].forEach(x=>sc.append(el('i','',x)));
- const r=auRange(0,100,1,val,{label,input:v=>{out.textContent=v+'%';send(v);},change:v=>{set(v);out.textContent=v+'%';send(v);}});r.classList.add('mx-fader');
- const vu=el('span','mx-vu'),i=el('i');i.dataset.lvl=lvl;vu.setAttribute('aria-hidden','true');vu.append(i);
- fz.append(sc,r,vu);return [fz,out];
-}
-function auStrip(d,flow){
- const b=d.boost||{db:0,eq:'flat'},kind=auKind(d,flow),ch=el('div',`mx-ch mx-dev mx-${flow}`+(d.mute?' mx-muted':'')+(auOpen.sel===flow?' mx-sel':''));
- const head=el('div','mx-head'),ico=el('span','mx-ico');ico.append(icon(auIcon(d)));head.append(ico,el('small','',kind));
- const btns=el('div','mx-btns');
- btns.append(auBtn('mx-amp'+(b.db>0&&b.ready?' on':'')+(b.ready?'':' mx-wait'),b.db>0?`+${b.db} dB`:'AMP','Amplificatore di '+kind.toLowerCase(),()=>auPanel(flow,'amp')),
-  auBtn('mx-eq'+(b.eq&&b.eq!=='flat'?' on':''),'EQ','Equalizzatore di '+kind.toLowerCase(),()=>auPanel(flow,'eq')));
- const [fz,val]=auFader(d.volume,flow,'Volume '+kind.toLowerCase(),v=>auSend('/api/audio/device',{id:d.id,volume:v},true),v=>{d.volume=v;});
- const foot=el('div','mx-foot');
- foot.append(auBtn('mx-mute'+(d.mute?' on':''),'M',d.mute?'Riattiva '+kind.toLowerCase():'Muto '+kind.toLowerCase(),async()=>{d.mute=!d.mute;renderAudio();await auSend('/api/audio/device',{id:d.id,mute:d.mute},true);}));
- if(flow==='in'){const tb=auBtn('mx-test'+(auMic?' on':''),'','Prova il microfono: ti senti in cuffia',async()=>{const on=!auMic;if(demo){auMic=on;auMicBtn();return;}if(await auSend('/api/audio/mictest',{enabled:on},true)){auMic=on;auMicErr='';auMicBtn();}});
-  tb.id='au-mic-test';tb.append(el('span','',auMic?'Parla':'Prova'));foot.append(tb);}
- ch.append(head,btns,fz,val,foot,auBtn('mx-tag',auTitle(d)[0],'Cambia dispositivo, amplificatore ed equalizzatore',()=>auPanel(flow,'dev')));
- return ch;
-}
-function auAppStrip(a){
- const ch=el('div','mx-ch mx-app'+(a.active?' mx-live':'')+(a.mute?' mx-muted':''));ch.style.setProperty('--h',hue(a.name));
- const head=el('div','mx-head'),ic=el('span','mx-ico as-ico',a.id==='system'?'':initials(a.name));if(a.id==='system')ic.append(icon('vol'));
- head.append(ic,el('small','',a.id==='system'?'Sistema':'App'));
- const btns=el('div','mx-btns'),st=el('span','mx-state',a.mute?'Muto':a.active?'Suona ora':'In silenzio');btns.append(st);
- const [fz,val]=auFader(a.volume,'app:'+a.id,'Volume di '+a.name,v=>auSend('/api/audio/app',{id:a.id,volume:v},true),v=>{a.volume=v;});
- const foot=el('div','mx-foot');foot.append(auBtn('mx-mute'+(a.mute?' on':''),'M',(a.mute?'Riattiva ':'Muto ')+a.name,async()=>{a.mute=!a.mute;renderAudio();await auSend('/api/audio/app',{id:a.id,mute:a.mute},true);}));
- const tag=el('span','mx-b mx-tag',a.name);tag.title=a.name;
- ch.append(head,btns,fz,val,foot,tag);return ch;
-}
-function auEmpty(flow){const ch=el('div','mx-ch mx-dev mx-empty mx-'+flow),ico=el('span','mx-ico');ico.append(icon(flow==='in'?'mic':'vol-x'));
- ch.append(ico,el('small','',flow==='in'?'Nessun microfono collegato':'Nessuna uscita audio attiva'));return ch;}
-// pannello che si apre sotto il banco: amplificatore, suono ed equalizzatore, altri dispositivi
-function auPanel(flow,focus){
- const same=auOpen.sel===flow&&auOpen.focus===focus;auOpen.sel=same?null:flow;auOpen.focus=focus;renderAudio();
- if(same)return;
- requestAnimationFrame(()=>{const s=document.querySelector(`#mx-panel [data-sec="${focus}"]`);if(!s)return;
-  s.scrollIntoView({behavior:document.documentElement.classList.contains('calm')?'auto':'smooth',block:'nearest'});s.classList.remove('flash');void s.offsetWidth;s.classList.add('flash');});
-}
-function auDetail(d,flow){
- const apo=auInfo.apo||{},b=d.boost,[t,sub]=auTitle(d),kind=auKind(d,flow),list=auInfo[flow]||[];
- const p=el('section','mx-panel mx-'+flow);p.id='mx-panel';p.setAttribute('aria-label',kind+': amplificatore ed equalizzatore');
- const head=el('div','mx-p-head'),ico=el('span','au-ico '+flow);ico.append(icon(auIcon(d)));
- const nm=el('div');nm.append(el('small','',kind),el('b','',t),el('span','',[sub,d.mute?'Muto':`Volume ${d.volume}%`,b.db>0?`+${b.db} dB`:''].filter(Boolean).join(' · ')));
- const x=auBtn('','', 'Chiudi il pannello',()=>{auOpen.sel=null;renderAudio();});x.className='mx-x';x.append(icon('x'));
- head.append(ico,nm,x);
+function auMain(d,flow){
+ const [t,sub]=auTitle(d),box=el('div','au-main'),apo=auInfo.apo||{};
+ const head=el('div','au-dev-head'),ico=el('span','au-ico '+flow);ico.append(icon(auIcon(d)));
+ const nm=el('div');nm.append(el('b','',t),el('small','',[sub,'Predefinito'].filter(Boolean).join(' · ')));head.append(ico,nm);
+ if(flow==='in'){const tb=el('button','btn small au-test');tb.type='button';tb.id='au-mic-test';tb.append(icon('mic'),el('span','','Prova il microfono'));
+  tb.addEventListener('click',async()=>{const on=!auMic;if(demo){auMic=on;auMicBtn();return;}if(await auSend('/api/audio/mictest',{enabled:on},true)){auMic=on;auMicErr='';auMicBtn();}});head.append(tb);}
+ // volume
+ const vol=el('div','au-row'),mute=el('button','au-mute'+(d.mute?' on':''));mute.type='button';
+ mute.setAttribute('aria-label',d.mute?'Riattiva':'Muto');mute.title=d.mute?'Riattiva':'Muto';mute.append(icon(d.mute?'vol-x':flow==='in'?'mic':'vol'));
+ mute.addEventListener('click',async()=>{d.mute=!d.mute;renderAudio();await auSend('/api/audio/device',{id:d.id,mute:d.mute},true);});
+ const vv=el('output','au-val',d.volume+'%');
+ const vr=auRange(0,100,1,d.volume,{label:'Volume',input:v=>{vv.textContent=v+'%';auSend('/api/audio/device',{id:d.id,volume:v},true);},change:v=>{d.volume=v;vv.textContent=v+'%';auSend('/api/audio/device',{id:d.id,volume:v},true);}});
+ vol.append(mute,el('span','au-lab','Volume'),vr,vv);
+ const lv=el('div','au-row lvl');lv.append(el('span'),el('span','au-lab',flow==='in'?'Livello':'Adesso'),auMeter(flow),el('span'));
  // amplificazione (Equalizer APO)
- const sa=el('div','mx-sec');sa.dataset.sec='amp';sa.append(el('h4','','Amplificatore'));
- const amp=el('div','au-row amp'+(b.ready?'':' wait')),av=el('output','au-val');
- const show=db=>{av.replaceChildren(el('b','',db>0?`+${db} dB`:'Spenta'));if(db>0)av.append(el('small','',auPct(db)+'%'));};show(b.db);
- const ar=auRange(0,b.max,1,b.db,{label:'Amplificazione',input:show,change:async v=>{b.db=v;show(v);await auSend('/api/audio/boost',{id:d.id,db:v},!b.ready&&apo.installed);renderAudio();}});
- const ai=el('span','au-amp-i');ai.append(icon('bolt'));amp.append(ai,el('span','au-lab','Amplifica'),ar,av);sa.append(amp);
- if(!b.ready)sa.append(el('p','au-hint',!apo.installed?'Installa l\'amplificatore nel riquadro qui sotto: poi questo cursore alza davvero oltre il 100%.':'Attiva l\'amplificatore su questo dispositivo (riquadro qui sotto) e riavvia il PC una volta.'));
- else if(b.db>=10)sa.append(el('p','au-hint warn','Se senti gracchiare, abbassa un po\': il suono è già al limite.'));
- if(d.hw){const steps=[];for(let v=d.hw.min;v<=d.hw.max+.01;v+=d.hw.step)steps.push([String(v),v>0?`+${v}`:'0']);
-  const hr=el('div','au-row sound');hr.append(el('span','au-lab','Boost scheda'),auChips(steps,String(d.hw.db),v=>{d.hw.db=+v;auSend('/api/audio/boost',{id:d.id,hw:+v});},'Boost della scheda audio'));sa.append(hr);}
- // altri dispositivi
- const sd=el('div','mx-sec');sd.dataset.sec='dev';sd.append(el('h4','',flow==='in'?'Altri microfoni':'Fai uscire l\'audio da'));
- const others=list.filter(x=>x!==d);if(others.length)sd.append(...auOthers(others,flow));else sd.append(el('p','au-hint','Non ci sono altri dispositivi collegati.'));
- const left=el('div','mx-p-col');left.append(sa,sd);
+ const amp=el('div','au-row amp'+(d.boost.ready?'':' wait')),av=el('output','au-val');
+ const show=db=>{av.replaceChildren(el('b','',db>0?`+${db} dB`:'Spenta'));if(db>0)av.append(el('small','',auPct(db)+'%'));};show(d.boost.db);
+ const ar=auRange(0,d.boost.max,1,d.boost.db,{label:'Amplificazione',input:show,change:async v=>{d.boost.db=v;show(v);await auSend('/api/audio/boost',{id:d.id,db:v},!d.boost.ready&&apo.installed);}});
+ const ai=el('span','au-amp-i');ai.append(icon('bolt'));amp.append(ai,el('span','au-lab','Amplifica'),ar,av);
+ box.append(head,vol,lv,amp);
+ if(!d.boost.ready)box.append(el('p','au-hint',!apo.installed?'Installa l\'amplificatore qui sopra: poi questo cursore alza davvero oltre il 100%.':'Attiva l\'amplificatore su questo dispositivo (pulsante in alto) e riavvia il PC una volta.'));
+ else if(d.boost.db>=10)box.append(el('p','au-hint warn','Se senti gracchiare, abbassa un po\': il suono è già al limite.'));
  // suono: preset ed equalizzatore a 10 bande
- const se=el('div','mx-sec');se.dataset.sec='eq';se.append(el('h4','','Suono ed equalizzatore'));
  const names=flow==='in'?{flat:'Naturale',voice:'Voce chiara'}:{flat:'Naturale',bass:'Bassi',voice:'Voci chiare',game:'Giochi · passi',music:'Musica'};
- const eqOpts=Object.entries(names);if(b.eq==='custom')eqOpts.push(['custom','Personalizzato']);
- se.append(auChips(eqOpts,b.eq,v=>{b.eq=v;b.bands=[...(auInfo.eq?.curves?.[v]||b.bands)];renderAudio();
-  auSend('/api/audio/boost',{id:d.id,eq:v},true).then(r=>{if(r)notify('✓ Suono: '+(names[v]||'personalizzato').toLowerCase());});},'Suono'),auEq(d));
- const grid=el('div','mx-p-grid');grid.append(left,se);p.append(head,grid);return p;
+ const eqOpts=Object.entries(names);if(d.boost.eq==='custom')eqOpts.push(['custom','Personalizzato']);
+ const sr=el('div','au-row sound');sr.append(el('span','au-lab','Suono'),auChips(eqOpts,d.boost.eq,v=>{
+  d.boost.eq=v;d.boost.bands=[...(auInfo.eq?.curves?.[v]||d.boost.bands)];renderAudio();
+  auSend('/api/audio/boost',{id:d.id,eq:v},true).then(r=>{if(r)notify('✓ Suono: '+(names[v]||'personalizzato').toLowerCase());});},'Suono'));
+ box.append(sr,auEq(d,flow));
+ // boost della scheda audio (microfoni analogici)
+ if(d.hw){const steps=[];for(let v=d.hw.min;v<=d.hw.max+.01;v+=d.hw.step)steps.push([String(v),v>0?`+${v}`:'0']);
+  const hr=el('div','au-row sound');hr.append(el('span','au-lab','Boost scheda'),auChips(steps,String(d.hw.db),v=>{d.hw.db=+v;auSend('/api/audio/boost',{id:d.id,hw:+v});},'Boost della scheda audio'));
+  box.append(hr);}
+ return box;
 }
-function auEq(d){
- const info=auInfo.eq||{bands:[31,62,125,250,500,1000,2000,4000,8000,16000],limit:12};
- const box=el('div','au-eq'),grid=el('div','au-eq-bands'),inputs=[];
- const send=()=>{const bands=inputs.map(i=>+i.value);d.boost.eq='custom';d.boost.bands=bands;
+function auEq(d,flow){
+ const info=auInfo.eq||{bands:[31,62,125,250,500,1000,2000,4000,8000,16000],limit:12},key='eq'+flow;
+ const det=el('details','au-eq');det.open=!!auOpen[key]||d.boost.eq==='custom';det.addEventListener('toggle',()=>{auOpen[key]=det.open;});
+ const sum=el('summary','','Equalizzatore a 10 bande');det.append(sum);
+ const grid=el('div','au-eq-bands');const inputs=[];
+ const send=()=>{const bands=inputs.map(i=>+i.value);d.boost.eq='custom';d.boost.bands=bands;auOpen[key]=true;
   auSend('/api/audio/boost',{id:d.id,bands},true).then(r=>{if(r&&!document.querySelector('.au-eq-bands input:active'))renderAudio();});};
  info.bands.forEach((f,i)=>{const col=el('div','au-band'),g=d.boost.bands?.[i]??0,val=el('output','',(g>0?'+':'')+g);
   const r=el('input');r.type='range';r.min=-info.limit;r.max=info.limit;r.step=1;r.value=g;r.setAttribute('aria-label',`${f<1000?f+' Hz':f/1000+' kHz'}`);
@@ -3994,7 +3957,7 @@ function auEq(d){
  const foot=el('div','au-eq-foot');const reset=el('button','btn small','Azzera');reset.type='button';
  reset.addEventListener('click',()=>{inputs.forEach(i=>{i.value=0;});d.boost.eq='flat';d.boost.bands=Array(10).fill(0);renderAudio();auSend('/api/audio/boost',{id:d.id,eq:'flat'},true);});
  foot.append(el('small','',d.boost.ready?'Si sente subito, anche dal telefono.':'Si sente quando l\'amplificatore è attivo su questo dispositivo.'),reset);
- box.append(grid,foot);return box;
+ det.append(grid,foot);return det;
 }
 /* livelli dal vivo: cuffie, microfono e app */
 let auLvlOn=false,auMic=false;
@@ -4006,7 +3969,7 @@ function auPaint(L){
  if(L.mic_error&&auMic===false&&auMicErr!==L.mic_error){auMicErr=L.mic_error;notify('⚠ '+L.mic_error,true);}
 }
 let auMicErr='';
-function auMicBtn(){const b=$('au-mic-test');if(!b)return;b.classList.toggle('on',auMic);b.querySelector('span').textContent=auMic?'Parla':'Prova';}
+function auMicBtn(){const b=$('au-mic-test');if(!b)return;b.classList.toggle('on',auMic);b.querySelector('span').textContent=auMic?'Parla ora…':'Prova il microfono';}
 async function auLvlLoop(){
  if(auLvlOn)return;auLvlOn=true;let t=0;
  await new Promise(r=>setTimeout(r,50));   // navigate() segna la pagina subito dopo
@@ -4029,24 +3992,39 @@ function auViz(v){
 }
 function auMeter(k){const m=el('span','au-meter');const i=el('i');i.dataset.lvl=k;m.append(i);return m;}
 function auOthers(list,flow){
- return list.map(d=>{const [t,sub]=auTitle(d),row=el('div','au-other'),ico=el('span','au-ico small '+flow);ico.append(icon(auIcon(d)));
+ if(!list.length)return null;
+ const det=el('details','au-more'),sum=el('summary','',list.length===1?'Un altro dispositivo':`Altri ${list.length} dispositivi`);det.append(sum);
+ if(auOpen[flow])det.open=true;det.addEventListener('toggle',()=>{auOpen[flow]=det.open;});
+ list.forEach(d=>{const [t,sub]=auTitle(d),row=el('div','au-other'),ico=el('span','au-ico small '+flow);ico.append(icon(auIcon(d)));
   const nm=el('div');nm.append(el('b','',t),el('small','',[sub,d.comm?'Chiamate':'',d.mute?'Muto':d.volume+'%'].filter(Boolean).join(' · ')));
-  const b=el('button','btn small','Usa');b.type='button';b.title=flow==='in'?'Usa questo microfono':'Fai uscire l\'audio da qui';
+  const b=el('button','btn small','Usa');b.type='button';b.title='Fai uscire l\'audio da qui';
   b.addEventListener('click',async()=>{if(await auSend('/api/audio/device',{id:d.id,default:true})){if(demo){auInfo[flow].forEach(x=>x.default=x===d);auInfo[flow].sort((a,b)=>b.default-a.default);renderAudio();}else loadAudio();}});
-  row.append(ico,nm,b);return row;});
+  row.append(ico,nm,b);det.append(row);});
+ return det;
 }
-const auOpen={sel:null,focus:'amp'};
+const auOpen={out:false,in:false};
 function renderAudio(){
  const i=auInfo;if(!i)return;
- const main={out:null,in:null};
- $('mx-devs').replaceChildren(...['out','in'].map(flow=>{const list=i[flow]||[],d=list.find(x=>x.default)||list[0];main[flow]=d||null;return d?auStrip(d,flow):auEmpty(flow);}));
- const apps=$('au-apps');apps.replaceChildren(...(i.apps||[]).map(auAppStrip));
- if(!(i.apps||[]).length)apps.append(el('p','mx-none','Nessuna app sta usando l\'audio adesso.'));
- if(auOpen.sel&&!main[auOpen.sel])auOpen.sel=null;
- $('mx-slot').replaceChildren(...(auOpen.sel?[auDetail(main[auOpen.sel],auOpen.sel)]:[]));
+ ['out','in'].forEach(flow=>{const box=$('au-'+flow),list=i[flow]||[],main=list.find(d=>d.default)||list[0];
+  if(!main){box.replaceChildren(el('p','muted',flow==='in'?'Nessun microfono collegato.':'Nessuna uscita audio attiva.'));return;}
+  box.replaceChildren(...[auMain(main,flow),auOthers(list.filter(d=>d!==main),flow)].filter(Boolean));});
+ // app
+ const apps=$('au-apps');apps.replaceChildren();
+ if(!(i.apps||[]).length)apps.append(el('p','muted','Nessuna app sta usando l\'audio in questo momento.'));
+ (i.apps||[]).forEach(a=>{const row=el('div','au-app'+(a.active?' on':'')+(a.mute?' muted':'')),ic=el('span','as-ico',a.id==='system'?'':initials(a.name));
+  if(a.id==='system')ic.append(icon('vol'));ic.style.setProperty('--h',hue(a.name));row.style.setProperty('--h',hue(a.name));
+  const nm=el('div','au-app-n');nm.append(el('b','',a.name),el('small','',a.mute?'Muto':a.active?'Suona ora':'In silenzio'),auMeter('app:'+a.id));
+  const v=el('output','au-val',a.volume+'%'),m=el('button','au-mute'+(a.mute?' on':''));m.type='button';m.setAttribute('aria-label',(a.mute?'Riattiva ':'Muto ')+a.name);m.append(icon(a.mute?'vol-x':'vol'));
+  m.addEventListener('click',async()=>{a.mute=!a.mute;renderAudio();await auSend('/api/audio/app',{id:a.id,mute:a.mute},true);});
+  const r=auRange(0,100,1,a.volume,{label:'Volume di '+a.name,input:x=>{v.textContent=x+'%';auSend('/api/audio/app',{id:a.id,volume:x},true);},change:x=>{a.volume=x;v.textContent=x+'%';auSend('/api/audio/app',{id:a.id,volume:x},true);}});
+  const fd=el('span','au-fader');fd.append(r);row.append(ic,nm,fd,v,m);apps.append(row);});
  $('au-duck').setAttribute('aria-checked',i.ducking?'false':'true');
- const o=main.out,play=(i.apps||[]).filter(a=>a.active).map(a=>a.name);
- $('au-now-sub').textContent=o?['Esce da '+auTitle(o)[0]+(o.mute?' (in muto)':''),play.length?play.slice(0,3).join(', ')+' in riproduzione':''].filter(Boolean).join(' · '):'Collega cuffie o casse al PC';
+ // vetrina
+ const o=(i.out||[]).find(d=>d.default),mi=(i.in||[]).find(d=>d.default);
+ $('au-now-out').textContent=o?auTitle(o)[0]:'Nessuna uscita audio';
+ $('au-now-sub').textContent=o?(o.mute?'In muto':`Volume ${o.volume}%`+(o.boost?.db>0?` · amplificato +${o.boost.db} dB`:''))+((i.apps||[]).filter(a=>a.active).length?` · ${(i.apps||[]).filter(a=>a.active).map(a=>a.name).slice(0,3).join(', ')} in riproduzione`:''):'Collega cuffie o casse al PC';
+ const pill=(id,d,ic)=>{const p=$(id);p.hidden=!d;if(!d)return;p.querySelector('b').textContent=auTitle(d)[0]+(d.mute?' · muto':` · ${d.volume}%`);p.classList.toggle('off',!!d.mute);p.querySelector('use').setAttribute('href','#i-'+ic);};
+ pill('au-pill-in',mi,'mic');
  renderAmp();
 }
 function renderAmp(){
@@ -4058,7 +4036,7 @@ function renderAmp(){
  else if(s.step==='error'){step=1;title='Non è andata';text=s.error||'Qualcosa non ha funzionato.';label='Riprova';}
  else if(!apo.installed){step=1;title='Più forte del 100%';text='Alza cuffie e microfono fino a +18 dB quando anche al massimo si sentono piano. Si installa una volta sola: è Equalizer APO, gratis e open source.';label='Installa l\'amplificatore';}
  else if(!ready){step=s.step==='select'?2:2;title='Ultimo passo: scegli i dispositivi';text='Si apre una finestra sul PC: spunta le cuffie e il microfono, premi OK e riavvia il PC una volta.';label='Scegli cuffie e microfono';}
- else{step=4;title='Amplificatore attivo';text='Alza cuffie e microfono con il tasto AMP sul loro canale, anche dal telefono.';label='Dispositivi';}
+ else{step=4;title='Amplificatore attivo';text='Alza cuffie e microfono con il cursore Amplifica qui sotto, anche dal telefono.';label='Dispositivi';}
  card.dataset.step=String(step);card.classList.toggle('busy',busy);
  // amplificatore pronto: la grande scheda lascia il posto a un'etichetta nella vetrina
  card.hidden=step===4;$('au-pill-amp').hidden=step!==4;
