@@ -14,6 +14,7 @@ import time
 from pathlib import Path
 
 import psutil
+import proclist
 
 MAX_PINNED = 24
 CACHE_SECONDS = 600
@@ -83,7 +84,7 @@ def find(app_id: str, apps=None):
 
 def running_names() -> set:
     out = set()
-    for p in psutil.process_iter(['name']):
+    for p in proclist.iter_info(['name']):
         try: out.add((p.info['name'] or '').lower())
         except psutil.Error: continue
     return out

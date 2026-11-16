@@ -98,7 +98,8 @@ def status() -> dict:
     running = False
     try:
         import psutil
-        running = any((p.info['name'] or '').lower() == 'rtss.exe' for p in psutil.process_iter(['name']))
+        import proclist
+        running = any((p.info['name'] or '').lower() == 'rtss.exe' for p in proclist.iter_info(['name']))
     except Exception: pass
     val = {'state': 'on' if running else 'closed' if exe else 'missing'}
     _status.update(at=time.monotonic(), val=val)

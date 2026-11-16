@@ -25,6 +25,7 @@ import gaming_boost
 import fps as fps_meter
 import pc_power
 import procstop
+import proclist
 import apps_remote
 import screen_remote
 import audio
@@ -393,6 +394,23 @@ class Control:
             if kind == 'automatica': self.state['optimize_last_auto'] = int(time.time())
             json_save(STATE_FILE, self.state)
 
+    def home_layout(self):
+        return dict(self.config.get('home_layout') or {})
+
+    def set_home_layout(self, order, hidden):
+        """Ordine e schede nascoste della Panoramica: salvati sul PC, valgono per la finestra, il telefono e Telegram."""
+        ok = lambda xs: [str(x)[:24] for x in (xs or []) if isinstance(x, str) and x.replace('-', '').isalnum()][:40]
+        with self.lock:
+            if order is None and hidden is None: self.config.pop('home_layout', None)
+            else: self.config['home_layout'] = {'order': ok(order), 'hidden': ok(hidden)}
+            json_save(CONFIG_FILE, self.config)
+        return self.home_layout()
+
+    def record_repair(self, res):
+        with self.lock:
+            self.state['repair_last'] = res
+            json_save(STATE_FILE, self.state)
+
     NET_EVERY = 3600   # prova automatica della rete: una volta all'ora
     NET_KEEP = 336     # due settimane di prove orarie
 
@@ -712,7 +730,7 @@ class Control:
             if type(win_id) is not int: raise ValueError('Finestra non valida')
             msg = screen_remote.close_window(win_id, force)
         elif action in screen_remote.VOLUME_KEYS: msg = screen_remote.volume(action)
-        elif action == 'monitor_off': msg = screen_remote.monitor_off()
+        elif action == 'monitor_off': msg = screen_remote.monitor_off(); self.screen_off_at = time.monotonic() + screen_remote.OFF_DELAY
         elif action == 'lock': msg = self.power_action('lock')
         else: raise ValueError('Azione non prevista')
         self.log_event('🖥 ' + msg)
@@ -797,7 +815,7 @@ class Control:
         folder = admin_helper.root()
         exe = sys.executable
         fan_exe = self.config.get('fans', {}).get('fancontrol_exe') or discovery.find_fancontrol()
-        clean = {t['key']: str(t['paths'][0]) for t in optimizer.targets() if t.get('admin')}
+        clean = {t['key']: str(t['paths'][0]) for t in optimizer.targets() if t.get('admin') and not t.get('local')}
         runner = admin_helper.runner_text(
             DATA_DIR / 'admin-request.json', folder / 'result.json', exe, clean, discovery.WINGET,
             fans_script=discovery.fancontrol_script(fan_exe, ROOT / 'fan_profiles') if fan_exe else '',
@@ -2196,9 +2214,9 @@ class Control:
 
     def screen_off(self):
         if os.name != 'nt': raise RuntimeError('Solo Windows')
-        ctypes.windll.user32.SendMessageW(0xFFFF, 0x0112, 0xF170, 2)
-        self.screen_off_at = time.monotonic()
-        return 'Comando spegnimento monitor inviato'
+        msg = screen_remote.monitor_off()   # stesso spegnimento del tasto nella pagina Schermo (ritardo + ricontrollo)
+        self.screen_off_at = time.monotonic() + screen_remote.OFF_DELAY
+        return msg
 
     def display_on(self):
         """Monitor acceso se mouse/tastiera sono stati usati prima che scattasse lo spegnimento di Windows."""
@@ -2487,7 +2505,7 @@ class Control:
             return dict(telemetry)
 
     def processes(self):
-        names = {str(x.info.get('name') or '').lower() for x in psutil.process_iter(['name'])}
+        names = {str(x.info.get('name') or '').lower() for x in proclist.iter_info(['name'])}
         wanted = [str(n).lower() for n in self.config.get('auto_detect',{}).get('process_names') or ['codex.exe','claude.exe']]
         return {Path(n).stem: n in names for n in wanted}
 

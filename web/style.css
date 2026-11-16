@@ -4264,3 +4264,84 @@ html.calm .vli::before,html.calm .vli::after,html.calm .vli-ring,html.calm .vli-
 .lx-eseg button:disabled{opacity:.3;cursor:default}
 .lx-er select{flex:none;max-width:55%;height:32px;padding:0 10px;border-radius:10px;background:#0b0e14;color:#e2e8f0;border:1px solid rgba(255,255,255,.14);font:inherit;font-size:12px}
 @media (max-width:520px){.lx-eacts{width:100%}.lx-eacts .lx-eseg{flex:1}.lx-eacts .lx-eb{flex:1}.lx-er{flex-wrap:wrap}.lx-eseg{width:100%}.lx-eseg button{flex:1;padding:0 6px}.lx-er select{max-width:100%;width:100%}.lx-edit-btn span{display:none}.lx-edit-btn{padding:0 9px}}
+
+/* ===== Ottimizza 1.0.86: più pulita (anello sobrio, "Da fare" nella vetrina, controlli in 4 colonne) ===== */
+.vx-opt .vx-bg{opacity:.45}
+.vx-opt{gap:30px;padding:30px 32px}
+.vx-opt .vx-score{width:168px;height:168px}
+.vx-opt .vx-score::before{inset:22px}
+.vx-opt .vx-score .ticks{display:none}
+.vx-opt .vx-score .h-track,.vx-opt .vx-score .h-fill,.vx-opt .vx-score .h-scan{stroke-width:7}
+.vx-opt .vx-score .h-fill{filter:drop-shadow(0 0 5px color-mix(in srgb,var(--a) 70%,transparent))}
+.vx-opt .vx-title{font-size:36px;margin:14px 0 6px;-webkit-text-fill-color:currentColor;background:none;color:#f5f7fb}
+.vx-opt .vx-acts{margin-top:20px}
+.vo-side{width:300px;align-self:stretch;display:flex;flex-direction:column;gap:8px;padding:16px;border-radius:20px;background:rgba(8,10,16,.42);border:1px solid rgba(255,255,255,.07)}
+.vo-h{font-size:10.5px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:#8d97a8}
+.vo-todo{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px;flex:1}
+.vo-todo li{display:flex;align-items:center;gap:10px;padding:8px 8px;margin:0 -8px;border-radius:11px;font-size:13px;line-height:1.35;color:#dfe4ec}
+.vo-todo li .i{width:16px;height:16px;flex:none;color:var(--a)}
+.vo-todo li.link{cursor:pointer;transition:background .15s}
+.vo-todo li.link:hover{background:rgba(255,255,255,.06)}
+.vo-todo li.link::after{content:"›";margin-left:auto;color:#5f6878;font-size:16px}
+.vo-todo li.ok{color:#86efac}.vo-todo li.ok .i{color:#34d399}
+.vo-foot{display:flex;flex-direction:column;gap:3px;margin-top:6px;padding-top:10px;border-top:1px solid rgba(255,255,255,.07);font-size:12px;color:#8d97a8}
+.vo-foot b{color:#e5e7eb;font-weight:700}.vo-foot em{font-style:normal}
+/* controlli: piastrelle piatte, lo stato è la riga colorata a sinistra */
+.checks{grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.chk{padding:13px 14px 13px 16px;border-radius:14px;gap:12px;overflow:hidden}
+.chk::before{content:"";position:absolute;left:0;top:10px;bottom:10px;width:3px;border-radius:0 3px 3px 0;background:var(--s);opacity:.9}
+.chk.s-none::before{opacity:.35}
+.chk-ico{width:38px!important;height:38px!important;border-radius:11px!important;background:color-mix(in srgb,var(--s) 12%,transparent)!important}
+.chk-ico .i{width:18px;height:18px}
+.chk b{font-size:16.5px}
+.chk em{display:none}
+.chk:hover{transform:none;background:rgba(255,255,255,.035)}
+/* pulizia: quanto è in uso */
+.clean-row strong small{display:block;font-size:10.5px;font-weight:600;color:var(--muted);text-align:right;white-space:nowrap}
+/* libera la memoria */
+.mem-free{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:12px;margin:4px 0 12px;padding:12px 14px;border-radius:16px;background:rgba(45,212,191,.06);border:1px solid rgba(45,212,191,.22)}
+.mf-ico{width:38px;height:38px;border-radius:11px;display:grid;place-items:center;color:#5eead4;background:rgba(45,212,191,.14)}
+.mf-ico .i{width:18px;height:18px}
+.mem-free>div:nth-child(2){display:flex;flex-direction:column;min-width:0}
+.mem-free b{font-size:14px}.mem-free small{font-size:12px;color:var(--muted)}
+.mf-acts{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.proc-row{grid-template-columns:22px 36px minmax(0,1fr) auto auto!important}
+.proc-pick{width:17px;height:17px;margin:0;accent-color:#2dd4bf;cursor:pointer}
+.proc-pick.none{display:block}
+/* aggiornamenti */
+.upd-list{display:flex;flex-direction:column;max-height:560px;overflow:auto;margin:0 -4px;padding:0 4px;scrollbar-width:thin}
+.upd-row{display:grid;grid-template-columns:36px minmax(0,1fr) auto;align-items:center;gap:12px;padding:10px 0}
+.upd-row+.upd-row{border-top:1px solid var(--line)}
+.upd-row>div{display:flex;flex-direction:column;min-width:0}
+.upd-row>div>b{font-size:13.5px;font-weight:650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.upd-row small{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.upd-row small i{font-style:normal;color:#5f6878}.upd-row small b{color:#5eead4;font-weight:700}
+.upd-row.busy{opacity:.85}.upd-row.busy .app-ico{animation:gpulse 1.6s infinite}
+/* riparazione */
+.repair-card{display:flex;flex-direction:column;gap:14px}
+.repair-card>.btn{align-self:flex-start}
+.rp-state{display:flex;gap:12px;align-items:flex-start;padding:14px;border-radius:14px;background:rgba(255,255,255,.03);border:1px solid var(--line)}
+.rp-state>div{display:flex;flex-direction:column;gap:3px;min-width:0}
+.rp-state b{font-size:14px}.rp-state small{font-size:12.5px;color:var(--muted);line-height:1.45;overflow-wrap:anywhere}
+.rp-ico{width:34px;height:34px;flex:none;border-radius:10px;display:grid;place-items:center;color:#94a3b8;background:rgba(148,163,184,.12)}
+.rp-ico .i{width:17px;height:17px}
+.rp-state.ok .rp-ico{color:#34d399;background:rgba(52,211,153,.13)}
+.rp-state.bad{border-color:rgba(248,113,113,.35)}.rp-state.bad .rp-ico{color:#f87171;background:rgba(248,113,113,.13)}
+.rp-run{display:flex;flex-direction:column;gap:9px;padding:14px;border-radius:14px;background:rgba(45,212,191,.06);border:1px solid rgba(45,212,191,.22)}
+.rp-run b{font-size:13.5px}.rp-run small{font-size:12px;color:var(--muted)}
+.rp-run .bar span{transition:width .8s ease}
+@media (max-width:1180px){.checks{grid-template-columns:repeat(2,minmax(0,1fr))}.vo-side{width:auto;grid-column:1/-1}}
+@media (max-width:640px){
+ .vx-opt{padding:20px;gap:18px}
+ .vx-opt .vx-score{width:132px;height:132px}
+ .vx-opt .vx-title{font-size:26px}
+ .checks{gap:8px}
+ .chk{padding:11px 10px 11px 13px;gap:9px}
+ .chk-ico{width:32px!important;height:32px!important}
+ .chk b{font-size:14.5px}
+ .chk div span{display:none}
+ .proc-row{grid-template-columns:22px auto minmax(0,1fr) auto!important}
+ .proc-row .btn{grid-column:2/-1}
+ .mem-free{grid-template-columns:auto minmax(0,1fr)}
+ .mf-acts{grid-column:1/-1;justify-content:stretch}.mf-acts .btn{flex:1}
+}

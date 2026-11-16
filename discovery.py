@@ -157,8 +157,9 @@ def fancontrol_config_loaded(exe: str) -> str:
 
 def process_running(exe_name: str) -> bool:
     import psutil
+    import proclist
     low = exe_name.lower()
-    for p in psutil.process_iter(['name']):
+    for p in proclist.iter_info(['name']):
         try:
             if (p.info['name'] or '').lower() == low: return True
         except Exception: continue
@@ -229,12 +230,12 @@ def app_label(key: str) -> tuple[str, str]:
 def conflicts_running() -> dict:
     """{chiave: [pid…]} delle app in conflitto aperte adesso, compresa una seconda copia di OpenRGB."""
     if os.name != 'nt': return {}
-    import psutil
+    import proclist
     want = {n.lower() + '.exe': k for k, (_, _, names) in CONFLICT_APPS.items() for n in names}
     svc = openrgb_service()
     spid = svc.get('pid') if svc.get('status') == 'running' else None
     found = {}
-    for p in psutil.process_iter(['name', 'pid', 'ppid']):
+    for p in proclist.iter_info(['name', 'pid', 'ppid']):
         try:
             n = (p.info['name'] or '').lower()
             if n in want: found.setdefault(want[n], []).append(p.info['pid'])
@@ -271,7 +272,7 @@ def script_file(script: str) -> Path:
     path.write_text('# NEXAR: operazione da amministratore richiesta dall\'utente\n' + script, encoding='utf-8-sig')
     return path
 
-def run_elevated(script: str, wait=False) -> bool:
+def run_elevated(script: str, wait=False, timeout=60) -> bool:
     """Una sola richiesta UAC per tutto lo script PowerShell."""
     args = f'-NoProfile -ExecutionPolicy RemoteSigned -File "{script_file(script)}"'
     if not wait:
@@ -284,7 +285,7 @@ def run_elevated(script: str, wait=False) -> bool:
                     ('hkeyClass', ctypes.c_void_p), ('dwHotKey', ctypes.c_ulong), ('hIcon', ctypes.c_void_p), ('hProcess', ctypes.c_void_p)]
     sei = SEI(cbSize=ctypes.sizeof(SEI), fMask=0x40, lpVerb='runas', lpFile='powershell.exe', lpParameters=args, nShow=0)
     if not ctypes.windll.shell32.ShellExecuteExW(ctypes.byref(sei)): return False
-    ctypes.windll.kernel32.WaitForSingleObject(sei.hProcess, 60000)
+    ctypes.windll.kernel32.WaitForSingleObject(sei.hProcess, int(timeout * 1000))
     ctypes.windll.kernel32.CloseHandle(sei.hProcess)
     return True
 

@@ -933,9 +933,11 @@ def stats():
     return controller.stats_summary()
 
 @app.get('/api/optimize',dependencies=[Depends(authorized)])
-def optimize_info():
+def optimize_info(request: Request):
     return {'report':getattr(controller,'optimize_report',None),'disks':optimizer.disks(),
-            'memory':optimizer.memory_top(),'startup':optimizer.startup_items(),**controller.optimize_extra()}
+            'memory':optimizer.memory_top(),'startup':optimizer.startup_items(),**controller.optimize_extra(),
+            'updates':getattr(controller,'upgrades',None),'repair':controller.state.get('repair_last'),'local':not is_remote(request),
+            'upgrading':getattr(controller,'upgrading',None)}
 
 def optimize_scan_job():
     controller.optimize_report = optimizer.analyze()
@@ -1005,6 +1007,16 @@ def optimize_dns():
 def optimize_processes():
     return optimizer.processes()
 
+class HomeLayout(BaseModel):
+    order: list[str] | None = None
+    hidden: list[str] | None = None
+@app.get('/api/layout',dependencies=[Depends(authorized)])
+def home_layout():
+    return controller.home_layout()
+@app.post('/api/layout',dependencies=[Depends(authorized)])
+def home_layout_save(data: HomeLayout):
+    return {'ok':True,'layout':controller.set_home_layout(data.order,data.hidden)}
+
 class AppName(BaseModel):
     name: str
 @app.post('/api/optimize/close',dependencies=[Depends(authorized)])
@@ -1062,6 +1074,69 @@ def optimize_net_job():
 def optimize_net():
     try: return {'ok':True,'message':controller.run_job('optimize-net',optimize_net_job)}
     except RuntimeError as ex: raise HTTPException(409,str(ex))
+
+# ---- programmi da aggiornare (winget), riparazione di Windows, memoria in standby ----
+import subprocess
+import upgrades
+REPAIR_DIR = DATA_DIR / 'repair'
+
+def optimize_updates_job():
+    try: items = upgrades.list_upgrades()
+    except (RuntimeError, OSError, subprocess.SubprocessError) as ex:
+        controller.upgrades = {'at': int(time.time()), 'items': [], 'error': str(ex)[:200]}; raise RuntimeError(str(ex)) from ex
+    controller.upgrades = {'at': int(time.time()), 'items': items, 'error': ''}
+    return f'Aggiornamenti: {len(items)} programmi' if items else 'Tutti i programmi sono aggiornati'
+@app.post('/api/optimize/updates',dependencies=[Depends(authorized)])
+def optimize_updates():
+    try: return {'ok':True,'message':controller.run_job('optimize-updates',optimize_updates_job)}
+    except RuntimeError as ex: raise HTTPException(409,str(ex))
+
+class PackageId(BaseModel):
+    id: str
+@app.post('/api/optimize/updates/install',dependencies=[Depends(authorized),Depends(pin_gate)])
+def optimize_update_install(data: PackageId):
+    known = (getattr(controller,'upgrades',None) or {}).get('items') or []
+    if not any(x['id'] == data.id for x in known): raise HTTPException(400,'Programma non nell\'elenco: aggiorna l\'elenco e riprova')
+    def job():
+        msg = upgrades.upgrade(data.id, known)
+        u = getattr(controller,'upgrades',None) or {}
+        u['items'] = [x for x in u.get('items') or [] if x['id'] != data.id]
+        controller.log_event('⬆ ' + msg)
+        return msg
+    controller.upgrading = data.id
+    try: return {'ok':True,'message':controller.run_job('optimize-upgrade',job)}
+    except RuntimeError as ex: raise HTTPException(409,str(ex))
+
+def optimize_repair_job():
+    import discovery
+    if not discovery.run_elevated(upgrades.repair_script(REPAIR_DIR), wait=True, timeout=4 * 3600):
+        raise RuntimeError('Riparazione annullata (conferma amministratore)')
+    res = upgrades.repair_result(REPAIR_DIR)
+    if not res: raise RuntimeError('La riparazione non ha lasciato il risultato: riprova')
+    controller.record_repair(res)
+    if res['ok']: return 'Windows controllato: file di sistema a posto'
+    return 'Riparazione finita con problemi: ' + (res['sfc_text'] or res['dism_text'] or f"codici {res['dism']}/{res['sfc']}")
+@app.post('/api/optimize/repair',dependencies=[Depends(authorized),Depends(local_only)])
+def optimize_repair():
+    try: return {'ok':True,'message':controller.run_job('optimize-repair',optimize_repair_job)}
+    except RuntimeError as ex: raise HTTPException(409,str(ex))
+@app.get('/api/optimize/repair',dependencies=[Depends(authorized)])
+def optimize_repair_state():
+    return {'progress':upgrades.repair_progress(REPAIR_DIR),'last':controller.state.get('repair_last')}
+
+@app.post('/api/optimize/standby',dependencies=[Depends(authorized),Depends(local_only)])
+def optimize_standby():
+    import discovery
+    out = DATA_DIR / 'standby.txt'
+    try: out.unlink()
+    except OSError: pass
+    if not discovery.run_elevated(upgrades.standby_script(out), wait=True, timeout=90):
+        raise HTTPException(400,'Annullato: serve la conferma di Windows sul PC')
+    try: code = out.read_text(encoding='utf-8-sig').strip()
+    except OSError: code = ''
+    if code != '0': raise HTTPException(400,'Windows non ha svuotato la memoria in standby' + (f' (codice {code})' if code else ''))
+    controller.log_event('Memoria in standby svuotata')
+    return {'ok':True,'message':'Memoria in standby svuotata','memory':optimizer.memory_top()}
 
 class AutoClean(BaseModel):
     enabled: bool

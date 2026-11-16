@@ -6,6 +6,7 @@ si guarda quanto lavorano (CPU dell'app e dei comandi che lancia). Lavoro lungo 
 import time
 
 import psutil
+import proclist
 
 BUSY_CORES = 0.12     # oltre ~12% di un core in media: sta lavorando
 START_TICKS = 2       # due letture di fila (≈25 s) per dire che ha iniziato
@@ -17,7 +18,7 @@ AWAY_SECONDS = 120    # e solo se nessuno usa il PC da 2 minuti
 def sample(names) -> dict:
     """{pid: (app, secondi di CPU)} per ogni app cercata e per i processi che ha avviato."""
     out = {}
-    for p in psutil.process_iter(['name']):
+    for p in proclist.iter_info(['name']):
         app = (p.info.get('name') or '').lower()
         if app not in names: continue
         try: family = [p] + p.children(recursive=True)

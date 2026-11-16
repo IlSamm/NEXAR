@@ -1313,15 +1313,15 @@ $('tg-pair-copy').addEventListener('click',async()=>{
 });
 $('login-form').addEventListener('submit',async e=>{
  e.preventDefault();const pass=$('key-input').value.trim();if(pass.length<28){$('login-error').textContent='Chiave troppo corta.';return;}
- key=pass;try{const s=await req('/api/status');sessionStorage.setItem('pc_eco_key',key);$('login-error').textContent='';$('key-input').value='';loginScreen(false);render(s);}catch(ex){$('login-error').textContent=ex.message;}
+ key=pass;try{const s=await req('/api/status');sessionStorage.setItem('pc_eco_key',key);$('login-error').textContent='';$('key-input').value='';loginScreen(false);render(s);layoutLoad();}catch(ex){$('login-error').textContent=ex.message;}
 });
 $('refresh-events').addEventListener('click',loadEvents);
 /* ---------- ottimizza ---------- */
 const bytes=b=>{if(typeof b!=='number')return '—';const u=['B','KB','MB','GB','TB'];let i=0;while(b>=1024&&i<4){b/=1024;i++;}return (i<2?Math.round(b):b.toFixed(1).replace('.',','))+' '+u[i];};
 let optData=null,procData=null,procSort='by_cpu',optTab='clean',autoScanned=false;const optSeen={};
-const OPT_JOBS=['optimize-scan','optimize-clean','trim','optimize-large','optimize-health','optimize-net'];
-const QUICK_STEPS=['File temporanei','Anteprime delle immagini','Rapporti di errore','Cache dei browser','Cache DNS','Nuova analisi'];
-const CLEAN_ICO={temp:'clean',shader:'game',thumbs:'palette',crash:'x',browser:'link',wintemp:'grid',wupdate:'refresh',recycle:'disk'};
+const OPT_JOBS=['optimize-scan','optimize-clean','trim','optimize-large','optimize-health','optimize-net','optimize-updates','optimize-upgrade','optimize-repair'];
+const QUICK_STEPS=['File temporanei','Anteprime delle immagini','Rapporti di errore','Cache dei browser','Cache delle app','Cache DNS','Nuova analisi'];
+const CLEAN_ICO={temp:'clean',shader:'game',thumbs:'palette',crash:'x',browser:'link',apps:'grid',wintemp:'grid',wupdate:'refresh',drivers:'gpu',winlogs:'list',recycle:'disk'};
 const KIND_ICO=k=>/^(mp4|mkv|avi|mov|wmv|webm)$/.test(k)?['🎬','#a78bfa']:/^(zip|rar|7z|tar|gz)$/.test(k)?['📦','#fbbf24']:/^(iso|vmdk|vhd|vhdx|img|ova)$/.test(k)?['💽','#38bdf8']:/^(exe|msi)$/.test(k)?['⚙️','#fb923c']:['📄','#94a3b8'];
 let cleanSteps=null,cleanEst=0;
 const cleanPick={};   // caselle toccate a mano: valgono finché non parte la pulizia
@@ -1337,6 +1337,8 @@ function watchOptimizeJobs(jobs){
  $('opt-health').classList.toggle('scanning',scan||clean);$('opt-run').disabled=clean||!selectedKeys().length;
  [['optimize-large','opt-large-scan','Cerco…','Cerca'],['optimize-health','opt-health-btn','Controllo…','Controlla'],['optimize-net','opt-net-btn','Provo…','Prova la rete']].forEach(([j,id,on,off])=>{
   const b=$(id),r=jobs[j]?.state==='running';b.disabled=r;b.lastChild.textContent=r?on:off;});
+ const up=jobs['optimize-updates']?.state==='running';$('opt-upd-scan').disabled=up;$('opt-upd-scan').lastChild.textContent=up?'Controllo…':'Controlla';
+ optJobs=jobs;if(optData)renderRepair(optData);
  // Fine pulizia: solo il lavoro partito dopo il clic (quello vecchio, già finito, ha un orario precedente).
  const cj=jobs['optimize-clean'];
  if(optSeen.quick&&cj&&cj.state!=='running'&&cj.at>(optSeen.quickFrom||0)){optSeen.quick=false;quickProgress(false,cj.message,cj.state);}
@@ -1348,13 +1350,16 @@ function watchOptimizeJobs(jobs){
 function selectedKeys(){return [...document.querySelectorAll('#opt-clean input:checked')].map(c=>c.value);}
 function updateSelected(){
  const items=optData?.report?.items||[];const keys=selectedKeys();
- const tot=items.filter(i=>keys.includes(i.key)).reduce((a,i)=>a+i.bytes,0);
+ const tot=items.filter(i=>keys.includes(i.key)).reduce((a,i)=>a+Math.max(0,i.bytes-(i.busy||0)),0);
  $('opt-selected').textContent=keys.length?`Selezionati: ${bytes(tot)}`:'Niente selezionato';$('opt-run').disabled=!keys.length;
 }
 const DEMO_OPT={report:{total:6.1e9,at:'2026-11-04T08:30:00',items:[
-  {key:'temp',name:'File temporanei',desc:'Cartella Temp',bytes:1.2e9,files:3496,admin:false,permanent:false,note:''},
+  {key:'temp',name:'File temporanei',desc:'Cartella Temp',bytes:1.2e9,busy:6e7,files:3496,admin:false,permanent:false,quick:true,note:'57 MB in uso: li usano programmi aperti'},
   {key:'shader',name:'Cache shader dei giochi',desc:'Solo se un gioco ha problemi grafici',bytes:2.3e9,files:390,admin:false,permanent:false,optional:true,note:''},
-  {key:'browser',name:'Cache dei browser',desc:'Edge, Chrome, Brave, Opera',bytes:4.1e8,files:2100,admin:false,permanent:false,note:'chiudi i browser'},
+  {key:'browser',name:'Cache dei browser',desc:'Edge, Chrome, Brave, Opera',bytes:4.1e8,busy:4.1e8,files:2100,admin:false,permanent:false,quick:true,note:'chiudi Chrome per pulirla'},
+  {key:'apps',name:'Cache delle app',desc:'Discord, Steam, Epic Games: pagine e immagini che riscaricano (mai chat né giochi)',bytes:4.3e8,busy:1e8,files:3769,quick:true,note:'Epic Games è aperto: la sua cache si pulisce quando lo chiudi'},
+  {key:'drivers',name:'Installer dei driver',desc:'Pacchetti già installati di NVIDIA e AMD (C:\\AMD, C:\\NVIDIA)',bytes:3.9e8,files:1056,admin:true,local:true,note:''},
+  {key:'winlogs',name:'Registri di Windows',desc:'Log di installazione e riparazione (CBS, DISM)',bytes:5.2e8,files:6,admin:true,local:true,note:''},
   {key:'wupdate',name:'Aggiornamenti di Windows scaricati',desc:'Già installati',bytes:8e8,files:120,admin:true,permanent:false,note:''},
   {key:'recycle',name:'Cestino',desc:'Svuota il cestino',bytes:2.4e9,files:42,admin:false,permanent:true,note:''}]},
  disks:[{drive:'C:',total:5e11,used:4.7e11,free:3e10,percent:94},{drive:'D:',total:1e12,used:3e11,free:7e11,percent:30}],
@@ -1365,6 +1370,9 @@ const DEMO_OPT={report:{total:6.1e9,at:'2026-11-04T08:30:00',items:[
   {path:'C:/x/b.mp4',name:'Clip partita.mp4',folder:'C:\\Users\\samue\\Videos',bytes:2.2e9,mtime:1760000000,kind:'mp4'}],total:1.82e10,count:2,at:Date.now()/1000},
  health:{at:Date.now()/1000,disks:[{name:'Sabrent',media:'SSD',bus:'NVMe',health:'Healthy',size:1.02e12,ok:true,temp:41,wear:3},{name:'WDC WD10EARS',media:'Disco',bus:'SATA',health:'Healthy',size:1e12,ok:true}]},
  net:{at:Date.now()/1000,router:{host:'192.168.0.1',ms:1,loss:0},internet:{host:'1.1.1.1',ms:21,loss:0},google:{host:'8.8.8.8',ms:22,loss:0},dns_ms:35,quality:'ottima'},
+ local:true,repair:null,upgrading:null,
+ updates:{at:Date.now()/1000-600,error:'',items:[{name:'Discord',id:'Discord.Discord',version:'1.0.9210',available:'1.0.9214'},{name:'Steam',id:'Valve.Steam',version:'2.10.91.91',available:'2.10.91.94'},
+  {name:'Git',id:'Git.Git',version:'2.55.0.3',available:'2.56.0.4'},{name:'Corsair iCUE5 Software',id:'Corsair.iCUE.5',version:'5.44.55',available:'5.52.93'},{name:'7-Zip',id:'7zip.7zip',version:'24.09',available:'25.01'}]},
  net_auto:true,net_history:Array.from({length:72},(_,i)=>{const at=Date.now()/1000-(71-i)*7200,hr=new Date(at*1000).getHours(),eve=hr>=20&&hr<=23;
   return {at,ms:i===40?null:Math.round(18+Math.sin(i*1.7)*3+(eve?14:0)+(i===55?95:0)),router:1,dns:30,q:i===40?'offline':'ottima',auto:true};})};
 const DEMO_PROC={cpu_total:14,ram:{used:1.6e10,total:3.2e10,percent:51},count:312,
@@ -1379,7 +1387,9 @@ async function loadOptimize(quiet=false){
  }catch(ex){if(!quiet)notify('Ottimizza: '+ex.message,true);}
 }
 // File inutili davvero: senza la cache degli shader (opzionale), che serve ai giochi e si riforma sempre.
-const junkOf=rep=>rep?rep.items.filter(i=>!i.optional).reduce((a,i)=>a+i.bytes,0):0;
+const junkOf=rep=>rep?rep.items.filter(i=>i.quick??(!i.optional&&!i.permanent&&!i.admin)).reduce((a,i)=>a+Math.max(0,i.bytes-(i.busy||0)),0):0;
+let optJobs={},updAuto=false,repTimer=null;
+const updCount=d=>d.updates?.items?.length??null;
 function healthScore(d){
  // Punteggio semplice e spiegabile: ogni problema toglie punti e diventa un consiglio.
  let score=100;const tips=[];const rep=d.report;const c=(d.disks||[]).find(x=>/^C/i.test(x.drive))||(d.disks||[])[0];
@@ -1389,7 +1399,9 @@ function healthScore(d){
  if(c){const free=c.free/c.total;if(free<0.1){score-=30;tips.push(['disk',`Disco ${c.drive} quasi pieno: ${bytes(c.free)} liberi`,'large']);}
   else if(free<0.2){score-=15;tips.push(['disk',`Disco ${c.drive} con poco spazio (${bytes(c.free)} liberi)`,'large']);}}
  const on=(d.startup||[]).filter(i=>i.enabled).length;if(on>8){score-=Math.min(20,(on-8)*2);tips.push(['power',`${on} programmi partono con Windows`,'startup']);}
- const ram=d.memory?.percent||0;if(ram>80){score-=15;tips.push(['ram',`RAM al ${Math.round(ram)}%: chiudi qualche programma`,'apps']);}else if(ram>65)score-=6;
+ const ram=d.memory?.percent||0;if(ram>80){score-=15;tips.push(['ram',`RAM al ${Math.round(ram)}%: chiudi qualche programma`,'apps']);}else if(ram>65){score-=6;tips.push(['ram',`RAM al ${Math.round(ram)}%: c'è poco margine`,'apps']);}
+ const nu=updCount(d);if(nu){score-=Math.min(8,2+Math.floor(nu/10));tips.push(['download',`${nu} ${nu>1?'programmi da aggiornare':'programma da aggiornare'}`,'updates']);}
+ if(d.repair&&!d.repair.ok){score-=10;tips.unshift(['alert','Windows ha file di sistema da riparare','updates']);}
  const bad=(d.health?.disks||[]).filter(x=>!x.ok);if(bad.length){score-=25;tips.unshift(['disk',`Disco da controllare: ${bad[0].name}`,'disks']);}
  const up=current?.pc?.uptime_s||0;if(up>7*86400){score-=5;tips.push(['restart',`Acceso da ${Math.floor(up/86400)} giorni: un riavvio rinfresca Windows`,'']);}
  if(d.net?.quality==='lenta'){score-=5;tips.push(['wave','Rete lenta: guarda la scheda Rete','net']);}
@@ -1405,11 +1417,13 @@ function renderOptimize(d){
  $('opt-health').className='vx-score'+(h.score<65?' low':h.score<85?' mid':'')+($('opt-health').classList.contains('scanning')?' scanning':'');
  swapIn($('opt-title'),!d.report?'Controllo il PC…':h.score>=85?'Il PC è in ottima forma':h.score>=65?'Va bene, ma si può fare meglio':'Il PC ha bisogno di una pulita');
  $('opt-tips').replaceChildren(...(h.tips.length?h.tips.map(([ic,t,go])=>{const li=el('li');li.append(icon(ic),document.createTextNode(t));
-  if(go){li.classList.add('link');li.addEventListener('click',()=>optTabGo(go));}return li;}):[(()=>{const li=el('li','ok');li.append(icon('check'),document.createTextNode('Tutto in ordine'));return li;})()]));
+  if(go){li.classList.add('link');li.addEventListener('click',()=>{optTabGo(go);$('opt-tabs').scrollIntoView({block:'start',behavior:'smooth'});});}return li;}):[(()=>{const li=el('li','ok');li.append(icon('check'),document.createTextNode('Tutto in ordine'));return li;})()]));
  countUp($('opt-freed'),d.freed_total||0,v=>bytes(v));
  const last=(d.history||[])[0];$('opt-auto-lbl').textContent=d.auto?'Pulizia automatica attiva':'Pulizia automatica spenta';$('opt-freed-sub').textContent=last?`Ultima ${ago(last.at)}`:'Mai fatta';
  renderChecks(d,h);
- $('tb-clean').textContent=d.report?bytes(junkOf(d.report)):'';$('tb-startup').textContent=h.on||'';$('tb-large').textContent=d.large?.count||'';
+ $('tb-clean').textContent=d.report?bytes(junkOf(d.report)):'';$('tb-startup').textContent=h.on||'';$('tb-large').textContent=d.large?.count||'';$('tb-updates').textContent=updCount(d)||'';
+ renderUpdates(d);renderRepair(d);
+ if(optTab==='updates'&&d.updates==null&&!updAuto&&!demo){updAuto=true;startUpdScan();}
  renderClean(d);renderStartup(d.startup||[]);renderDisks(d);renderLarge(d.large);renderNet(d.net);renderNetHist(d);renderOptHistory(d);
  renderZones();
 }
@@ -1425,21 +1439,23 @@ function scoreTicks(score){
 }
 function renderChecks(d,h){
  // Controllo salute: sei voci con stato colorato; toccandole si apre la scheda giusta.
- const rep=d.report,junk=junkOf(rep),c=h.c,free=c?c.free/c.total:null,hd=d.health?.disks,net=d.net,GB=2**30;
+ const rep=d.report,junk=junkOf(rep),c=h.c,free=c?c.free/c.total:null,hd=d.health?.disks,net=d.net,GB=2**30,nu=updCount(d),rp=d.repair;
  const items=[
-  ['clean','File inutili',rep?bytes(junk):'…',!rep?'none':junk<.5*GB?'ok':junk<3*GB?'warn':'bad',rep?(junk<.5*GB?'Già pulito':'Si possono pulire'):'Analisi in corso','clean'],
+  ['clean','File inutili',rep?bytes(junk):'…',!rep?'none':junk<.5*GB?'ok':junk<3*GB?'warn':'bad',rep?(junk<.5*GB?'Già pulito':'Li toglie Ottimizza ora'):'Analisi in corso','clean'],
   ['disk','Disco C',c?bytes(c.free)+' liberi':'—',free==null?'none':free>=.2?'ok':free>=.1?'warn':'bad',free==null?'—':`${Math.round(free*100)}% libero su ${bytes(c.total)}`,'large'],
   ['power','Avvio di Windows',(d.startup||[]).length?`${h.on} app`:'—',!(d.startup||[]).length?'none':h.on<=8?'ok':h.on<=14?'warn':'bad',h.on<=8?'Avvio leggero':'Si può alleggerire','startup'],
   ['ram','Memoria',d.memory?Math.round(h.ram)+'% in uso':'—',!d.memory?'none':h.ram<=65?'ok':h.ram<=80?'warn':'bad',d.memory?.total?`${bytes(d.memory.used)} di ${bytes(d.memory.total)}`:'—','apps'],
   ['check','Salute dischi',hd?`${hd.filter(x=>x.ok).length} su ${hd.length} ok`:'Non controllata',hd?(hd.every(x=>x.ok)?'ok':'bad'):'none',hd?(hd.every(x=>x.ok)?'Tutti in salute':'Un disco va controllato'):'Tocca per controllare','disks'],
-  ['wave','Rete',net?.internet?.ms!=null?net.internet.ms+' ms':'Non provata',!net?'none':['ottima','buona'].includes(net.quality)?'ok':net.quality==='lenta'?'warn':'bad',net?`Connessione ${net.quality}`:'Tocca per provare','net']];
+  ['wave','Rete',net?.internet?.ms!=null?net.internet.ms+' ms':'Non provata',!net?'none':['ottima','buona'].includes(net.quality)?'ok':net.quality==='lenta'?'warn':'bad',net?`Connessione ${net.quality}`:'Tocca per provare','net'],
+  ['download','Aggiornamenti',nu==null?'Non controllati':nu?`${nu} programm${nu>1?'i':'o'}`:'Tutto aggiornato',nu==null?'none':nu?'warn':'ok',nu==null?'Tocca per controllare':nu?'Da aggiornare':'Nessun programma vecchio','updates'],
+  ['monitor','File di Windows',!rp?'Non controllati':rp.ok?'Integri':'Da riparare',!rp?'none':rp.ok?'ok':'bad',!rp?'Tocca per controllare':rp.ok?'Controllati '+ago(rp.at):'La riparazione ha trovato problemi','updates']];
  const LBL={ok:'OK',warn:'Attenzione',bad:'Da sistemare',none:'Da fare'};
 
  const box=$('opt-checks');box.replaceChildren();
  const fill={clean:rep?Math.min(100,junk/(5*GB)*100):0,large:c?100-Math.round(free*100):0,startup:Math.min(100,(h.on||0)/20*100),apps:h.ram||0,
   disks:hd?hd.filter(x=>x.ok).length/hd.length*100:0,net:net?.internet?.ms!=null?Math.min(100,net.internet.ms):0};
- items.forEach(([ic,name,val,s,sub,go])=>{const b=el('button','chk s-'+s);b.type='button';const i=el('span','chk-ico');const ring=ringSvg('cr');
-  ring.querySelector('.gr-f').style.strokeDasharray=`${(fill[go]||0).toFixed(1)} 100`;i.append(ring,icon(ic));
+ items.forEach(([ic,name,val,s,sub,go])=>{const b=el('button','chk s-'+s);b.type='button';const i=el('span','chk-ico');
+  i.append(icon(ic));b.title=name+': '+LBL[s];
   const t=el('div');t.append(el('small','',name),el('b','',val),el('span','',sub));b.append(i,t,el('em','',LBL[s]));
   b.addEventListener('click',()=>{optTabGo(go);$('opt-tabs').scrollIntoView({block:'start',behavior:'smooth'});});box.append(b);});
  const todo=items.filter(x=>x[3]==='warn'||x[3]==='bad').length;
@@ -1449,20 +1465,22 @@ function ago2(ts){const d=(ts-Date.now()/1000)/86400;return d<=0?'a breve':d<1?'
 function renderClean(d){
  const box=$('opt-clean');const rep=d.report;if(!rep)return;
  box.replaceChildren();
- $('opt-clean-sub').textContent=`${bytes(rep.total)} recuperabili · analisi delle ${rep.at.slice(11,16)}`;
+ $('opt-clean-sub').textContent=`${bytes(rep.free??rep.total)} si possono togliere adesso · analisi delle ${rep.at.slice(11,16)}`;
  const max=Math.max(1,...rep.items.map(i=>i.bytes));
  rep.items.forEach((i,k)=>{
   const row=el('label','clean-row'+(i.bytes?'':' empty'));row.style.setProperty('--i',k);const cb=el('input');cb.type='checkbox';cb.value=i.key;
-  const blocked=(i.admin&&current?.remote&&!adminInfo?.active)||i.note.startsWith('chiudi');
-  cb.checked=i.bytes>0&&!i.permanent&&!i.admin&&!i.optional&&!blocked;cb.disabled=!i.bytes||blocked;
+  const can=Math.max(0,i.bytes-(i.busy||0));
+  const blocked=(i.admin&&current?.remote&&(i.local||!adminInfo?.active))||!can;
+  cb.checked=can>0&&!i.permanent&&!i.admin&&!i.optional&&!blocked;cb.disabled=!i.bytes||blocked;
   if(!cb.disabled&&i.key in cleanPick)cb.checked=cleanPick[i.key];
   if(blocked&&i.bytes)row.classList.add('locked');
   cb.addEventListener('change',()=>{cleanPick[i.key]=cb.checked;updateSelected();});
   const ico=el('span','clean-ico');ico.append(icon(CLEAN_ICO[i.key]||'clean'));
   const t=el('div');const name=el('b','',i.name);
-  if(i.permanent)name.append(el('em','pill warn','definitivo'));if(i.admin)name.append(el('em','pill admin','🛡 admin'));if(i.optional)name.append(el('em','pill','facoltativa'));
+  if(i.permanent)name.append(el('em','pill warn','definitivo'));if(i.admin)name.append(el('em','pill admin',i.local?'🛡 dal PC':'🛡 admin'));if(i.optional)name.append(el('em','pill','facoltativa'));
   const bar=el('div','bar mini');const f=el('span');f.style.width=(i.bytes/max*100)+'%';bar.append(f);
-  t.append(name,el('small','',i.note||i.desc),bar);row.append(cb,ico,t,el('strong','',i.bytes?bytes(i.bytes):'pulito'));box.append(row);
+  const sz=el('strong','',!i.bytes?'pulito':can?bytes(can):'in uso');if(i.busy&&i.bytes)sz.append(el('small','',can?`+ ${bytes(i.busy)} in uso`:bytes(i.busy)));
+  t.append(name,el('small','',i.note||i.desc),bar);row.append(cb,ico,t,sz);box.append(row);
  });
  updateSelected();
  $('opt-auto').setAttribute('aria-checked',d.auto?'true':'false');
@@ -1665,13 +1683,79 @@ function renderProcs(d){
   const t=el('div');t.append(el('b','',a.name.replace(/\.exe$/i,'')),el('small','',`${a.count>1?a.count+' processi · ':''}CPU ${nf(a.cpu,1)}% · ${bytes(a.bytes)}`));
   const bar=el('div','bar mini');const f=el('span');f.style.width=((procSort==='by_cpu'?a.cpu:a.bytes)/max*100)+'%';bar.append(f);t.append(bar);
   const v=el('strong','',procSort==='by_cpu'?nf(a.cpu,1)+'%':bytes(a.bytes));
+  if(a.closable){const cb=el('input','proc-pick');cb.type='checkbox';cb.checked=procPick.has(a.name);cb.setAttribute('aria-label','Seleziona '+a.name.replace(/\.exe$/i,''));
+   cb.addEventListener('change',()=>{cb.checked?procPick.add(a.name):procPick.delete(a.name);memSel();});r.append(cb);}else r.append(el('span','proc-pick none'));
   const btn=el('button','btn small'+(a.closable?'':' ghost'),a.closable?'Chiudi':'Protetto');btn.title=a.closable?'Chiudi '+a.name:'Processo di Windows o di un altro utente: NEXAR non lo chiude';btn.type='button';btn.disabled=!a.closable;
   btn.addEventListener('click',async()=>{if(!await ask(`Chiudere ${a.name.replace(/\.exe$/i,'')}?`,'Come premere la X: se c\'è lavoro non salvato il programma te lo chiede.',{ico:'x',yes:'Chiudi'}))return;
    if(demo){notify('Anteprima: comando non attivo.');return;}
    try{const res=await req('/api/optimize/close','POST',{name:a.name});notify('✓ '+res.message);setTimeout(loadProcs,800);}catch(ex){notify('⚠ '+ex.message,true);}});
   r.append(ic,t,v,btn);box.append(r);
  });
+ memSel();
 }
+const procPick=new Set();
+function memSel(){
+ const all=[...(procData?.by_ram||[]),...(procData?.by_cpu||[])],seen=new Map(all.map(a=>[a.name,a]));
+ [...procPick].forEach(n=>{if(!seen.has(n))procPick.delete(n);});
+ const tot=[...procPick].reduce((s,n)=>s+(seen.get(n)?.bytes||0),0),b=$('opt-close-sel');
+ b.disabled=!procPick.size;b.lastChild.textContent=procPick.size?`Chiudi ${procPick.size} (${bytes(tot)})`:'Chiudi selezionate';
+ const st=$('opt-standby');st.disabled=!!current?.remote;st.title=current?.remote?'Si fa dal PC: chiede la conferma di Windows':'La cache di file recenti che Windows tiene in RAM: svuotarla aiuta se un gioco scatta';
+}
+$('opt-close-sel').addEventListener('click',async()=>{
+ const names=[...procPick];if(!names.length)return;
+ if(!await ask(`Chiudere ${names.length} ${names.length>1?'app':'app'}?`,names.map(n=>n.replace(/\.exe$/i,'')).join(', ')+'. Come premere la X: se c\'è lavoro non salvato il programma te lo chiede.',{ico:'x',yes:'Chiudi'}))return;
+ if(demo){procPick.clear();memSel();notify('Anteprima: comando non attivo.');return;}
+ const done=[];for(const name of names){try{const r=await req('/api/optimize/close','POST',{name});done.push(r.message);}catch(ex){notify('⚠ '+ex.message,true);}}
+ procPick.clear();if(done.length)notify('✓ '+done.join(' · '));setTimeout(loadProcs,800);
+});
+$('opt-standby').addEventListener('click',async()=>{
+ if(demo){notify('Anteprima: sul PC chiederebbe la conferma di Windows.');return;}
+ const b=$('opt-standby');b.disabled=true;b.textContent='Conferma sul PC…';
+ try{const r=await req('/api/optimize/standby','POST',{});notify('✓ '+r.message);loadProcs();}catch(ex){notify('⚠ '+ex.message,true);}
+ finally{b.textContent='Svuota standby';memSel();}
+});
+/* aggiornamenti dei programmi (winget) */
+function startUpdScan(){if(demo){notify('Anteprima: controllo non attivo.');return;}req('/api/optimize/updates','POST',{}).then(()=>{$('opt-upd-scan').disabled=true;}).catch(ex=>notify('⚠ '+ex.message,true));}
+$('opt-upd-scan').addEventListener('click',startUpdScan);
+function renderUpdates(d){
+ const box=$('opt-upd'),u=d.updates,job=optJobs['optimize-upgrade'],busy=job?.state==='running'?d.upgrading:null;
+ if(!u){$('opt-upd-sub').textContent='Li trova winget, lo strumento di Windows';return;}
+ $('opt-upd-sub').textContent=u.error?u.error:u.items.length?`${u.items.length} ${u.items.length>1?'programmi hanno':'programma ha'} una versione nuova · controllato ${ago(u.at)}`:`Tutto aggiornato · controllato ${ago(u.at)}`;
+ if(!u.items.length){box.replaceChildren(el('p','muted',u.error?'Controllo non riuscito.':'Nessun programma da aggiornare. 👌'));return;}
+ box.replaceChildren(...u.items.map(x=>{const r=el('div','upd-row'+(busy===x.id?' busy':''));const ic=el('span','app-ico',initials(x.name));ic.style.setProperty('--h',hue(x.name));
+  const t=el('div');const v=el('small');v.append(document.createTextNode(x.version+' '),el('i','','→'),document.createTextNode(' '),el('b','',x.available));t.append(el('b','',x.name),v);
+  const b=el('button','btn small'+(busy===x.id?'':' primary'),busy===x.id?'Aggiorno…':'Aggiorna');b.type='button';b.disabled=!!busy;
+  b.addEventListener('click',async()=>{
+   if(demo){notify('Anteprima: comando non attivo.');return;}
+   try{await req('/api/optimize/updates/install','POST',{id:x.id});d.upgrading=x.id;optJobs['optimize-upgrade']={state:'running'};renderUpdates(d);notify(`Aggiorno ${x.name}: se Windows chiede il permesso, conferma sul PC.`);}
+   catch(ex){notify('⚠ '+ex.message,true);}});
+  r.append(ic,t,b);return r;}));
+}
+/* riparazione di Windows (DISM + SFC) */
+function renderRepair(d){
+ const box=$('opt-repair'),btn=$('opt-repair-btn'),run=optJobs['optimize-repair']?.state==='running',rp=d.repair;
+ btn.disabled=run||!!current?.remote;btn.lastChild.textContent=run?'Riparazione in corso…':current?.remote?'Si avvia dal PC':'Controlla e ripara';
+ if(run){if(!box.querySelector('.rp-run'))box.replaceChildren(repairRun());if(!demo&&!repTimer)repTimer=setTimeout(pollRepair,1500);return;}
+ clearTimeout(repTimer);repTimer=null;
+ const st=el('div','rp-state '+(!rp?'none':rp.ok?'ok':'bad')),ic=el('span','rp-ico');ic.append(icon(!rp?'info':rp.ok?'check':'alert'));
+ const t=el('div');t.append(el('b','',!rp?'Mai controllato da NEXAR':rp.ok?'File di sistema integri':'Qualcosa non si è riparato'),
+  el('small','',!rp?'Utile se Windows dà errori strani, si blocca o un aggiornamento non si installa.':rp.ok?`Ultimo controllo ${ago(rp.at)}`:(rp.sfc_text||rp.dism_text||'Riprova dopo un riavvio')));
+ st.append(ic,t);box.replaceChildren(st);
+}
+function repairRun(){const w=el('div','rp-run');w.append(el('b','rp-ph','Avvio…'),el('div','bar'),el('small','','Puoi continuare a usare il PC: NEXAR ti avvisa quando ha finito.'));w.querySelector('.bar').append(el('span'));return w;}
+async function pollRepair(){
+ repTimer=null;
+ try{const r=await req('/api/optimize/repair');const p=r.progress||{},w=$('opt-repair').querySelector('.rp-run');if(!w)return;
+  const ph=p.phase==='dism'?'1 di 2 · Controllo l\'archivio di Windows':p.phase==='sfc'?'2 di 2 · Controllo i file di sistema':'Preparo…';
+  w.querySelector('.rp-ph').textContent=ph+(p.percent!=null?` · ${Math.round(p.percent)}%`:'');
+  w.querySelector('.bar span').style.width=((p.phase==='sfc'?50:0)+(p.percent||0)/2)+'%';}catch(e){}
+ if(optJobs['optimize-repair']?.state==='running'&&!repTimer)repTimer=setTimeout(pollRepair,3000);
+}
+$('opt-repair-btn').addEventListener('click',async()=>{
+ if(demo){notify('Anteprima: sul PC chiederebbe la conferma di Windows.');return;}
+ if(!await ask('Controllare e riparare Windows?','Windows chiede il permesso da amministratore, poi lavora 10-30 minuti in silenzio. Puoi usare il PC.',{danger:false,ico:'check',yes:'Avvia'}))return;
+ try{await req('/api/optimize/repair','POST',{});optJobs['optimize-repair']={state:'running'};renderRepair(optData);}catch(ex){notify('⚠ '+ex.message,true);}
+});
 setInterval(()=>{if(!document.hidden&&optTab==='apps'&&$('page-optimize').classList.contains('active'))loadProcs();},4000);
 function renderZones(){
  // Schede delle due zone in Home: lo stato in breve e un pulsante per l'azione principale.
@@ -1697,6 +1781,7 @@ document.querySelectorAll('#opt-tabs button').forEach(b=>b.addEventListener('cli
  document.querySelectorAll('.opt-panel').forEach(p=>p.hidden=p.dataset.panel!==b.dataset.panel);
  // La CPU si misura tra due letture: la seconda arriva subito, così la lista non parte tutta a 0%.
  if(optTab==='apps'){loadProcs();setTimeout(loadProcs,1200);}
+ if(optTab==='updates'&&optData&&optData.updates==null&&!updAuto&&!demo){updAuto=true;startUpdScan();}
  inkTabs($('opt-tabs'));
  b.scrollIntoView({block:'nearest',inline:'center',behavior:'smooth'});
 }));
@@ -2702,7 +2787,8 @@ async function scrLive(on){
 async function scrAction(action,extra={}){
  if(demo){notify('Anteprima: comando non attivo.');return;}
  try{const r=await req('/api/screen/action','POST',{action,...extra});notify('✓ '+r.message);
-  setTimeout(()=>{loadScreen(false);if(action!=='monitor_off'&&action!=='lock')shot();},action==='close'?1500:400);}
+  if(action==='monitor_off'||action==='lock'){if(scrLiveOn)scrLive(false);return;}   // schermi spenti: niente foto continue
+  setTimeout(()=>{loadScreen(false);shot();},action==='close'?1500:400);}
  catch(ex){notify('⚠ '+ex.message,true);}
 }
 async function scrCloseWin(w){
@@ -3635,8 +3721,18 @@ const DEF_HIDDEN=['procs','media','share','ai'];
 const TILE_NAMES={cpu:'Processore',gpu:'Scheda video',ram:'Memoria',fan:'Ventole',energy:'Energia',game:'Gaming',opt:'Ottimizza',ai:'Agenti AI',quick:'Azioni rapide',
  chart:'Carico',temps:'Temperature',net:'Rete',disks:'Dischi',procs:'Programmi',media:'Musica e volume',share:'Appunti e file'};
 function bentoTiles(){return [...document.querySelectorAll('#page-home .bento>[data-tile]')];}
-function layoutGet(){try{return JSON.parse(localStorage.getItem(LAYOUT_KEY))||{};}catch(e){return {};}}
-function layoutSave(l){try{localStorage.setItem(LAYOUT_KEY,JSON.stringify(l));}catch(e){}}
+// La disposizione si salva sul PC: la finestra di NEXAR perde il localStorage a ogni avvio, e così vale anche sul telefono.
+let layoutMem=null;
+function layoutGet(){if(layoutMem)return layoutMem;try{return JSON.parse(localStorage.getItem(LAYOUT_KEY))||{};}catch(e){return {};}}
+function layoutSave(l){layoutMem=l;try{localStorage.setItem(LAYOUT_KEY,JSON.stringify(l));}catch(e){}
+ if(!demo&&(key||tgInit))req('/api/layout','POST',{order:l.order||null,hidden:l.hidden||null}).catch(()=>{});}
+async function layoutLoad(){
+ if(demo||(!key&&!tgInit))return;
+ try{const l=await req('/api/layout');
+  if(l&&(l.order||l.hidden)){layoutMem=l;try{localStorage.setItem(LAYOUT_KEY,JSON.stringify(l));}catch(e){}layoutApply();}
+  else{const loc=layoutGet();if(loc.order||loc.hidden)layoutSave(loc);}   // prima volta: porta sul PC quella salvata qui
+ }catch(e){}
+}
 function isTileShown(id){return !(layoutGet().hidden||DEF_HIDDEN).includes(id);}
 function layoutApply(){
  const l=layoutGet(),box=document.querySelector('#page-home .bento');const tiles=bentoTiles();
@@ -3653,8 +3749,9 @@ function bentoFill(force){
  const tiles=bentoTiles();tiles.forEach(t=>{if(t.dataset.fill){t.style.gridColumn='';delete t.dataset.fill;}});
  const cs=getComputedStyle(box),cols=cs.gridTemplateColumns.split(' ').length;if(cols<2)return;
  const gap=parseFloat(cs.columnGap)||0,cw=(box.clientWidth-gap*(cols-1))/cols,span=r=>Math.max(1,Math.round((r.width+gap)/(cw+gap)));
+ // offsetTop/offsetWidth: la griglia vera. getBoundingClientRect segue l'animazione delle schede in modifica e spezzava le righe.
  const rows=new Map();
- tiles.forEach(t=>{if(!t.offsetParent)return;const r=t.getBoundingClientRect(),k=Math.round(r.top);if(!rows.has(k))rows.set(k,[]);rows.get(k).push([t,r]);});
+ tiles.forEach(t=>{if(!t.offsetParent)return;const r={top:t.offsetTop,width:t.offsetWidth,right:t.offsetLeft+t.offsetWidth},k=Math.round(r.top/4);if(!rows.has(k))rows.set(k,[]);rows.get(k).push([t,r]);});
  rows.forEach(list=>{const used=list.reduce((a,[,r])=>a+span(r),0);if(used>=cols)return;
   const [t,r]=list.reduce((a,b)=>b[1].right>a[1].right?b:a);t.style.gridColumn=`span ${span(r)+cols-used}`;t.dataset.fill='1';});
 }
@@ -3684,10 +3781,11 @@ document.querySelector('#page-home .bento').addEventListener('dragend',()=>{drag
 // In modifica i clic sulle schede non aprono pagine né azioni.
 document.querySelector('#page-home .bento').addEventListener('click',e=>{if($('page-home').classList.contains('editing')&&!e.target.closest('.tile-tools')){e.preventDefault();e.stopPropagation();}},true);
 $('home-edit').addEventListener('click',()=>layoutEdit(!$('page-home').classList.contains('editing')));
-$('home-reset').addEventListener('click',()=>{try{localStorage.removeItem(LAYOUT_KEY);}catch(e){}
+$('home-reset').addEventListener('click',()=>{try{localStorage.removeItem(LAYOUT_KEY);}catch(e){}layoutMem=null;
+ if(!demo&&(key||tgInit))req('/api/layout','POST',{}).catch(()=>{});
  const box=document.querySelector('#page-home .bento');HOME_DEFAULT.forEach(id=>{const t=bentoTiles().find(x=>x.dataset.tile===id);if(t)box.append(t);});layoutApply();layoutEdit(true);});
 const HOME_DEFAULT=currentOrder();
-layoutApply();loadLiveHistory();loadFiles();loadHomeProcs();
+layoutApply();layoutLoad();loadLiveHistory();loadFiles();loadHomeProcs();
 if(window.ResizeObserver){let bt=0;new ResizeObserver(()=>{cancelAnimationFrame(bt);bt=requestAnimationFrame(()=>bentoFill());}).observe(document.querySelector('#page-home .bento'));}
 
 /* ---------- Grafici lunghi: 24 ore, 7 giorni, 30 giorni (medie salvate sul PC) ---------- */

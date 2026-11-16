@@ -13,6 +13,7 @@ import time
 from ctypes import wintypes
 
 import psutil
+import proclist
 
 from gaming_boost import PROTECTED, is_game
 
@@ -130,7 +131,7 @@ class Stopper:
         shown = visible_pids() if mode == 'eco' and throttle_bg else set()
         mine = os.getpid()
         to_close, alive = {}, set()
-        for p in psutil.process_iter(['name', 'username', 'exe']):
+        for p in proclist.iter_info(['name', 'username', 'exe']):
             try:
                 alive.add(p.pid)
                 name = (p.info['name'] or '').lower()

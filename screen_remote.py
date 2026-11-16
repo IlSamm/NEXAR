@@ -111,8 +111,37 @@ def volume(action: str, press=None) -> str:
     return {'up': 'Volume +10', 'down': 'Volume −10', 'mute': 'Audio muto / riattivato'}[action]
 
 
-def monitor_off(send=None) -> str:
-    """Spegne gli schermi (si riaccendono muovendo il mouse): meno consumo mentre l'AI lavora."""
-    send = send or (lambda: _user32().PostMessageW(wintypes.HWND(0xFFFF), 0x0112, 0xF170, 2))  # SC_MONITORPOWER
-    send()
+OFF_DELAY = 0.8              # aspetta che il clic (e il rilascio del mouse) sia finito, sennò li riaccende subito
+OFF_RECHECK = (3.0, 8.0)     # secondi dopo lo spegnimento: se nessuno ha toccato mouse o tastiera, li rispegne
+
+
+def _idle_seconds():
+    class LII(ctypes.Structure):
+        _fields_ = [('cbSize', ctypes.c_uint), ('dwTime', ctypes.c_uint)]
+    info = LII(ctypes.sizeof(LII), 0)
+    if not _user32().GetLastInputInfo(ctypes.byref(info)): return 0.0
+    return ((ctypes.windll.kernel32.GetTickCount() - info.dwTime) & 0xFFFFFFFF) / 1000
+
+
+def _post_off():
+    _user32().PostMessageW(wintypes.HWND(0xFFFF), 0x0112, 0xF170, 2)   # WM_SYSCOMMAND, SC_MONITORPOWER, spento
+
+
+def off_sequence(send, idle, sleep=time.sleep, delay=OFF_DELAY, recheck=OFF_RECHECK) -> int:
+    """Spegne, poi ricontrolla: quando un monitor va in standby a volte si «stacca e riattacca» (DisplayPort/HDMI) e
+    Windows riaccende tutto. Se da quando li ho spenti nessuno ha usato mouse o tastiera, li rispegne.
+    Un movimento vero dell'utente invece vince sempre: niente rispegnimento. Ritorna quante volte ha mandato il comando."""
+    sleep(delay); send(); sent, waited = 1, 0.0
+    for at in recheck:
+        sleep(at - waited); waited = at
+        if idle() + 0.3 < at: break          # qualcuno ha mosso il mouse o premuto un tasto: li vuole accesi
+        send(); sent += 1
+    return sent
+
+
+def monitor_off(send=None, idle=None, start=None) -> str:
+    """Spegne gli schermi (si riaccendono muovendo il mouse). Non blocca: la sequenza gira in un thread a parte."""
+    import threading
+    job = lambda: off_sequence(send or _post_off, idle or _idle_seconds)
+    (start or (lambda f: threading.Thread(target=f, daemon=True, name='monitor-off').start()))(job)
     return 'Schermi spenti'

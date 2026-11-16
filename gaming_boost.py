@@ -19,6 +19,7 @@ import time
 from pathlib import Path
 
 import psutil
+import proclist
 
 GAME_FOLDERS = ('steamapps\\common', 'epic games', 'riot games', 'xboxgames', 'gog galaxy\\games', 'gog games',
                 'ubisoft game launcher\\games', 'ea games', 'rockstar games')
@@ -313,7 +314,7 @@ def game_processes(running: dict | None, pids: set, games: list) -> list:
     (Fortnite: il client, l'anti-cheat del gioco). Mai programmi di sistema o il launcher (Epic, Steam)."""
     dirs = [norm(g['dir']) for g in games if running and g['id'] == running['id'] and g.get('dir') and len(Path(g['dir']).parts) >= 3]
     out = []
-    for p in psutil.process_iter(['name', 'exe']):
+    for p in proclist.iter_info(['name', 'exe']):
         try:
             name, path = (p.info['name'] or '').lower(), norm(p.info['exe']) if p.info['exe'] else ''
             if name in PROTECTED or p.pid == os.getpid(): continue
@@ -325,7 +326,7 @@ def user_apps():
     """App aperte dall'utente (un elemento per eseguibile), tra cui scegliere cosa chiudere o rallentare in Gaming."""
     me = psutil.Process().username() if os.name == 'nt' else None
     apps = {}
-    for p in psutil.process_iter(['name', 'exe', 'username', 'memory_info']):
+    for p in proclist.iter_info(['name', 'exe', 'username', 'memory_info']):
         try:
             name = (p.info['name'] or '').lower()
             if not name or name in PROTECTED or not p.info['exe'] or (me and p.info['username'] != me): continue
@@ -537,7 +538,7 @@ class Booster:
         done = []
         for name in names:
             if name in PROTECTED: continue
-            procs = [p for p in psutil.process_iter(['name', 'exe', 'cmdline', 'cwd']) if (p.info['name'] or '').lower() == name]
+            procs = [p for p in proclist.iter_info(['name', 'exe', 'cmdline', 'cwd']) if (p.info['name'] or '').lower() == name]
             if not procs: continue
             main = next((p for p in procs if p.info['cmdline'] and len(p.info['cmdline']) <= 2), procs[0])
             info = {'name': name, 'exe': main.info['exe'], 'cmdline': main.info['cmdline'] or [main.info['exe']], 'cwd': main.info['cwd']}
@@ -562,7 +563,7 @@ class Booster:
         fg = fg if full_screen else None
         lower = {n for n, act in s['apps'].items() if act == 'lower'}
         found, alive, cands = None, set(), []
-        for p in psutil.process_iter(['name', 'exe']):
+        for p in proclist.iter_info(['name', 'exe']):
             try:
                 alive.add(p.pid)
                 name = (p.info['name'] or '').lower()
@@ -691,7 +692,7 @@ class Booster:
         reopened = []
         if self.settings()['reopen']:
             for app in closed:
-                if any((p.info['name'] or '').lower() == app['name'] for p in psutil.process_iter(['name'])): continue
+                if any((p.info['name'] or '').lower() == app['name'] for p in proclist.iter_info(['name'])): continue
                 try:
                     subprocess.Popen(app['cmdline'], cwd=app['cwd'] or None, close_fds=True,
                                      creationflags=getattr(subprocess, 'DETACHED_PROCESS', 0))

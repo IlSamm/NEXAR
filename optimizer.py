@@ -14,19 +14,23 @@ import time
 from pathlib import Path
 
 import psutil
+import proclist
 
 def _env(name, default=''):
     return Path(os.environ.get(name) or default)
 
 LOCAL = _env('LOCALAPPDATA', Path.home() / 'AppData' / 'Local')
+ROAMING = _env('APPDATA', Path.home() / 'AppData' / 'Roaming')
 WINDIR = _env('WINDIR', r'C:\Windows')
+PROGRAMDATA = _env('PROGRAMDATA', r'C:\ProgramData')
+SYSDRIVE = Path((os.environ.get('SystemDrive') or 'C:') + os.sep)
 DAY = 86400
 # Pulizia rapida/automatica: mai cestino né cartelle di Windows (niente admin, niente perdite).
 # Niente cache degli shader: i giochi la ricostruiscono a scatti nelle prime partite, si pulisce solo a mano.
-SAFE_CLEAN = ('temp', 'thumbs', 'crash', 'browser')
+SAFE_CLEAN = ('temp', 'thumbs', 'crash', 'browser', 'apps')
 BROWSERS = {'msedge.exe': LOCAL / 'Microsoft' / 'Edge' / 'User Data', 'chrome.exe': LOCAL / 'Google' / 'Chrome' / 'User Data',
             'brave.exe': LOCAL / 'BraveSoftware' / 'Brave-Browser' / 'User Data'}
-BROWSER_CACHES = ('Cache', 'Code Cache', 'GPUCache', 'Service Worker/CacheStorage')
+BROWSER_CACHES = ('Cache', 'Code Cache', 'GPUCache', 'DawnCache', 'DawnGraphiteCache', 'DawnWebGPUCache', 'Service Worker/CacheStorage')
 
 # Opera tiene la cache direttamente nella cartella del browser, senza profili.
 OPERA = {'opera.exe': [LOCAL / 'Opera Software' / 'Opera GX Stable', LOCAL / 'Opera Software' / 'Opera Stable']}
@@ -40,6 +44,24 @@ def browser_dirs():
     for roots in OPERA.values():
         out += [r / c for r in roots if r.is_dir() for c in BROWSER_CACHES]
     return out
+
+def app_caches():
+    """Cache che le app ricreano da sole (pagine, immagini, codice delle loro finestre web), per app.
+    Mai dati veri: niente chat, librerie dei giochi, musica scaricata. Ognuna si pulisce solo ad app chiusa."""
+    web = ('Cache', 'Code Cache', 'GPUCache')
+    teams = LOCAL / 'Packages' / 'MSTeams_8wekyb3d8bbwe' / 'LocalCache' / 'Microsoft' / 'MSTeams' / 'EBWebView' / 'Default'
+    epic = LOCAL / 'EpicGamesLauncher' / 'Saved'
+    groups = [
+        ('Discord', ('discord.exe',), [ROAMING / 'discord' / c for c in web]),
+        ('Steam', ('steam.exe', 'steamwebhelper.exe'), [LOCAL / 'Steam' / 'htmlcache']),
+        ('Teams', ('ms-teams.exe', 'teams.exe'), [teams / c for c in web] + [ROAMING / 'Microsoft' / 'Teams' / c for c in web]),
+        ('Epic Games', ('epicgameslauncher.exe', 'epicwebhelper.exe'), sorted(epic.glob('webcache*')) if epic.is_dir() else []),
+        ('Battle.net', ('battle.net.exe',), [LOCAL / 'Battle.net' / 'BrowserCaches']),
+    ]
+    return [(name, exes, [p for p in paths if p.is_dir()]) for name, exes, paths in groups]
+
+def running_names():
+    return {str(p.info.get('name') or '').lower() for p in proclist.iter_info(['name'])}
 
 def targets():
     """Cosa si può pulire. admin=True: serve la conferma da amministratore (solo dal PC)."""
@@ -56,8 +78,15 @@ def targets():
          'paths': [LOCAL / 'CrashDumps', LOCAL / 'Microsoft' / 'Windows' / 'WER' / 'ReportArchive', LOCAL / 'Microsoft' / 'Windows' / 'WER' / 'ReportQueue']},
         {'key': 'browser', 'name': 'Cache dei browser', 'desc': 'Edge, Chrome, Brave, Opera: pagine salvate (non password né cronologia)',
          'paths': browser_dirs(), 'needs_closed': list(BROWSERS) + list(OPERA)},
+        {'key': 'apps', 'name': 'Cache delle app', 'desc': 'Discord, Steam, Teams, Epic e Battle.net: pagine e immagini che riscaricano (mai chat né giochi)',
+         'groups': app_caches()},
         {'key': 'wintemp', 'name': 'File temporanei di Windows', 'desc': 'C:\\Windows\\Temp', 'paths': [WINDIR / 'Temp'], 'admin': True},
         {'key': 'wupdate', 'name': 'Download di Windows Update', 'desc': 'Aggiornamenti già installati', 'paths': [WINDIR / 'SoftwareDistribution' / 'Download'], 'admin': True},
+        {'key': 'drivers', 'name': 'Installer dei driver', 'desc': 'Pacchetti già installati di NVIDIA e AMD (C:\\AMD, C:\\NVIDIA)',
+         'paths': [SYSDRIVE / 'AMD', SYSDRIVE / 'NVIDIA', PROGRAMDATA / 'NVIDIA Corporation' / 'Downloader'], 'admin': True, 'local': True},
+        {'key': 'winlogs', 'name': 'Registri di Windows', 'desc': 'Log di installazione e riparazione (CBS, DISM) e rapporti di errore di sistema',
+         'paths': [WINDIR / 'Logs' / 'CBS', WINDIR / 'Logs' / 'DISM', PROGRAMDATA / 'Microsoft' / 'Windows' / 'WER' / 'ReportArchive',
+                   PROGRAMDATA / 'Microsoft' / 'Windows' / 'WER' / 'ReportQueue'], 'min_age': DAY, 'admin': True, 'local': True},
         {'key': 'recycle', 'name': 'Cestino', 'desc': 'Svuota il cestino: i file non si possono più recuperare', 'recycle': True},
     ]
 
@@ -66,11 +95,33 @@ def _long(p):
     p = os.path.abspath(str(p))
     return '\\\\?\\' + p if os.name == 'nt' and not p.startswith('\\\\') else p
 
-def _files(t, now=None):
+_K32 = None
+def _busy(path) -> bool:
+    """True se un programma tiene aperto il file senza lasciarlo cancellare: la pulizia lo salterebbe.
+    Si chiede a Windows il diritto di cancellarlo, senza cancellarlo."""
+    global _K32
+    if os.name != 'nt': return False
+    if _K32 is None:
+        _K32 = ctypes.WinDLL('kernel32', use_last_error=True)
+        _K32.CreateFileW.restype = ctypes.c_void_p
+        _K32.CreateFileW.argtypes = [ctypes.c_wchar_p, ctypes.c_ulong, ctypes.c_ulong, ctypes.c_void_p, ctypes.c_ulong, ctypes.c_ulong, ctypes.c_void_p]
+        _K32.CloseHandle.argtypes = [ctypes.c_void_p]
+    h = _K32.CreateFileW(_long(path), 0x00010000, 7, None, 3, 0x02000000, None)   # DELETE, condivisione piena, OPEN_EXISTING
+    if h in (None, ctypes.c_void_p(-1).value):
+        return ctypes.get_last_error() in (5, 32, 33)   # accesso negato, in uso, bloccato
+    _K32.CloseHandle(h)
+    return False
+
+def _paths(t, closed_only=None):
+    """Cartelle di un obiettivo; per la cache delle app solo quelle delle app chiuse (closed_only = processi aperti)."""
+    if 'groups' not in t: return list(t.get('paths', []))
+    return [p for _, exes, paths in t['groups'] if closed_only is None or not set(exes) & closed_only for p in paths]
+
+def _files(t, now=None, roots=None):
     """File eliminabili di un obiettivo (rispetta età minima, filtro nome e cartelle escluse)."""
     now = now or time.time()
     skip = [_long(s).lower() for s in t.get('skip', [])]
-    for root in t.get('paths', []):
+    for root in (roots if roots is not None else _paths(t)):
         if not Path(root).is_dir(): continue
         for dirpath, dirnames, filenames in os.walk(_long(root)):
             if any(dirpath.lower().startswith(s) for s in skip):
@@ -92,8 +143,8 @@ def recycle_size():
     if ctypes.windll.shell32.SHQueryRecycleBinW(None, ctypes.byref(info)) != 0: return 0, 0
     return info.i64Size, info.i64NumItems
 
-def browsers_open():
-    names = {p.info['name'].lower() for p in psutil.process_iter(['name']) if p.info.get('name')}
+def browsers_open(names=None):
+    names = running_names() if names is None else names
     return sorted(n for n in list(BROWSERS) + list(OPERA) if n in names)
 
 def mark_left(report, items):
@@ -106,21 +157,39 @@ def mark_left(report, items):
 
 def analyze(limit_seconds=25):
     """Quanto spazio libererebbe ogni voce."""
-    report, start, opened = [], time.monotonic(), browsers_open()
+    report, start = [], time.monotonic()
+    names = running_names(); opened = browsers_open(names)
     for t in targets():
         item = {k: t.get(k) for k in ('key', 'name', 'desc')}
-        item.update(admin=bool(t.get('admin')), permanent=bool(t.get('recycle')), optional=bool(t.get('optional')), bytes=0, files=0, note='')
+        item.update(admin=bool(t.get('admin')), local=bool(t.get('local')), permanent=bool(t.get('recycle')), optional=bool(t.get('optional')),
+                    quick=t['key'] in SAFE_CLEAN, bytes=0, files=0, busy=0, note='')
         if t.get('recycle'):
             item['bytes'], item['files'] = recycle_size()
-        else:
-            for _, size in _files(t):
+            report.append(item); continue
+        if 'groups' in t:
+            item['apps'] = [n for n, _, paths in t['groups'] if paths]
+            if item['apps']: item['desc'] = ', '.join(item['apps']) + ': pagine e immagini che riscaricano (mai chat né giochi)'
+        open_apps = []
+        for name, exes, paths in t.get('groups') or [(None, (), _paths(t))]:
+            is_open = bool(set(exes) & names)
+            if is_open and paths: open_apps.append(name)
+            for path, size in _files(t, roots=paths):
                 item['bytes'] += size; item['files'] += 1
+                # in uso: un'app aperta della lista, oppure un file che Windows non lascia cancellare
+                if is_open or (not t.get('admin') and _busy(path)): item['busy'] += size
                 if time.monotonic() - start > limit_seconds:
                     item['note'] = 'stima parziale'; break
         if t.get('needs_closed') and opened:
+            item['busy'] = item['bytes']
             item['note'] = 'chiudi ' + ', '.join(n.replace('.exe', '').capitalize() for n in opened) + ' per pulirla'
+        elif open_apps:
+            item['note'] = (open_apps[0] + ' è aperto: la sua cache si pulisce quando lo chiudi' if len(open_apps) == 1
+                            else ', '.join(open_apps) + ' sono aperti: la loro cache si pulisce quando li chiudi')
+        elif item['busy'] and not item['note']:
+            item['note'] = f"{human(item['busy'])} in uso: {IN_USE_HINT.get(t['key'], 'li tengono aperti dei programmi')}"
         report.append(item)
-    return {'items': report, 'total': sum(i['bytes'] for i in report), 'at': time.strftime('%Y-%m-%dT%H:%M:%S')}
+    return {'items': report, 'total': sum(i['bytes'] for i in report), 'free': sum(i['bytes'] - i['busy'] for i in report),
+            'at': time.strftime('%Y-%m-%dT%H:%M:%S')}
 
 def _remove_empty_dirs(root):
     root = _long(root)
@@ -144,7 +213,7 @@ def _delete(path):
         except OSError: return False
     return False
 
-IN_USE_HINT = {'shader': 'chiudi i giochi e riprova', 'thumbs': 'le usa Esplora file, si liberano dopo un riavvio',
+IN_USE_HINT = {'apps': 'chiudi quelle app e riprova', 'shader': 'chiudi i giochi e riprova', 'thumbs': 'le usa Esplora file, si liberano dopo un riavvio',
                'temp': 'li usano programmi aperti', 'crash': 'li sta usando Windows', 'browser': 'chiudi i browser e riprova'}
 
 # Windows Update tiene aperti i suoi download: si ferma un attimo il servizio, si pulisce, si riavvia.
@@ -161,7 +230,8 @@ def clean(keys, run_elevated=None, allow_admin=False, admin=None):
     freed, notes, wanted, per = 0, [], set(keys), {}
     known = {t['key']: t for t in targets()}
     if wanted - set(known): raise ValueError('Voce di pulizia sconosciuta')
-    admin_paths, admin_keys = [], []
+    admin_paths, admin_keys, names = [], [], None
+    disk0 = _disk_free()
     for key in wanted:
         t = known[key]
         if t.get('recycle'):
@@ -171,29 +241,40 @@ def clean(keys, run_elevated=None, allow_admin=False, admin=None):
             elif os.name == 'nt': notes.append('Cestino: Windows non l\'ha svuotato (riprova tra poco)')
             continue
         if t.get('admin'):
-            if not allow_admin and not admin: notes.append(f'{t["name"]}: attiva Amministratore da remoto sul PC')
+            if t.get('local') and not allow_admin: notes.append(f'{t["name"]}: si pulisce dal PC (chiede la conferma di Windows)')
+            elif not allow_admin and not admin: notes.append(f'{t["name"]}: attiva Amministratore da remoto sul PC')
+            elif t.get('local'): admin_paths += [str(p) for p in t['paths']]
             else: admin_paths += [str(p) for p in t['paths']]; admin_keys.append(key)
             continue
-        if t.get('needs_closed') and browsers_open():
+        names = running_names() if names is None else names
+        if t.get('needs_closed') and browsers_open(names):
             notes.append(f'{t["name"]}: chiudi i browser e riprova'); continue
+        roots = _paths(t, closed_only=names)
+        if 'groups' in t:
+            still = [n for n, exes, paths in t['groups'] if paths and set(exes) & names]
+            if still: notes.append(', '.join(still) + ': chiudili per pulire anche la loro cache')
         got, left = 0, 0
-        for path, size in list(_files(t)):
+        for path, size in list(_files(t, roots=roots)):
             if _delete(path): got += size
             else: left += 1   # aperto da un programma: resta dov'è
-        for root in t.get('paths', []):
+        for root in roots:
             if Path(root).is_dir() and not t.get('pattern'): _remove_empty_dirs(root)
         freed += got; per[key] = {'freed': got, 'left': left}
         if left: notes.append(f'{t["name"]}: {left} file in uso ({IN_USE_HINT.get(key, "programmi aperti")})')
-    if admin_paths and admin:
-        before = sum(s for p in admin_paths for _, s in _files({'paths': [p]}))
-        admin.call('clean', keys=admin_keys)
-        freed += max(0, before - sum(s for p in admin_paths for _, s in _files({'paths': [p]})))
-    elif admin_paths and run_elevated:
-        before = sum(s for p in admin_paths for _, s in _files({'paths': [p]}))
-        if run_elevated(admin_clean_script(admin_paths), wait=True):
-            freed += max(0, before - sum(s for p in admin_paths for _, s in _files({'paths': [p]})))
+    # Le cartelle di Windows spesso non si leggono senza permessi: se il conto per file dice 0, vale lo spazio tornato libero sul disco.
+    admin_size = lambda: sum(s for p in admin_paths for _, s in _files({'paths': [p]}))
+    if admin_paths and (admin and admin_keys or run_elevated):
+        before, d0 = admin_size(), _disk_free()
+        ok = True
+        if admin and admin_keys: admin.call('clean', keys=admin_keys)
+        else: ok = run_elevated(admin_clean_script(admin_paths), wait=True)
+        if ok: freed += max(0, before - admin_size()) if before else max(0, _disk_free() - d0)
         else: notes.append('Pulizia di Windows annullata (conferma amministratore)')
-    return {'freed': freed, 'notes': notes, 'items': per}
+    return {'freed': freed, 'notes': notes, 'items': per, 'disk_delta': max(0, _disk_free() - disk0)}
+
+def _disk_free():
+    try: return shutil.disk_usage(str(SYSDRIVE)).free
+    except OSError: return 0
 
 # ---------- programmi all'avvio (come Gestione attività: StartupApproved, reversibile) ----------
 RUN = r'Software\Microsoft\Windows\CurrentVersion\Run'
@@ -259,7 +340,7 @@ def disks():
 
 def memory_top(n=8):
     procs = {}
-    for p in psutil.process_iter(['name', 'memory_info']):
+    for p in proclist.iter_info(['name', 'memory_info']):
         try:
             name = p.info['name']; rss = p.info['memory_info'].rss
             if not name: continue
@@ -297,7 +378,7 @@ def processes(n=12):
     cores = psutil.cpu_count() or 1
     me = psutil.Process().username() if os.name == 'nt' else None
     agg, now, alive = {}, time.monotonic(), set()
-    for p in psutil.process_iter(['name', 'memory_info', 'username', 'cpu_times']):
+    for p in proclist.iter_info(['name', 'memory_info', 'username', 'cpu_times']):
         try:
             alive.add(p.pid)
             name = p.info['name']
@@ -324,7 +405,7 @@ def close_app(name: str):
     name = str(name)
     if not name.lower().endswith('.exe') or name.lower() in NEVER_CLOSE or any(c in name for c in '\\/:*?"<>|'):
         raise ValueError('Questo programma non si può chiudere da qui')
-    procs = [p for p in psutil.process_iter(['name']) if (p.info['name'] or '').lower() == name.lower()]
+    procs = [p for p in proclist.iter_info(['name']) if (p.info['name'] or '').lower() == name.lower()]
     if not procs: return f'{name[:-4]} non è più aperto'
     subprocess.run(['taskkill', '/im', name], capture_output=True, creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
     gone, alive = psutil.wait_procs(procs, timeout=6)

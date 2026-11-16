@@ -761,10 +761,11 @@
       </div>
      </div>
      <div class="vo-side">
-      <div class="vo-stat"><span class="vo-ico"><svg class="i"><use href="#i-check"/></svg></span><div><small>Liberati con NEXAR</small><b id="opt-freed">—</b></div></div>
-      <div class="vo-stat"><span class="vo-ico"><svg class="i"><use href="#i-clock"/></svg></span><div><small id="opt-auto-lbl">Pulizia automatica</small><b id="opt-freed-sub">—</b></div></div>
+      <small class="vo-h">Da fare</small>
+      <ul class="vo-todo" id="opt-tips"></ul>
+      <p class="vo-foot"><span>Liberati con NEXAR <b id="opt-freed">—</b></span><span><em id="opt-auto-lbl">Pulizia automatica</em> · <b id="opt-freed-sub">—</b></span></p>
      </div>
-     <ul id="opt-tips" hidden></ul><ol id="opt-steps" hidden></ol>
+     <ol id="opt-steps" hidden></ol>
     </section>
 
     <div class="checks" id="opt-checks"></div>
@@ -773,6 +774,7 @@
      <button class="selected" data-panel="clean" role="tab"><svg class="i"><use href="#i-clean"/></svg>Pulizia<em id="tb-clean"></em></button>
      <button data-panel="apps" role="tab"><svg class="i"><use href="#i-cpu"/></svg>Programmi</button>
      <button data-panel="startup" role="tab"><svg class="i"><use href="#i-power"/></svg>Avvio<em id="tb-startup"></em></button>
+     <button data-panel="updates" role="tab"><svg class="i"><use href="#i-download"/></svg>Aggiornamenti<em id="tb-updates"></em></button>
      <button data-panel="large" role="tab"><svg class="i"><use href="#i-search"/></svg>File grandi<em id="tb-large"></em></button>
      <button data-panel="disks" role="tab"><svg class="i"><use href="#i-disk"/></svg>Dischi</button>
      <button data-panel="net" role="tab"><svg class="i"><use href="#i-wave"/></svg>Rete</button>
@@ -796,6 +798,12 @@
      <div class="card-head"><div><h3>Programmi che pesano adesso</h3><p id="opt-apps-sub">Aggiornato ogni pochi secondi</p></div>
       <div class="seg3" id="apps-sort"><button type="button" class="selected" data-sort="by_cpu">Processore</button><button type="button" data-sort="by_ram">Memoria</button></div></div>
      <div class="apps-meters"><div><small>Processore</small><b id="opt-cpu-now">—</b><div class="bar"><span id="opt-cpu-bar"></span></div></div><div><small>Memoria</small><b id="opt-ram-now">—</b><div class="bar"><span id="opt-ram-bar"></span></div></div></div>
+     <div class="mem-free" id="opt-memfree">
+      <span class="mf-ico"><svg class="i"><use href="#i-ram"/></svg></span>
+      <div><b>Libera la memoria</b><small id="opt-mf-sub">Spunta le app da chiudere qui sotto, oppure svuota la memoria in standby</small></div>
+      <div class="mf-acts"><button class="btn" type="button" id="opt-standby" title="La cache di file recenti che Windows tiene in RAM: svuotarla aiuta se un gioco scatta">Svuota standby</button>
+       <button class="btn primary" type="button" id="opt-close-sel" disabled><svg class="i"><use href="#i-x"/></svg><span>Chiudi selezionate</span></button></div>
+     </div>
      <div class="proc-list" id="opt-apps"><p class="muted">Caricamento…</p></div>
      <p class="fineprint">"Chiudi" è gentile, come la X della finestra: se c'è lavoro da salvare il programma lo chiede. I programmi di Windows non si possono chiudere da qui.</p>
     </section>
@@ -805,6 +813,21 @@
      <div class="startup-list" id="opt-startup"><p class="muted">Caricamento…</p></div>
      <p class="fineprint">Si disattivano come in Gestione attività: niente viene disinstallato e puoi riattivarli quando vuoi.</p>
     </section>
+
+    <div class="opt-panel two-col wide-left" data-panel="updates" hidden>
+     <section class="card">
+      <div class="card-head"><div><h3>Programmi da aggiornare</h3><p id="opt-upd-sub">Li trova winget, lo strumento di Windows</p></div>
+       <button class="btn" type="button" id="opt-upd-scan"><svg class="i"><use href="#i-refresh"/></svg>Controlla</button></div>
+      <div class="upd-list" id="opt-upd"><p class="muted">Premi Controlla: ci vogliono circa 20 secondi.</p></div>
+      <p class="fineprint">Un programma alla volta, solo quando premi Aggiorna. Se è aperto chiudilo prima; se Windows chiede il permesso, conferma sul PC.</p>
+     </section>
+     <section class="card repair-card">
+      <div class="card-head"><div><h3>Ripara Windows</h3><p>Controlla i file di sistema e ripara quelli rovinati</p></div></div>
+      <div class="repair" id="opt-repair"></div>
+      <button class="btn primary" type="button" id="opt-repair-btn"><svg class="i"><use href="#i-check"/></svg><span>Controlla e ripara</span></button>
+      <p class="fineprint">Usa DISM e SFC di Windows: chiede la conferma da amministratore e dura 10-30 minuti. Intanto puoi usare il PC.</p>
+     </section>
+    </div>
 
     <section class="card opt-panel" data-panel="large" hidden>
      <div class="card-head"><div><h3>File grandi</h3><p id="opt-large-sub">Download, Desktop, Documenti, Video, Immagini e Musica (anche su OneDrive)</p></div>

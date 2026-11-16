@@ -198,3 +198,16 @@ def test_shot_endpoint_uses_monitor_and_skips_unchanged(monkeypatch):
     assert again.status_code == 304 and again.content == b''
     c.get('/api/screen/shot?mon=all', headers=h); c.get('/api/screen/shot', headers=h)
     assert seen[-2:] == [('all', False), (None, False)]
+
+def test_monitor_off_resends_only_while_untouched():
+    sent, naps = [], []
+    # nessuno tocca niente: spento, poi rispento ai due controlli (il monitor si era riacceso da solo)
+    n = screen_remote.off_sequence(lambda: sent.append(1), idle=lambda: 99, sleep=naps.append)
+    assert n == 3 and len(sent) == 3 and naps[0] == screen_remote.OFF_DELAY
+    # l'utente muove il mouse dopo un secondo: si spegne una volta sola, poi resta acceso
+    sent.clear()
+    assert screen_remote.off_sequence(lambda: sent.append(1), idle=lambda: 1.0, sleep=lambda s: None) == 1
+    # monitor_off non blocca la richiesta: la sequenza parte a parte
+    jobs = []
+    assert screen_remote.monitor_off(send=lambda: None, idle=lambda: 0, start=jobs.append) == 'Schermi spenti'
+    assert len(jobs) == 1
