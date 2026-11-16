@@ -505,39 +505,10 @@
         <rect class="lx-metal" x="108" y="112" width="100" height="10" rx="3"/>
         <rect class="lx-metal" x="160" y="194" width="58" height="30" rx="5"/>
         <rect class="lx-slot" x="96" y="196" width="56" height="5" rx="1.5"/>
-        <path class="lx-tube" d="M168 70 C198 62 210 40 238 44"/><path class="lx-tube" d="M168 90 C204 96 214 118 238 122"/>
-        <path class="lx-tube-hi" d="M168 70 C198 62 210 40 238 44"/><path class="lx-tube-hi" d="M168 90 C204 96 214 118 238 122"/>
-        <rect class="lx-pump" x="122" y="56" width="48" height="48" rx="12"/><circle class="lx-pump-top" cx="146" cy="80" r="11"/>
-        <rect class="lx-rad" x="236" y="26" width="60" height="144" rx="6"/><rect class="lx-fins" x="240" y="30" width="52" height="136" rx="3"/>
-        <rect class="lx-frame" x="237" y="33" width="58" height="58" rx="9"/><circle class="lx-hole" cx="266" cy="62" r="26"/>
-        <rect class="lx-frame" x="237" y="105" width="58" height="58" rx="9"/><circle class="lx-hole" cx="266" cy="134" r="26"/>
-        <g data-part="fans"><rect class="lx-frame" x="239" y="181" width="54" height="52" rx="9"/><circle class="lx-hole" cx="266" cy="207" r="23"/></g>
-        <g data-part="fans"><rect class="lx-frame" x="38" y="47" width="36" height="38" rx="7"/><circle class="lx-hole" cx="56" cy="66" r="16"/></g>
-        <g transform="translate(266 62)"><g class="lx-spin"><use href="#lxRotor" x="-23" y="-23" width="46" height="46"/></g></g>
-        <g transform="translate(266 134)"><g class="lx-spin"><use href="#lxRotor" x="-23" y="-23" width="46" height="46"/></g></g>
-        <g data-part="fans" transform="translate(266 207)"><g class="lx-spin b"><use href="#lxRotor" x="-20" y="-20" width="40" height="40"/></g></g>
-        <g data-part="fans" transform="translate(56 66)"><g class="lx-spin b"><use href="#lxRotor" x="-14" y="-14" width="28" height="28"/></g></g>
-        <rect class="lx-metal" x="62" y="137" width="10" height="52" rx="2"/>
-        <rect class="lx-gpu" x="72" y="140" width="158" height="44" rx="7"/>
-        <path class="lx-lines" d="M86 162h52M86 170h84M86 178h30M150 162h66"/>
         <rect class="lx-shroud" x="36" y="240" width="266" height="56" rx="6"/>
         <path class="lx-lines" d="M248 262h40M248 270h40M248 278h40M248 286h40"/>
         <rect class="lx-psu-tag" x="50" y="266" width="58" height="12" rx="3"/>
         <rect class="lx-glass" x="24" y="10" width="290" height="298" rx="18"/>
-        <rect data-part="kbd" class="lx-part" x="330" y="234" width="146" height="56" rx="10"/>
-        <path data-part="mouse" class="lx-part" d="M402 110c-14 0-24 11-24 27v36c0 17 10 29 24 29s24-12 24-29v-36c0-16-10-27-24-27z"/>
-        <path data-part="mouse" class="lx-lines" d="M402 110v32M378 146h48"/><rect data-part="mouse" class="lx-wheel-m" x="398.5" y="120" width="7" height="16" rx="3.5"/>
-        <g class="lx-z" data-z="cooler" tabindex="0"><title>Raffreddamento</title>
-         <rect class="lx-hit" x="116" y="50" width="60" height="60" rx="14"/><rect class="lx-hit" x="231" y="22" width="70" height="152" rx="10"/>
-         <circle class="lx-blur s" cx="146" cy="80" r="15"/><circle class="lx-blur s" cx="266" cy="62" r="25"/><circle class="lx-blur s" cx="266" cy="134" r="25"/>
-         <circle class="lx-led s" cx="146" cy="80" r="15"/><circle class="lx-led s" cx="266" cy="62" r="25"/><circle class="lx-led s" cx="266" cy="134" r="25"/>
-         <g class="lx-badge"><rect x="247" y="91" width="38" height="15" rx="7.5"/><text x="266" y="101.5">MSI</text></g>
-        </g>
-        <g class="lx-z" data-z="fans" tabindex="0"><title>Ventole del case</title>
-         <rect class="lx-hit" x="235" y="178" width="62" height="58" rx="10"/><rect class="lx-hit" x="34" y="44" width="44" height="44" rx="9"/>
-         <circle class="lx-blur s" cx="266" cy="207" r="22"/><circle class="lx-blur s" cx="56" cy="66" r="15"/>
-         <circle class="lx-led s" cx="266" cy="207" r="22"/><circle class="lx-led s" cx="56" cy="66" r="15"/>
-        </g>
         <g class="lx-z" data-z="ram" tabindex="0"><title>RAM</title>
          <rect class="lx-hit" x="183" y="34" width="36" height="92" rx="6"/>
          <rect class="lx-blur" x="188.5" y="40" width="7" height="18" rx="2"/><rect class="lx-blur" x="206.5" y="40" width="7" height="18" rx="2"/>
@@ -549,31 +520,61 @@
          <rect class="lx-led" x="85" y="40" width="4" height="60" rx="2"/><rect class="lx-led" x="166" y="218" width="46" height="3" rx="1.5"/>
          <g class="lx-badge"><rect x="170" y="200" width="38" height="15" rx="7.5"/><text x="189" y="210.5">MSI</text></g>
         </g>
+        <g class="lx-z" data-z="cooler" tabindex="0"><title>Raffreddamento</title>
+         <g data-mv="rad"><rect class="lx-rad" x="236" y="26" width="60" height="144" rx="6"/><rect class="lx-fins" x="240" y="30" width="52" height="136" rx="3"/>
+          <rect class="lx-frame" x="237" y="33" width="58" height="58" rx="9"/><circle class="lx-hole" cx="266" cy="62" r="26"/>
+          <rect class="lx-frame" x="237" y="105" width="58" height="58" rx="9"/><circle class="lx-hole" cx="266" cy="134" r="26"/>
+          <g transform="translate(266 62)"><g class="lx-spin"><use href="#lxRotor" x="-23" y="-23" width="46" height="46"/></g></g><g transform="translate(266 134)"><g class="lx-spin"><use href="#lxRotor" x="-23" y="-23" width="46" height="46"/></g></g>
+          <rect class="lx-hit" x="231" y="22" width="70" height="152" rx="10"/>
+          <circle class="lx-blur s" cx="266" cy="62" r="25"/><circle class="lx-blur s" cx="266" cy="134" r="25"/>
+          <circle class="lx-led s" cx="266" cy="62" r="25"/><circle class="lx-led s" cx="266" cy="134" r="25"/>
+          <g class="lx-badge" data-up="266 98.5"><rect x="247" y="91" width="38" height="15" rx="7.5"/><text x="266" y="101.5">MSI</text></g>
+         </g>
+         <path class="lx-tube" id="lx-t1" d="M168 70 C198 62 210 40 238 44"/><path class="lx-tube" id="lx-t2" d="M168 90 C204 96 214 118 238 122"/>
+         <path class="lx-tube-hi" id="lx-t1h" d="M168 70 C198 62 210 40 238 44"/><path class="lx-tube-hi" id="lx-t2h" d="M168 90 C204 96 214 118 238 122"/>
+         <rect class="lx-pump" x="122" y="56" width="48" height="48" rx="12"/><circle class="lx-pump-top" cx="146" cy="80" r="11"/>
+         <rect class="lx-hit" x="116" y="50" width="60" height="60" rx="14"/>
+         <circle class="lx-blur s" cx="146" cy="80" r="15"/><circle class="lx-led s" cx="146" cy="80" r="15"/>
+        </g>
+        <g class="lx-z" data-z="fans" tabindex="0"><title>Ventole del case</title>
+         <g data-mv="fan1"><rect class="lx-frame" x="239" y="181" width="54" height="52" rx="9"/><circle class="lx-hole" cx="266" cy="207" r="23"/>
+          <g transform="translate(266 207)"><g class="lx-spin b"><use href="#lxRotor" x="-20" y="-20" width="40" height="40"/></g></g>
+          <rect class="lx-hit" x="235" y="178" width="62" height="58" rx="10"/><circle class="lx-blur s" cx="266" cy="207" r="22"/><circle class="lx-led s" cx="266" cy="207" r="22"/></g>
+         <g data-mv="fan2"><rect class="lx-frame" x="38" y="47" width="36" height="38" rx="7"/><circle class="lx-hole" cx="56" cy="66" r="16"/>
+          <g transform="translate(56 66)"><g class="lx-spin b"><use href="#lxRotor" x="-14" y="-14" width="28" height="28"/></g></g>
+          <rect class="lx-hit" x="34" y="44" width="44" height="44" rx="9"/><circle class="lx-blur s" cx="56" cy="66" r="15"/><circle class="lx-led s" cx="56" cy="66" r="15"/></g>
+        </g>
         <g class="lx-z" data-z="gpu" tabindex="0"><title>Scheda video</title>
-         <rect class="lx-hit" x="60" y="134" width="176" height="56" rx="8"/>
-         <rect class="lx-blur" x="86" y="148" width="110" height="4" rx="2"/><rect class="lx-blur" x="218" y="146" width="5" height="32" rx="2.5"/>
-         <rect class="lx-led" x="86" y="148" width="110" height="4" rx="2"/><rect class="lx-led" x="218" y="146" width="5" height="32" rx="2.5"/>
+         <g data-mv="gpu"><rect class="lx-metal" x="62" y="137" width="10" height="52" rx="2"/><rect class="lx-gpu" x="72" y="140" width="158" height="44" rx="7"/>
+          <path class="lx-lines" d="M86 162h52M86 170h84M86 178h30M150 162h66"/>
+          <rect class="lx-hit" x="60" y="134" width="176" height="56" rx="8"/>
+          <rect class="lx-blur" x="86" y="148" width="110" height="4" rx="2"/><rect class="lx-blur" x="218" y="146" width="5" height="32" rx="2.5"/>
+          <rect class="lx-led" x="86" y="148" width="110" height="4" rx="2"/><rect class="lx-led" x="218" y="146" width="5" height="32" rx="2.5"/></g>
         </g>
         <g class="lx-z" data-z="strip" tabindex="0"><title>Strisce LED</title>
-         <rect class="lx-hit" x="34" y="236" width="270" height="62" rx="8"/>
-         <rect class="lx-blur" x="46" y="243" width="246" height="3.5" rx="1.75"/><rect class="lx-led" x="46" y="243" width="246" height="3.5" rx="1.75"/>
+         <g data-mv="strip"><rect class="lx-hit" x="34" y="236" width="270" height="62" rx="8"/>
+          <rect class="lx-blur" x="46" y="243" width="246" height="3.5" rx="1.75"/><rect class="lx-led" x="46" y="243" width="246" height="3.5" rx="1.75"/></g>
         </g>
         <g class="lx-z" data-z="kbd" tabindex="0"><title>Tastiera</title>
-         <rect class="lx-hit" x="324" y="228" width="158" height="68" rx="12"/>
-         <rect class="lx-blur" x="338" y="284" width="130" height="3.5" rx="1.75"/>
-         <rect class="lx-led soft" x="338" y="242" width="130" height="36" rx="5"/><rect class="lx-led" x="338" y="284" width="130" height="3.5" rx="1.75"/>
-         <rect class="lx-keycaps" x="338" y="242" width="130" height="36"/>
+         <g data-mv="kbd"><rect class="lx-part" x="330" y="234" width="146" height="56" rx="10"/>
+          <rect class="lx-hit" x="324" y="228" width="158" height="68" rx="12"/>
+          <rect class="lx-blur" x="338" y="284" width="130" height="3.5" rx="1.75"/>
+          <rect class="lx-led soft" x="338" y="242" width="130" height="36" rx="5"/><rect class="lx-led" x="338" y="284" width="130" height="3.5" rx="1.75"/>
+          <rect class="lx-keycaps" x="338" y="242" width="130" height="36"/></g>
         </g>
         <g class="lx-z" data-z="mouse" tabindex="0"><title>Mouse</title>
-         <rect class="lx-hit" x="370" y="104" width="64" height="104" rx="16"/>
-         <rect class="lx-blur" x="399.5" y="121" width="5" height="14" rx="2.5"/><circle class="lx-blur" cx="402" cy="178" r="7"/>
-         <rect class="lx-led" x="399.5" y="121" width="5" height="14" rx="2.5"/><circle class="lx-led" cx="402" cy="178" r="7"/>
+         <g data-mv="mouse"><path class="lx-part" d="M402 110c-14 0-24 11-24 27v36c0 17 10 29 24 29s24-12 24-29v-36c0-16-10-27-24-27z"/>
+          <path class="lx-lines" d="M402 110v32M378 146h48"/><rect class="lx-wheel-m" x="398.5" y="120" width="7" height="16" rx="3.5"/>
+          <rect class="lx-hit" x="370" y="104" width="64" height="104" rx="16"/>
+          <rect class="lx-blur" x="399.5" y="121" width="5" height="14" rx="2.5"/><circle class="lx-blur" cx="402" cy="178" r="7"/>
+          <rect class="lx-led" x="399.5" y="121" width="5" height="14" rx="2.5"/><circle class="lx-led" cx="402" cy="178" r="7"/></g>
         </g>
        </svg>
       <div class="lx-chips" id="lx-chips" aria-label="Cosa colorare"></div>
       <div class="lx-edit" id="lx-edit-panel" hidden>
-       <div class="lx-edit-head"><div><b>Il disegno come il tuo PC</b><small>Per ogni parte scegli se ha i LED, se è senza LED o se non ce l'hai. Puoi anche toccarla nel disegno.</small></div><button class="btn small primary" type="button" id="lx-edit-done">Fatto</button></div>
+       <div class="lx-edit-head"><div><b>Il disegno come il tuo PC</b><small>Trascina le parti nel disegno per metterle dove sono nel tuo PC. Toccane una per dire se ha i LED, se è senza LED o se non ce l'hai.</small></div><button class="btn small primary" type="button" id="lx-edit-done">Fatto</button></div>
        <div class="lx-edit-zones" id="lx-edit-zones"></div>
+       <div class="lx-edit-zones" id="lx-edit-pos"></div>
        <div class="lx-edit-devs" id="lx-edit-devs"></div>
       </div>
       <div class="lx-msi" id="lx-msi" hidden>

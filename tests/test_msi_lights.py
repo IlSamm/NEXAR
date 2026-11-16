@@ -97,12 +97,15 @@ def test_off_and_msi_reset_put_the_arctic_back(tmp_path, monkeypatch):
 def test_drawing_layout_is_saved_and_checked(tmp_path, monkeypatch):
     setup(monkeypatch, [])
     c, _ = control(tmp_path, monkeypatch, {})
-    assert c.rgb_layout() == {'zones': {}, 'devices': {}}
-    lay = c.set_rgb_layout({'mouse': 'none', 'ram': 'plain', 'gpu': 'led'}, {'Corsair Lighting Node Core': 'fans', 'msi': 'cooler'})
-    assert lay == {'zones': {'mouse': 'none', 'ram': 'plain'}, 'devices': {'Corsair Lighting Node Core': 'fans', 'msi': 'cooler'}}
+    assert c.rgb_layout() == {'zones': {}, 'devices': {}, 'pos': {}}
+    lay = c.set_rgb_layout({'mouse': 'none', 'ram': 'plain', 'gpu': 'led'}, {'Corsair Lighting Node Core': 'fans', 'msi': 'cooler'},
+                           {'rad': [-52.4, -50, 270], 'fan1': [0, 0, 0]})       # il radiatore sopra; una parte rimessa a posto non si salva
+    assert lay == {'zones': {'mouse': 'none', 'ram': 'plain'}, 'devices': {'Corsair Lighting Node Core': 'fans', 'msi': 'cooler'}, 'pos': {'rad': [-52, -50, 270]}}
     assert c.config['rgb']['layout'] == lay
-    for zones, devices in (({'gpu': 'none'}, {}), ({'case': 'led'}, {}), ({'mouse': 'rainbow'}, {}), ({}, {'x': 'garage'}), ({}, {'': 'ram'})):
-        with pytest.raises(ValueError): c.set_rgb_layout(zones, devices)
+    for zones, devices, pos in (({'gpu': 'none'}, {}, {}), ({'case': 'led'}, {}, {}), ({'mouse': 'rainbow'}, {}, {}), ({}, {'x': 'garage'}, {}), ({}, {'': 'ram'}, {}),
+                                ({}, {}, {'ram': [1, 1, 0]}), ({}, {}, {'rad': [0, 0, 45]}), ({}, {}, {'rad': [900, 0, 0]}), ({}, {}, {'rad': [1, 2]}), ({}, {}, {'rad': [True, 0, 0]}),
+                                ({}, {}, {'rad': [float('inf'), 0, 0]})):
+        with pytest.raises(ValueError): c.set_rgb_layout(zones, devices, pos)
     assert c.rgb_layout() == lay
 
 
