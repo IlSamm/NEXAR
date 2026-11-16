@@ -236,7 +236,7 @@ MSI_KEY, MSI_NAME = 'msi', 'ARCTIC e scheda madre (MSI)'
 # Parti del PC disegnato nella pagina Luci; quelle che si possono togliere dal disegno (non tutti le hanno)
 LX_ZONES = ('cooler', 'fans', 'ram', 'mb', 'gpu', 'strip', 'kbd', 'mouse')
 LX_HIDEABLE = ('fans', 'strip', 'kbd', 'mouse')
-LX_PARTS = ('rad', 'fan1', 'fan2', 'gpu', 'strip', 'kbd', 'mouse')   # parti che si spostano e girano nel disegno
+LX_CASE_SLOTS = {'front': 3, 'top': 3, 'rear': 1}   # quante ventole da 120 ci stanno davanti, sopra e dietro nel disegno
 MSI_LIGHT_LOG = Path(r'C:\Program Files (x86)\MSI\MSI Center\Log\MysticLight_Test\MysticLight.txt')
 RGB_KEEP_EVERY = 1800  # anche senza segnali, ogni mezz'ora NEXAR rimette il suo stato dei LED
 RGB_KEEP_OFF_EVERY = 600  # con i LED spenti ogni 10 minuti: chi li riaccende (MSI, firmware) viene corretto presto
@@ -1529,25 +1529,32 @@ class Control:
     def rgb_layout(self):
         """Il disegno delle luci come lo vuole l'utente: parti con LED, senza LED o che non ha, e dove sta ogni dispositivo."""
         lay = self.config.get('rgb', {}).get('layout') or {}
-        return {'zones': dict(lay.get('zones') or {}), 'devices': dict(lay.get('devices') or {}), 'pos': {k: list(v) for k, v in (lay.get('pos') or {}).items()}}
+        return {'zones': dict(lay.get('zones') or {}), 'devices': dict(lay.get('devices') or {}), 'case': dict(lay.get('case') or {})}
 
-    def set_rgb_layout(self, zones, devices, pos=None):
-        pos = {} if pos is None else pos
-        if not isinstance(zones, dict) or not isinstance(devices, dict) or not isinstance(pos, dict) or len(devices) > 64: raise ValueError('Disegno non valido')
-        clean = {}
-        for k, v in pos.items():
-            if k not in LX_PARTS or not isinstance(v, (list, tuple)) or len(v) != 3 or not all(isinstance(x, (int, float)) and not isinstance(x, bool) and abs(x) < 1e6 for x in v):
-                raise ValueError('Posizione non valida')
-            dx, dy, r = round(v[0]), round(v[1]), round(v[2])
-            if abs(dx) > 480 or abs(dy) > 320 or r not in (0, 90, 180, 270): raise ValueError('Posizione non valida')
-            if dx or dy or r: clean[k] = [dx, dy, r]
+    @staticmethod
+    def _case_layout(case):
+        """Radiatore (davanti, sopra, dietro o nessuno, da 1 a 3 ventole) e ventole del case per lato: devono starci davvero."""
+        if not case: return {}
+        if not isinstance(case, dict) or set(case) - {'rad', 'size', 'front', 'top', 'rear'}: raise ValueError('Ventole non valide')
+        c = {'rad': 'front', 'size': 2, 'front': 1, 'top': 0, 'rear': 1, **case}
+        if c['rad'] not in ('front', 'top', 'rear', 'none'): raise ValueError('Posto del radiatore non valido')
+        for k in ('size', 'front', 'top', 'rear'):
+            if type(c[k]) is not int or c[k] < 0: raise ValueError('Ventole non valide')
+        if not 1 <= c['size'] <= (1 if c['rad'] == 'rear' else 3): raise ValueError('Lunghezza del radiatore non valida')
+        for side, cap in LX_CASE_SLOTS.items():
+            if c[side] + (c['size'] if c['rad'] == side else 0) > cap: raise ValueError('Troppe ventole in un lato')
+        return c
+
+    def set_rgb_layout(self, zones, devices, case=None):
+        if not isinstance(zones, dict) or not isinstance(devices, dict) or len(devices) > 64: raise ValueError('Disegno non valido')
+        clean = self._case_layout(case)
         for z, v in zones.items():
             if z not in LX_ZONES or v not in ('led', 'plain', 'none') or (v == 'none' and z not in LX_HIDEABLE):
                 raise ValueError('Parte del disegno non valida')
         for k, v in devices.items():
             if not isinstance(k, str) or not 0 < len(k) <= 120 or v not in LX_ZONES + ('other',): raise ValueError('Dispositivo non valido')
         with self.lock:
-            self.config.setdefault('rgb', {})['layout'] = {'zones': {z: v for z, v in zones.items() if v != 'led'}, 'devices': dict(devices), 'pos': clean}
+            self.config.setdefault('rgb', {})['layout'] = {'zones': {z: v for z, v in zones.items() if v != 'led'}, 'devices': dict(devices), 'case': clean}
             json_save(CONFIG_FILE, self.config)
         return self.rgb_layout()
 

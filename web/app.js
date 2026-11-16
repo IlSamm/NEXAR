@@ -948,37 +948,47 @@ const LX_KIND={mb:'Scheda madre',ram:'RAM',gpu:'Scheda video',cooler:'Raffreddam
 // Le luci della scheda MSI (ARCTIC compreso) sono un solo comando: nel disegno accendono raffreddamento e scheda madre
 // Il disegno come il PC di ognuno (salvato in NEXAR): parti con LED, senza LED o che non ci sono, e dove sta ogni dispositivo
 const LX_ORDER=['cooler','fans','ram','mb','gpu','strip','kbd','mouse'],LX_HIDE=['fans','strip','kbd','mouse'];
-let lxEditing=false,lxLayoutT=0,lxPosTmp=null,lxDragAt=0,lxOrder='';
-const lxLayout=()=>current?.rgb_layout||{zones:{},devices:{},pos:{}};
-// Parti che si spostano e girano: centro di partenza, nome e zona dei LED
-const LX_MV={rad:[266,98,'Radiatore del liquido','cooler'],fan1:[266,207,'Ventola davanti','fans'],fan2:[56,66,'Ventola dietro','fans'],gpu:[146,162,'Scheda video','gpu'],strip:[169,267,'Strisce LED','strip'],kbd:[403,262,'Tastiera','kbd'],mouse:[402,156,'Mouse','mouse']};
-const LX_RAD_TOP=[-52,-50,270];   // radiatore sopra: in orizzontale, in alto, attacchi verso la pompa
-const lxPos=()=>lxPosTmp||lxLayout().pos||{};
-const lxP=u=>lxPos()[u]||[0,0,0];
-function lxPlace(){
- const svg=$('lx-pc'),pos=lxPos(),moved=[];
- Object.entries(LX_MV).forEach(([u,[cx,cy]])=>{
-  const p=lxP(u),on=p.some(v=>v);if(on)moved.push(u);
-  svg.querySelectorAll(`[data-mv="${u}"]`).forEach(g=>{
-   if(on)g.setAttribute('transform',`translate(${p[0]} ${p[1]}) rotate(${p[2]} ${cx} ${cy})`);else g.removeAttribute('transform');
-   g.querySelectorAll('[data-up]').forEach(b=>p[2]?b.setAttribute('transform',`rotate(${-p[2]} ${b.dataset.up})`):b.removeAttribute('transform'));
-  });
- });
- // le parti spostate si disegnano sopra le altre (solo quando cambia quali sono, se no le ventole ripartono)
- if(moved.join()!==lxOrder){lxOrder=moved.join();moved.forEach(u=>{const z=svg.querySelector(`[data-mv="${u}"]`)?.closest('.lx-z');if(z)svg.append(z);});}
- // i tubi vanno dalla pompa agli attacchi del radiatore, ovunque sia
- const [cx,cy]=LX_MV.rad,p=lxP('rad'),m=new DOMMatrix().translate(p[0]+cx,p[1]+cy).rotate(p[2]).translate(-cx,-cy);
- const n=new DOMMatrix().rotate(p[2]).transformPoint(new DOMPoint(-1,0)),P=[[168,70],[168,90]];
- let c=[m.transformPoint(new DOMPoint(237,44)),m.transformPoint(new DOMPoint(237,122))];
- const d=(a,b)=>Math.hypot(a[0]-b.x,a[1]-b.y);if(d(P[0],c[0])+d(P[1],c[1])>d(P[0],c[1])+d(P[1],c[0]))c=[c[1],c[0]];
- P.forEach(([x,y],i)=>{const q=c[i],L=Math.hypot(q.x-x,q.y-y)||1,k=Math.min(30,L/2),f=v=>v.toFixed(1);
-  const path=`M${x} ${y} C${f(x+(q.x-x)/L*k)} ${f(y+(q.y-y)/L*k)} ${f(q.x+n.x*k)} ${f(q.y+n.y*k)} ${f(q.x)} ${f(q.y)}`;
-  $('lx-t'+(i+1)).setAttribute('d',path);$('lx-t'+(i+1)+'h').setAttribute('d',path);});
+let lxEditing=false,lxLayoutT=0;
+const lxLayout=()=>current?.rgb_layout||{zones:{},devices:{},case:{}};
+// Ventole e radiatore come nel PC di ognuno: dove sta il radiatore, quanto è lungo e quante ventole ci sono davanti, sopra e dietro
+const LX_CASE0={rad:'front',size:2,front:1,top:0,rear:1},LX_CAP={front:3,top:3,rear:1};
+const lxCase=()=>({...LX_CASE0,...(lxLayout().case||{})});
+// quante ventole ci stanno ancora in un lato, tolte quelle del radiatore
+const lxFree=(c,side)=>LX_CAP[side]-(c.rad===side?c.size:0);
+function lxFixCase(c){if(c.rad==='rear')c.size=1;['front','top','rear'].forEach(s=>c[s]=Math.max(0,Math.min(c[s],lxFree(c,s))));return c;}
+function lxFanSvg(x,y,F,b){
+ const R=F*.4,f=v=>+v.toFixed(1);
+ return {body:`<rect class="lx-frame" x="${f(x-F/2)}" y="${f(y-F/2)}" width="${F}" height="${F}" rx="${f(F*.16)}"/><circle class="lx-hole" cx="${x}" cy="${y}" r="${f(F*.45)}"/>`+
+  `<g transform="translate(${x} ${y})"><g class="lx-spin${b?' b':''}"><use href="#lxRotor" x="${f(-R)}" y="${f(-R)}" width="${f(2*R)}" height="${f(2*R)}"/></g></g>`,
+  hit:`<rect class="lx-hit" x="${f(x-F/2-4)}" y="${f(y-F/2-4)}" width="${F+8}" height="${F+8}" rx="${f(F*.2)}"/>`,
+  blur:`<circle class="lx-blur s" cx="${x}" cy="${y}" r="${f(F*.43)}"/>`,led:`<circle class="lx-led s" cx="${x}" cy="${y}" r="${f(F*.43)}"/>`};
 }
-function lxMovePart(u,p){
- const lay=structuredClone(lxLayout());lay.pos={...(lay.pos||{})};
- if(p.some(v=>v))lay.pos[u]=p;else delete lay.pos[u];lxSaveLayout(lay);
+// posti delle ventole: davanti dall'alto, sopra dal davanti verso il retro, dietro una piccola
+const LX_SLOT={front:i=>[266,60+70*i,58],top:i=>[196-62*i,-6,58],rear:()=>[56,66,36]};
+function lxBuild(){
+ const c=lxCase(),key=JSON.stringify(c);if(key===lxBuild.key)return;lxBuild.key=key;
+ const rad=[],fans=[],side=c.rad;
+ if(side!=='none'){
+  const fs=[...Array(side==='rear'?1:c.size)].map((_,i)=>lxFanSvg(...LX_SLOT[side](i),false));
+  let x,y,w,h,C,n,P,np;
+  if(side==='front'){x=235;y=24;w=62;h=72+70*(c.size-1);C=[[236,y+20],[236,y+20+Math.min(78,h-40)]];n=[-1,0];P=[[168,70],[168,90]];np=[1,0];}
+  else if(side==='top'){x=196-62*(c.size-1)-34;y=-38;w=196-x+34;h=64;C=[[x+16,y+h],[x+34,y+h]];n=[0,1];P=[[138,56],[154,56]];np=[0,-1];}
+  else{x=36;y=38;w=40;h=56;C=[[76,50],[76,82]];n=[1,0];P=[[124,70],[124,90]];np=[-1,0];}
+  const d=(a,b)=>Math.hypot(a[0]-b[0],a[1]-b[1]);if(d(P[0],C[0])+d(P[1],C[1])>d(P[0],C[1])+d(P[1],C[0]))C=[C[1],C[0]];
+  const tubes=P.map((p,i)=>{const q=C[i],k=Math.min(30,d(p,q)/2),f=v=>+v.toFixed(1);
+   return `M${p[0]} ${p[1]} C${f(p[0]+np[0]*k)} ${f(p[1]+np[1]*k)} ${f(q[0]+n[0]*k)} ${f(q[1]+n[1]*k)} ${q[0]} ${q[1]}`;});
+  rad.push(`<rect class="lx-rad" x="${x}" y="${y}" width="${w}" height="${h}" rx="6"/><rect class="lx-fins" x="${x+4}" y="${y+4}" width="${w-8}" height="${h-8}" rx="3"/>`,
+   ...fs.map(f=>f.body),`<rect class="lx-hit" x="${x-4}" y="${y-4}" width="${w+8}" height="${h+8}" rx="10"/>`,...fs.map(f=>f.blur),...fs.map(f=>f.led),
+   `<g class="lx-badge"><rect x="${x+w/2-19}" y="${y+h/2-7.5}" width="38" height="15" rx="7.5"/><text x="${x+w/2}" y="${y+h/2+3}">MSI</text></g>`);
+  tubes.forEach((t,i)=>{$('lx-t'+(i+1)).setAttribute('d',t);$('lx-t'+(i+1)+'h').setAttribute('d',t);});
+ }
+ ['lx-t1','lx-t2','lx-t1h','lx-t2h'].forEach(id=>$(id).style.display=side==='none'?'none':'');
+ // le ventole del case occupano i posti liberi dopo il radiatore
+ [['front',3],['top',3],['rear',1]].forEach(([s])=>{const first=c.rad===s?c.size:0;for(let i=0;i<c[s];i++){const [x,y,F]=LX_SLOT[s](first+i);fans.push(lxFanSvg(x,y,F,true));}});
+ $('lx-rad').innerHTML=rad.join('');
+ $('lx-cfans').innerHTML=[...fans.map(f=>f.body),...fans.map(f=>f.hit),...fans.map(f=>f.blur),...fans.map(f=>f.led)].join('');
 }
+function lxSetCase(ch){const lay=structuredClone(lxLayout());lay.case=lxFixCase({...lxCase(),...ch});lxSaveLayout(lay);}
 const lxZoneState=z=>(lxLayout().zones||{})[z]||'led';
 const lxZone=d=>{const m=(lxLayout().devices||{})[d.key];return m?(m==='other'?'':m):lxZoneAuto(d);};
 const lxIn=(d,z)=>d.key==='msi'&&!lxLayout().devices.msi?(z==='cooler'||z==='mb'):lxZone(d)===z;
@@ -1005,14 +1015,17 @@ function lxEditRender(){
   return row;
  });
  $('lx-edit-devs').replaceChildren(...(devs.length?[el('small','lx-er-h','Dove sta ogni dispositivo'),...devs]:[]));
- const btn=(t,cls,fn)=>{const b=el('button',cls,t);b.type='button';b.addEventListener('click',fn);return b;};
- const parts=Object.entries(LX_MV).filter(([,v])=>lxZoneState(v[3])!=='none').map(([u,v])=>{
-  const row=el('div','lx-er'),act=el('div','lx-eacts'),p=lxP(u);row.append(el('span','',v[2]),act);
-  if(u==='rad'){const seg=el('div','lx-eseg');[['Davanti',[0,0,0]],['Sopra',LX_RAD_TOP]].forEach(([t,q])=>{const b=btn(t,'',()=>lxMovePart(u,q));b.classList.toggle('sel',String(p)===String(q));seg.append(b);});act.append(seg);}
-  const rot=btn('Gira','lx-eb',()=>lxMovePart(u,[p[0],p[1],(p[2]+90)%360]));rot.title='Gira di 90°';
-  const back=btn('Rimetti','lx-eb',()=>lxMovePart(u,[0,0,0]));back.disabled=!p.some(x=>x);back.title='Rimetti dov\'era';
-  act.append(rot,back);return row;});
- $('lx-edit-pos').replaceChildren(el('small','lx-er-h','Dove sta ogni parte · trascinala nel disegno'),...parts);
+ const c=lxCase(),seg=(label,opts,val,fn,dis=()=>false)=>{
+  const row=el('div','lx-er'),s=el('div','lx-eseg');row.append(el('span','',label),s);
+  opts.forEach(([v,t])=>{const b=el('button','',t);b.type='button';b.classList.toggle('sel',val===v);b.disabled=dis(v);b.addEventListener('click',()=>fn(v));s.append(b);});
+  return row;};
+ const rows=[el('small','lx-er-h','Ventole e radiatore'),
+  seg('Radiatore del liquido',[['front','Davanti'],['top','Sopra'],['rear','Dietro'],['none','Non ce l\'ho']],c.rad,v=>lxSetCase({rad:v}))];
+ if(c.rad!=='none')rows.push(seg('Lunghezza radiatore',[[1,'120 mm'],[2,'240 mm'],[3,'360 mm']],c.size,v=>lxSetCase({size:v}),v=>c.rad==='rear'&&v>1));
+ rows.push(seg('Ventole davanti',[[0,'0'],[1,'1'],[2,'2'],[3,'3']],c.front,v=>lxSetCase({front:v}),v=>v>lxFree(c,'front')),
+  seg('Ventole sopra',[[0,'0'],[1,'1'],[2,'2'],[3,'3']],c.top,v=>lxSetCase({top:v}),v=>v>lxFree(c,'top')),
+  seg('Ventola dietro',[[0,'0'],[1,'1']],c.rear,v=>lxSetCase({rear:v}),v=>v>lxFree(c,'rear')));
+ $('lx-edit-pos').replaceChildren(...rows);
 }
 function lxEdit(on){lxEditing=on;$('lx-edit-panel').hidden=!on;$('lx-edit').setAttribute('aria-pressed',String(on));$('rgb-studio').classList.toggle('editing',on);lxEditRender();lxPaint();}
 const lxMsi=()=>(current?.rgb_excluded||[]).some(n=>/mystic|msi/i.test(n));
@@ -1038,7 +1051,7 @@ const lxDevColor=d=>(d.color||current?.rgb_color||'#ffffff').toLowerCase();
 const lxLive=d=>rgbTouched&&(lxTarget==null||lxTarget===d.key);
 function lxPaint(){
  const s=current||{},off=!!s.rgb_off&&!rgbTouched,st=$('rgb-studio');st.classList.toggle('off',off||!s.rgb_enabled);
- lxPlace();
+ lxBuild();
  const msiOn=lxMsi();let msiAny=false;
  document.querySelectorAll('#lx-pc .lx-z').forEach(g=>{
   const z=g.dataset.z,zs=lxZoneState(z),devs=zs==='led'?lxDevs.filter(d=>lxIn(d,z)):[],msi=zs==='led'&&!devs.length&&msiOn&&(z==='mb'||z==='cooler');msiAny||=msi;
@@ -1127,30 +1140,13 @@ $('lx-all').addEventListener('click',()=>lxSelect(null));
 function lxMsiPing(){const b=$('lx-msi');b.classList.remove('ping');void b.offsetWidth;b.classList.add('ping');b.scrollIntoView({block:'nearest',behavior:'smooth'});}
 document.querySelectorAll('#lx-pc .lx-z').forEach(g=>{
  const go=()=>{
-  if(lxEditing){if(performance.now()-lxDragAt>400)lxCycleZone(g.dataset.z);return;}
+  if(lxEditing){lxCycleZone(g.dataset.z);return;}
   if(g.classList.contains('msi')){lxMsiPing();return;}
   const devs=lxDevs.filter(d=>lxIn(d,g.dataset.z));if(!devs.length)return;
   const i=devs.findIndex(d=>d.key===lxTarget);lxSelect(devs.length===1&&i===0?null:devs[(i+1)%devs.length].key);
  };
  g.addEventListener('click',go);g.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();go();}});
 });
-// Mentre si modifica il disegno: trascina una parte per spostarla (col mouse o col dito)
-(()=>{const svg=$('lx-pc');let drag=null;
- const at=e=>new DOMPoint(e.clientX,e.clientY).matrixTransform(svg.getScreenCTM().inverse());
- svg.addEventListener('pointerdown',e=>{
-  if(!lxEditing||e.button>0)return;const g=e.target.closest('[data-mv]');if(!g)return;
-  const q=at(e);drag={u:g.dataset.mv,x:q.x,y:q.y,p:lxP(g.dataset.mv),id:e.pointerId,moved:false};
- });
- svg.addEventListener('pointermove',e=>{
-  if(!drag||e.pointerId!==drag.id)return;const q=at(e),dx=q.x-drag.x,dy=q.y-drag.y;
-  if(!drag.moved){if(Math.hypot(dx,dy)<4)return;drag.moved=true;try{svg.setPointerCapture(e.pointerId);}catch{}svg.classList.add('dragging');}
-  const [cx,cy]=LX_MV[drag.u],p=drag.p,cl=(v,a,b)=>Math.min(b,Math.max(a,v));
-  lxPosTmp={...(lxLayout().pos||{}),[drag.u]:[Math.round(cl(cx+p[0]+dx,20,460)-cx),Math.round(cl(cy+p[1]+dy,14,306)-cy),p[2]]};lxPaint();
- });
- const end=e=>{if(!drag||e.pointerId!==drag.id)return;const d=drag;drag=null;svg.classList.remove('dragging');
-  if(!d.moved)return;lxDragAt=performance.now();const p=lxPosTmp[d.u];lxPosTmp=null;lxMovePart(d.u,p);};
- svg.addEventListener('pointerup',end);svg.addEventListener('pointercancel',end);
-})();
 $('lx-edit').addEventListener('click',()=>lxEdit(!lxEditing));
 $('lx-edit-done').addEventListener('click',()=>{lxEdit(false);notify('✓ Disegno salvato');});
 $('lx-msi-open').addEventListener('click',async()=>{

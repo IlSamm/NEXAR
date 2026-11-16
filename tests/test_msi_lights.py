@@ -97,15 +97,15 @@ def test_off_and_msi_reset_put_the_arctic_back(tmp_path, monkeypatch):
 def test_drawing_layout_is_saved_and_checked(tmp_path, monkeypatch):
     setup(monkeypatch, [])
     c, _ = control(tmp_path, monkeypatch, {})
-    assert c.rgb_layout() == {'zones': {}, 'devices': {}, 'pos': {}}
-    lay = c.set_rgb_layout({'mouse': 'none', 'ram': 'plain', 'gpu': 'led'}, {'Corsair Lighting Node Core': 'fans', 'msi': 'cooler'},
-                           {'rad': [-52.4, -50, 270], 'fan1': [0, 0, 0]})       # il radiatore sopra; una parte rimessa a posto non si salva
-    assert lay == {'zones': {'mouse': 'none', 'ram': 'plain'}, 'devices': {'Corsair Lighting Node Core': 'fans', 'msi': 'cooler'}, 'pos': {'rad': [-52, -50, 270]}}
+    assert c.rgb_layout() == {'zones': {}, 'devices': {}, 'case': {}}
+    mine = {'rad': 'top', 'size': 2, 'front': 3, 'top': 0, 'rear': 1}          # tre ventole davanti e il radiatore da 240 sopra
+    lay = c.set_rgb_layout({'mouse': 'none', 'ram': 'plain', 'gpu': 'led'}, {'Corsair Lighting Node Core': 'fans', 'msi': 'cooler'}, mine)
+    assert lay == {'zones': {'mouse': 'none', 'ram': 'plain'}, 'devices': {'Corsair Lighting Node Core': 'fans', 'msi': 'cooler'}, 'case': mine}
     assert c.config['rgb']['layout'] == lay
-    for zones, devices, pos in (({'gpu': 'none'}, {}, {}), ({'case': 'led'}, {}, {}), ({'mouse': 'rainbow'}, {}, {}), ({}, {'x': 'garage'}, {}), ({}, {'': 'ram'}, {}),
-                                ({}, {}, {'ram': [1, 1, 0]}), ({}, {}, {'rad': [0, 0, 45]}), ({}, {}, {'rad': [900, 0, 0]}), ({}, {}, {'rad': [1, 2]}), ({}, {}, {'rad': [True, 0, 0]}),
-                                ({}, {}, {'rad': [float('inf'), 0, 0]})):
-        with pytest.raises(ValueError): c.set_rgb_layout(zones, devices, pos)
+    bad_case = ({'rad': 'side'}, {'rad': 'top', 'size': 3, 'top': 1}, {'front': 4}, {'rad': 'rear', 'size': 2}, {'rad': 'rear', 'rear': 1},
+                {'size': True}, {'front': -1}, {'front': 1.5}, {'colour': 'red'}, ['top'])
+    for zones, devices, case in [({'gpu': 'none'}, {}, {}), ({'case': 'led'}, {}, {}), ({'mouse': 'rainbow'}, {}, {}), ({}, {'x': 'garage'}, {}), ({}, {'': 'ram'}, {})] + [({}, {}, b) for b in bad_case]:
+        with pytest.raises(ValueError): c.set_rgb_layout(zones, devices, case)
     assert c.rgb_layout() == lay
 
 
