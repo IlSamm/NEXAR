@@ -107,7 +107,7 @@ try {
     'msi_light' {
       # Luci della scheda MSI (dove c'è l'ARCTIC) con il programma ufficiale di MSI, solo spente o un colore fisso
       $style = [string]$a.style
-      if (@('Off', 'Steady') -cnotcontains $style) { throw 'Effetto non previsto' }
+      if (@('Steady') -cnotcontains $style) { throw 'Effetto non previsto' }
       $c = @([int]$a.r, [int]$a.g, [int]$a.b)
       foreach ($v in $c) { if ($v -lt 0 -or $v -gt 255) { throw 'Colore non valido' } }
       $m = Join-Path $PSScriptRoot 'msi'
@@ -116,7 +116,7 @@ try {
       $code = [NexarMsi]::Run($m, $style, [uint32]$c[0], [uint32]$c[1], [uint32]$c[2], 25000)
       if ($code -eq -998) { throw 'Programma MSI per le luci non caricato: premi Sistema adesso' }
       if ($code -eq -999) { throw 'MSI non risponde: in Mystic Light togli la sincronizzazione della scheda madre e premi Applica' }
-      if ($code -ne 0) { throw ('MSI ha risposto ' + $code) }
+      if ($code -ne 0) { throw ('Le luci MSI non accettano comandi (codice ' + $code + '): MSI Center si è bloccato, riavvia il PC') }
     }
     'close_apps' {
       foreach ($k in @($a.keys)) {

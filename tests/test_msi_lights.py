@@ -17,7 +17,7 @@ def msi_ready(c, monkeypatch, calls):
 
 def test_runner_only_accepts_off_or_a_steady_colour(tmp_path):
     text = ah.runner_text(tmp_path / 'r.json', tmp_path / 'res.json', r'C:\x\NEXAR.exe', {}, {})
-    assert "'msi_light'" in text and "@('Off', 'Steady') -cnotcontains $style" in text and 'NexarMsi' in text and '@@' not in text
+    assert "'msi_light'" in text and "@('Steady') -cnotcontains $style" in text and 'NexarMsi' in text and '@@' not in text
     assert 'MLAPI_SetLedColor' in text and 't.Join(ms)' in text   # se MSI non risponde il runner non resta appeso
 
 
@@ -36,7 +36,8 @@ def test_runner_refuses_other_effects_and_a_missing_sdk(tmp_path):
         return json.loads((tmp_path / 'res.json').read_text(encoding='utf-8-sig'))
     assert 'Effetto non previsto' in go({'style': 'Rainbow; Remove-Item C:\\', 'r': 0, 'g': 0, 'b': 0})['message']
     assert 'Colore non valido' in go({'style': 'Steady', 'r': 300, 'g': 0, 'b': 0})['message']
-    out = go({'style': 'Off', 'r': 0, 'g': 0, 'b': 0})
+    assert 'Effetto non previsto' in go({'style': 'Off', 'r': 0, 'g': 0, 'b': 0})['message']   # "Off" blocca MSI
+    out = go({'style': 'Steady', 'r': 0, 'g': 0, 'b': 0})
     assert out['ok'] is False and 'Sistema adesso' in out['message']
 
 
@@ -82,7 +83,7 @@ def test_off_and_msi_reset_put_the_arctic_back(tmp_path, monkeypatch):
     c, log = control(tmp_path, monkeypatch, {}, {'rgb_off': True, 'rgb_saved': {'ENE DRAM': {'name': 'ENE DRAM'}}})
     calls = []; msi_ready(c, monkeypatch, calls)
     assert 'ARCTIC' in c.rgb_keep()                      # all'avvio di NEXAR
-    assert calls == [('msi_light', {'style': 'Off', 'r': 0, 'g': 0, 'b': 0})]
+    assert calls == [('msi_light', {'style': 'Steady', 'r': 0, 'g': 0, 'b': 0})]
     calls.clear(); c.rgb_kept_at = 0
     with open(log, 'a') as f: f.write('ResetItem : 0\t(JRGB1)\t0\n')     # l'ha scritto il comando di NEXAR
     c.rgb_keep()
@@ -90,4 +91,28 @@ def test_off_and_msi_reset_put_the_arctic_back(tmp_path, monkeypatch):
     c.msi_own_at = -1e9
     with open(log, 'a') as f: f.write('ResetItem : 1\t(JARGB_V2_1)\t10\n')  # MSI ha rimesso il suo effetto
     c.rgb_keep()
-    assert calls == [('msi_light', {'style': 'Off', 'r': 0, 'g': 0, 'b': 0})]
+    assert calls == [('msi_light', {'style': 'Steady', 'r': 0, 'g': 0, 'b': 0})]
+
+
+def test_drawing_layout_is_saved_and_checked(tmp_path, monkeypatch):
+    setup(monkeypatch, [])
+    c, _ = control(tmp_path, monkeypatch, {})
+    assert c.rgb_layout() == {'zones': {}, 'devices': {}}
+    lay = c.set_rgb_layout({'mouse': 'none', 'ram': 'plain', 'gpu': 'led'}, {'Corsair Lighting Node Core': 'fans', 'msi': 'cooler'})
+    assert lay == {'zones': {'mouse': 'none', 'ram': 'plain'}, 'devices': {'Corsair Lighting Node Core': 'fans', 'msi': 'cooler'}}
+    assert c.config['rgb']['layout'] == lay
+    for zones, devices in (({'gpu': 'none'}, {}), ({'case': 'led'}, {}), ({'mouse': 'rainbow'}, {}), ({}, {'x': 'garage'}), ({}, {'': 'ram'})):
+        with pytest.raises(ValueError): c.set_rgb_layout(zones, devices)
+    assert c.rgb_layout() == lay
+
+
+def test_msi_off_is_steady_black_never_the_off_effect(tmp_path, monkeypatch):
+    setup(monkeypatch, [])
+    c, _ = control(tmp_path, monkeypatch, {})
+    calls = []; msi_ready(c, monkeypatch, calls)
+    c.msi_set(off=True)
+    assert calls == [('msi_light', {'style': 'Steady', 'r': 0, 'g': 0, 'b': 0})]
+    monkeypatch.setattr(c.admin, 'call', lambda *a, **k: (_ for _ in ()).throw(RuntimeError('MSI Center si è bloccato')))
+    assert c.msi_apply(off=True) == ''                     # in automatico: una riga nel registro, poi pausa di 5 minuti
+    n = len(c.events)
+    assert c.msi_apply(off=True) == '' and len(c.events) == n

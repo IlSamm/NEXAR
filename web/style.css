@@ -4223,3 +4223,33 @@ html.calm .vli::before,html.calm .vli::after,html.calm .vli-ring,html.calm .vli-
 #page-lights .apps-fix,#page-lights .apps-card{margin-top:16px}
 @media (max-width:980px){.lx{grid-template-columns:minmax(0,1fr)}}
 @media (max-width:520px){.lx-stage,.lx-panel{padding:16px;border-radius:22px}.lx-title{font-size:30px}.lx-chip{height:34px;font-size:12px}.lx-range{grid-template-columns:72px minmax(0,1fr) 40px;gap:10px}}
+/* 1.0.80: il disegno delle luci come il PC di ognuno */
+.lx-edit-btn{position:absolute;top:0;right:0;display:inline-flex;align-items:center;gap:7px;height:32px;padding:0 13px 0 10px;border-radius:999px;font-size:12px;font-weight:700;color:#cbd5e1;background:rgba(0,0,0,.3);border:1px solid rgba(255,255,255,.1);transition:background .2s,color .2s}
+.lx-edit-btn .i{width:15px;height:15px}
+.lx-edit-btn:hover{color:#fff;border-color:rgba(255,255,255,.22)}
+.lx-edit-btn[aria-pressed="true"]{background:#f8fafc;color:#0b0d12;border-color:#f8fafc}
+.lx-z.gone,#lx-pc [data-part].gone{display:none}
+.lx.editing #lx-pc [data-part].gone{display:inline;opacity:.25}
+.lx-z.plain .lx-led,.lx-z.plain .lx-blur,.lx-z.plain .lx-badge{display:none}
+.lx-z.plain{cursor:default}
+.lx-z.plain:hover .lx-hit{fill:transparent;stroke:transparent}
+.lx.editing .lx-z,.lx.editing .lx-z.plain,.lx.editing .lx-z.gone{display:inline;cursor:pointer}
+.lx.editing .lx-z .lx-hit{stroke:rgba(255,255,255,.35);stroke-dasharray:4 4;fill:rgba(255,255,255,.02)}
+.lx.editing .lx-z.plain .lx-hit{stroke:rgba(148,163,184,.35)}
+.lx.editing .lx-z.gone .lx-hit{stroke:rgba(248,113,113,.5);fill:rgba(248,113,113,.06)}
+.lx.editing .lx-z:hover .lx-hit{stroke:#fff}
+.lx-edit{position:relative;display:flex;flex-direction:column;gap:10px;padding:14px;border-radius:18px;background:rgba(0,0,0,.3);border:1px solid rgba(255,255,255,.1)}
+.lx-edit[hidden]{display:none}
+.lx-edit-head{display:flex;align-items:flex-start;gap:12px}
+.lx-edit-head>div{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.lx-edit-head b{font-size:13.5px}
+.lx-edit-head small{font-size:11.5px;color:var(--dim);line-height:1.45}
+.lx-edit-zones,.lx-edit-devs{display:flex;flex-direction:column;gap:6px}
+.lx-er{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:36px;font-size:12.5px;color:#cbd5e1}
+.lx-er>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lx-er-h{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;margin-top:6px}
+.lx-eseg{display:flex;flex:none;padding:3px;border-radius:999px;background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.08)}
+.lx-eseg button{height:28px;padding:0 10px;border-radius:999px;font-size:11.5px;font-weight:650;color:#94a3b8;white-space:nowrap}
+.lx-eseg button.sel{background:#f8fafc;color:#0b0d12}
+.lx-er select{flex:none;max-width:55%;height:32px;padding:0 10px;border-radius:10px;background:#0b0e14;color:#e2e8f0;border:1px solid rgba(255,255,255,.14);font:inherit;font-size:12px}
+@media (max-width:520px){.lx-er{flex-wrap:wrap}.lx-eseg{width:100%}.lx-eseg button{flex:1;padding:0 6px}.lx-er select{max-width:100%;width:100%}.lx-edit-btn span{display:none}.lx-edit-btn{padding:0 9px}}

@@ -258,6 +258,14 @@ def rgb_msi_open():
     try: return {'ok':True,'message':controller.msi_center_open()}
     except (RuntimeError,OSError) as ex: raise HTTPException(400,str(ex))
 
+class RgbLayout(BaseModel):
+    zones: dict[str, str] = {}
+    devices: dict[str, str] = {}
+@app.post('/api/rgb/layout',dependencies=[Depends(authorized)])
+def rgb_layout(data: RgbLayout):
+    try: return {'ok':True,'layout':controller.set_rgb_layout(data.zones,data.devices),'message':'Disegno salvato'}
+    except ValueError as ex: raise HTTPException(400,str(ex))
+
 class Palette(BaseModel):
     colors: list[str]
 @app.post('/api/rgb/palette',dependencies=[Depends(authorized)])

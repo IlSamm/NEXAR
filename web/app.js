@@ -943,10 +943,41 @@ let palette=[],paletteEditing=false,lxDevs=[],lxTarget=null,lxHue=0,lxSat=0,lxDe
 const bright=()=>Number.parseInt($('rgb-bright').value,10);
 const LX_TYPE={0:'mb',1:'ram',2:'gpu',3:'cooler',4:'strip',11:'strip',15:'strip',5:'kbd',18:'kbd',6:'mouse',7:'mouse'};
 // Dove va un dispositivo nel disegno: l'ARCTIC su un suo controller (OpenRGB lo chiama "Arctic RGB Controller") è il raffreddamento
-const lxZone=d=>d.key==='msi'?'cooler':/arctic|liquid|aio|kraken|pump|hydro|capellix/i.test(d.name)?'cooler':/\bfans?\b|ventol|commander|lighting node|\buni\b/i.test(d.name)&&[3,4].includes(d.type)?'fans':LX_TYPE[d.type];
+const lxZoneAuto=d=>d.key==='msi'?'cooler':/arctic|liquid|aio|kraken|pump|hydro|capellix/i.test(d.name)?'cooler':/\bfans?\b|ventol|commander|lighting node|\buni\b/i.test(d.name)&&[3,4].includes(d.type)?'fans':LX_TYPE[d.type];
 const LX_KIND={mb:'Scheda madre',ram:'RAM',gpu:'Scheda video',cooler:'Raffreddamento',fans:'Ventole del case',strip:'Strisce LED',kbd:'Tastiera',mouse:'Mouse'};
 // Le luci della scheda MSI (ARCTIC compreso) sono un solo comando: nel disegno accendono raffreddamento e scheda madre
-const lxIn=(d,z)=>d.key==='msi'?(z==='cooler'||z==='mb'):lxZone(d)===z;
+// Il disegno come il PC di ognuno (salvato in NEXAR): parti con LED, senza LED o che non ci sono, e dove sta ogni dispositivo
+const LX_ORDER=['cooler','fans','ram','mb','gpu','strip','kbd','mouse'],LX_HIDE=['fans','strip','kbd','mouse'];
+let lxEditing=false,lxLayoutT=0;
+const lxLayout=()=>current?.rgb_layout||{zones:{},devices:{}};
+const lxZoneState=z=>lxLayout().zones[z]||'led';
+const lxZone=d=>{const m=lxLayout().devices[d.key];return m?(m==='other'?'':m):lxZoneAuto(d);};
+const lxIn=(d,z)=>d.key==='msi'&&!lxLayout().devices.msi?(z==='cooler'||z==='mb'):lxZone(d)===z;
+function lxSaveLayout(lay){
+ current.rgb_layout=lay;lxPaint();lxEditRender();
+ if(demo)return;
+ clearTimeout(lxLayoutT);lxLayoutT=setTimeout(async()=>{try{await req('/api/rgb/layout','POST',lay);}catch(ex){notify('⚠ '+ex.message,true);}},500);
+}
+function lxSetZone(z,v){const lay=structuredClone(lxLayout());if(v==='led')delete lay.zones[z];else lay.zones[z]=v;lxSaveLayout(lay);}
+function lxCycleZone(z){const order=LX_HIDE.includes(z)?['led','plain','none']:['led','plain'];lxSetZone(z,order[(order.indexOf(lxZoneState(z))+1)%order.length]);}
+function lxEditRender(){
+ if(!lxEditing)return;
+ const ST={led:'Con LED',plain:'Senza LED',none:"Non c'è"};
+ $('lx-edit-zones').replaceChildren(...LX_ORDER.map(z=>{
+  const row=el('div','lx-er'),seg=el('div','lx-eseg');row.append(el('span','',LX_KIND[z]),seg);
+  (LX_HIDE.includes(z)?['led','plain','none']:['led','plain']).forEach(v=>{const b=el('button','',ST[v]);b.type='button';b.classList.toggle('sel',lxZoneState(z)===v);b.addEventListener('click',()=>lxSetZone(z,v));seg.append(b);});
+  return row;
+ }));
+ const devs=lxDevs.map(d=>{
+  const row=el('label','lx-er'),sel=el('select');row.append(el('span','',d.name),sel);
+  [...LX_ORDER,'other'].forEach(z=>{const o=el('option','',z==='other'?'Non nel disegno':(z==='cooler'&&d.key==='msi'&&!lxLayout().devices.msi?'Raffreddamento e scheda madre':LX_KIND[z]));o.value=z;sel.append(o);});
+  sel.value=lxLayout().devices[d.key]||lxZoneAuto(d)||'other';
+  sel.addEventListener('change',()=>{const lay=structuredClone(lxLayout());if(sel.value===(lxZoneAuto(d)||'other'))delete lay.devices[d.key];else lay.devices[d.key]=sel.value;lxSaveLayout(lay);});
+  return row;
+ });
+ $('lx-edit-devs').replaceChildren(...(devs.length?[el('small','lx-er-h','Dove sta ogni dispositivo'),...devs]:[]));
+}
+function lxEdit(on){lxEditing=on;$('lx-edit-panel').hidden=!on;$('lx-edit').setAttribute('aria-pressed',String(on));$('rgb-studio').classList.toggle('editing',on);lxEditRender();lxPaint();}
 const lxMsi=()=>(current?.rgb_excluded||[]).some(n=>/mystic|msi/i.test(n));
 function hexHsv(hex){const n=parseInt(hex.slice(1),16),r=(n>>16&255)/255,g=(n>>8&255)/255,b=(n&255)/255,mx=Math.max(r,g,b),mn=Math.min(r,g,b),d=mx-mn;
  let h=0;if(d){h=mx===r?((g-b)/d)%6:mx===g?(b-r)/d+2:(r-g)/d+4;h=(h*60+360)%360;}return [h,mx?d/mx*100:0,mx*100];}
@@ -972,11 +1003,13 @@ function lxPaint(){
  const s=current||{},off=!!s.rgb_off&&!rgbTouched,st=$('rgb-studio');st.classList.toggle('off',off||!s.rgb_enabled);
  const msiOn=lxMsi();let msiAny=false;
  document.querySelectorAll('#lx-pc .lx-z').forEach(g=>{
-  const z=g.dataset.z,devs=lxDevs.filter(d=>lxIn(d,z)),msi=!devs.length&&msiOn&&(z==='mb'||z==='cooler');msiAny||=msi;
+  const z=g.dataset.z,zs=lxZoneState(z),devs=zs==='led'?lxDevs.filter(d=>lxIn(d,z)):[],msi=zs==='led'&&!devs.length&&msiOn&&(z==='mb'||z==='cooler');msiAny||=msi;
+  g.classList.toggle('plain',zs==='plain');g.classList.toggle('gone',zs==='none');g.dataset.st=zs;
+  document.querySelectorAll(`#lx-pc [data-part="${z}"]`).forEach(p=>p.classList.toggle('gone',zs==='none'));
   const d=devs.find(x=>x.key===lxTarget)||devs[0],col=d?(lxLive(d)?lxColor():lxDevColor(d)):'';
   g.classList.toggle('on',!!d&&!off);g.classList.toggle('empty',!d&&!msi);g.classList.toggle('msi',msi);g.classList.toggle('sel',!!lxTarget&&devs.some(x=>x.key===lxTarget));
   if(col)g.style.setProperty('--zc',col);else g.style.removeProperty('--zc');
-  g.setAttribute('role','button');g.setAttribute('aria-label',g.querySelector('title').textContent=msi?`${LX_KIND[z]}: LED comandati da MSI Center (qui c'è l'ARCTIC)`:d?`${LX_KIND[z]}: ${devs.map(x=>x.name).join(', ')}`:`${LX_KIND[z]}: nessun LED collegato`);
+  g.setAttribute('role','button');g.setAttribute('aria-label',g.querySelector('title').textContent=lxEditing?`${LX_KIND[z]}: ${{led:'con LED',plain:'senza LED',none:'non c\'è'}[zs]} · tocca per cambiare`:zs!=='led'?`${LX_KIND[z]}: senza LED`:msi?`${LX_KIND[z]}: LED comandati da MSI Center (qui c'è l'ARCTIC)`:d?`${LX_KIND[z]}: ${devs.map(x=>x.name).join(', ')}`:`${LX_KIND[z]}: nessun LED collegato`);
  });
  $('lx-msi').hidden=!msiAny;
  const setup=s.rgb_msi==='setup';$('lx-msi').classList.toggle('setup',setup);
@@ -991,7 +1024,7 @@ function lxChips(){
  const rows=[mk('','Tutti i LED'),...lxDevs.map(d=>mk(d.key,d.name,d.leds?`circa ${d.leds} LED`:''))];
  if(!lxDevs.length)rows.push(el('small','lx-note',demo?'':current?.rgb_enabled?'Dispositivi non letti: tocca di nuovo la pagina tra poco.':'OpenRGB non collegato: vedi Collegamenti.'));
  (current?.rgb_excluded||[]).filter(n=>!/mystic|msi/i.test(n)).forEach(n=>rows.push(el('small','lx-note',`${n}: lasciata al suo programma.`)));
- box.replaceChildren(...rows);lxPaint();
+ box.replaceChildren(...rows);lxPaint();lxEditRender();
 }
 function lxSelect(k){lxTarget=k;rgbTouched=false;const d=lxDevs.find(x=>x.key===k);lxSetColor(d?lxDevColor(d):current?.rgb_color);}
 async function applyColor(color,device){
@@ -1057,12 +1090,15 @@ $('lx-all').addEventListener('click',()=>lxSelect(null));
 function lxMsiPing(){const b=$('lx-msi');b.classList.remove('ping');void b.offsetWidth;b.classList.add('ping');b.scrollIntoView({block:'nearest',behavior:'smooth'});}
 document.querySelectorAll('#lx-pc .lx-z').forEach(g=>{
  const go=()=>{
+  if(lxEditing){lxCycleZone(g.dataset.z);return;}
   if(g.classList.contains('msi')){lxMsiPing();return;}
   const devs=lxDevs.filter(d=>lxIn(d,g.dataset.z));if(!devs.length)return;
   const i=devs.findIndex(d=>d.key===lxTarget);lxSelect(devs.length===1&&i===0?null:devs[(i+1)%devs.length].key);
  };
  g.addEventListener('click',go);g.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();go();}});
 });
+$('lx-edit').addEventListener('click',()=>lxEdit(!lxEditing));
+$('lx-edit-done').addEventListener('click',()=>{lxEdit(false);notify('✓ Disegno salvato');});
 $('lx-msi-open').addEventListener('click',async()=>{
  if($('lx-msi').classList.contains('setup')){
   if(!await ask('Collegare le luci MSI?','Una conferma da amministratore sul PC: NEXAR scarica il programma ufficiale di MSI per le luci e da lì colora, accende e spegne anche l\'ARCTIC.',{danger:false,ico:'bulb',yes:'Collega'}))return;

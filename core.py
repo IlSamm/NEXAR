@@ -233,6 +233,9 @@ ARGB_HEADER_GUESS = 16
 # Registro di Mystic Light (MSI Center): "ResetItem" vuol dire che ha appena riapplicato i suoi effetti
 # a RAM e attacchi ARGB della scheda madre (avvio, schermo che si riaccende, uscita dalla sospensione).
 MSI_KEY, MSI_NAME = 'msi', 'ARCTIC e scheda madre (MSI)'
+# Parti del PC disegnato nella pagina Luci; quelle che si possono togliere dal disegno (non tutti le hanno)
+LX_ZONES = ('cooler', 'fans', 'ram', 'mb', 'gpu', 'strip', 'kbd', 'mouse')
+LX_HIDEABLE = ('fans', 'strip', 'kbd', 'mouse')
 MSI_LIGHT_LOG = Path(r'C:\Program Files (x86)\MSI\MSI Center\Log\MysticLight_Test\MysticLight.txt')
 RGB_KEEP_EVERY = 1800  # anche senza segnali, ogni mezz'ora NEXAR rimette il suo stato dei LED
 RGB_KEEP_OFF_EVERY = 600  # con i LED spenti ogni 10 minuti: chi li riaccende (MSI, firmware) viene corretto presto
@@ -1439,12 +1442,13 @@ class Control:
 
     def msi_apply(self, off):
         """Luci MSI come le vuole NEXAR: spente, oppure il colore scelto per loro (o quello di tutti i LED)."""
-        if self.msi_state() != 'ready': return ''
+        if self.msi_state() != 'ready' or time.monotonic() < getattr(self, 'msi_pause_until', 0): return ''
         rgb = self.config.get('rgb', {})
         try:
             if off: return self.msi_set(off=True)
             return self.msi_set((rgb.get('device_colors') or {}).get(MSI_KEY) or rgb.get('normal_color') or '#ffffff', int(rgb.get('brightness', 100)))
         except Exception as ex:
+            self.msi_pause_until = time.monotonic() + 300   # in automatico riprova tra 5 minuti
             self.log_event('Luci MSI: ' + str(ex)[:200]); return ''
 
     def rgb_settle(self, stamp, sleep=time.sleep):
@@ -1507,10 +1511,10 @@ class Control:
         import discovery
         if discovery.msi_board_synced():
             raise RuntimeError('In Mystic Light scheda madre e RAM sono sincronizzate: togli la catena (Sync) e premi Applica')
-        if off: args = {'style': 'Off', 'r': 0, 'g': 0, 'b': 0}
-        else:
-            r, g, b = (round(int(color[i:i + 2], 16) * brightness / 100) for i in (1, 3, 5))
-            args = {'style': 'Steady', 'r': r, 'g': g, 'b': b}
+        # Spente = fisso nero: l'effetto "Off" di MSI manda in errore LEDKeeper2 (OutOfMemoryException nel suo registro)
+        # e da lì MSI rifiuta ogni altro comando fino al riavvio del PC. Provato sul PC il 2026-11-16.
+        r, g, b = (0, 0, 0) if off else (round(int(color[i:i + 2], 16) * brightness / 100) for i in (1, 3, 5))
+        args = {'style': 'Steady', 'r': r, 'g': g, 'b': b}
         try: self.admin.call('msi_light', **args)
         finally: self.msi_own_at = time.monotonic()   # MSI scrive "ResetItem" anche per i comandi di NEXAR: non è un suo ripristino
         return MSI_NAME
@@ -1520,6 +1524,23 @@ class Control:
         import discovery
         if not discovery.msi_center_open(): raise RuntimeError('MSI Center non è installato su questo PC')
         return 'MSI Center aperto sul PC: vai in Mystic Light'
+
+    def rgb_layout(self):
+        """Il disegno delle luci come lo vuole l'utente: parti con LED, senza LED o che non ha, e dove sta ogni dispositivo."""
+        lay = self.config.get('rgb', {}).get('layout') or {}
+        return {'zones': dict(lay.get('zones') or {}), 'devices': dict(lay.get('devices') or {})}
+
+    def set_rgb_layout(self, zones, devices):
+        if not isinstance(zones, dict) or not isinstance(devices, dict) or len(devices) > 64: raise ValueError('Disegno non valido')
+        for z, v in zones.items():
+            if z not in LX_ZONES or v not in ('led', 'plain', 'none') or (v == 'none' and z not in LX_HIDEABLE):
+                raise ValueError('Parte del disegno non valida')
+        for k, v in devices.items():
+            if not isinstance(k, str) or not 0 < len(k) <= 120 or v not in LX_ZONES + ('other',): raise ValueError('Dispositivo non valido')
+        with self.lock:
+            self.config.setdefault('rgb', {})['layout'] = {'zones': {z: v for z, v in zones.items() if v != 'led'}, 'devices': dict(devices)}
+            json_save(CONFIG_FILE, self.config)
+        return self.rgb_layout()
 
     def rgb_palette(self):
         return list(self.config.get('rgb', {}).get('palette') or DEFAULT_PALETTE)
@@ -2445,7 +2466,7 @@ class Control:
             'rgb_palette':self.rgb_palette(),
             'boost':self.booster.info(),'fps':self.live_fps,
             'anim_style':self.config.get('ui',{}).get('anim_style','liquid'),
-            'rgb_excluded':list(self.rgb_excluded()),'rgb_msi':self.msi_state(),
+            'rgb_excluded':list(self.rgb_excluded()),'rgb_msi':self.msi_state(),'rgb_layout':self.rgb_layout(),
             'fans_eco':bool(self.state.get('fans_eco')),
             'fans_level':self.state.get('fans_level') or ('eco' if self.state.get('fans_eco') else 'normal'),
             'fans_levels_ready':self.fans_levels_ready() if self.config.get('fans',{}).get('enabled') else False,
