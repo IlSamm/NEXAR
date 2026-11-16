@@ -17,5 +17,8 @@ def no_real_scheduled_tasks(monkeypatch):
     import discovery, psutil
     monkeypatch.setattr(discovery, 'conflicts_running', lambda: {})
     monkeypatch.setattr(discovery, 'openrgb_service', lambda: {})
+    # Le luci MSI vere (ARCTIC) non si toccano: per i test Mystic Light non c'è
+    monkeypatch.setattr(discovery, 'mystic_light_installed', lambda: False)
+    monkeypatch.setattr(discovery, 'msi_board_synced', lambda: False)
     def no_kill(self): raise RuntimeError('chiusura di processi bloccata nei test')
     monkeypatch.setattr(psutil.Process, 'kill', no_kill)

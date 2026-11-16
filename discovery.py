@@ -325,6 +325,21 @@ def msi_center_app() -> str:
                 if full.startswith(name + '_') and full.endswith('__' + publisher): return MSI_CENTER_FAMILY + '!App'
     except OSError: return ''
 
+MYSTIC_LIGHT = Path(r'C:\Program Files (x86)\MSI\MSI Center\Mystic Light\LEDKeeper2.exe')
+MSI_SYNC_KEY = r'SOFTWARE\WOW6432Node\MSI\LED_Sync'
+
+def mystic_light_installed() -> bool:
+    return MYSTIC_LIGHT.is_file()
+
+def msi_board_synced() -> bool:
+    """True se in Mystic Light la scheda madre è sincronizzata con altro (es. "MS-7E62_2,DRAM MSI,"): in quel caso
+    MSI ignora i comandi del suo programma per le altre app e la chiamata resta appesa."""
+    import winreg
+    try:
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, MSI_SYNC_KEY) as k: value = str(winreg.QueryValueEx(k, 'LED_bAllSync')[0])
+    except OSError: return False
+    return any(t.strip().upper().startswith('MS-') for t in value.split(','))
+
 def msi_center_open() -> bool:
     app = msi_center_app()
     if not app: return False

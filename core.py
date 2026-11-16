@@ -232,6 +232,7 @@ MODES = {'eco': 'AI ECO', 'normal': 'Normale', 'gaming': 'Gaming'}
 ARGB_HEADER_GUESS = 16
 # Registro di Mystic Light (MSI Center): "ResetItem" vuol dire che ha appena riapplicato i suoi effetti
 # a RAM e attacchi ARGB della scheda madre (avvio, schermo che si riaccende, uscita dalla sospensione).
+MSI_KEY, MSI_NAME = 'msi', 'ARCTIC e scheda madre (MSI)'
 MSI_LIGHT_LOG = Path(r'C:\Program Files (x86)\MSI\MSI Center\Log\MysticLight_Test\MysticLight.txt')
 RGB_KEEP_EVERY = 1800  # anche senza segnali, ogni mezz'ora NEXAR rimette il suo stato dei LED
 RGB_KEEP_OFF_EVERY = 600  # con i LED spenti ogni 10 minuti: chi li riaccende (MSI, firmware) viene corretto presto
@@ -800,7 +801,7 @@ class Control:
             rule=gateway.FIREWALL_RULE, port=gateway.GATEWAY_PORT, autostart_task=discovery.AUTOSTART_TASK,
             apps=discovery.close_apps_table())
         user = f"{os.environ.get('USERDOMAIN', '')}\\{os.environ.get('USERNAME', '')}".strip('\\')
-        return admin_helper.setup_script(folder, runner, user)
+        return admin_helper.setup_script(folder, runner, user, admin_helper.msi_sdk_script() if discovery.mystic_light_installed() else '')
 
     def admin_remove(self):
         import admin_helper, discovery
@@ -1426,12 +1427,25 @@ class Control:
                             self.state.update(rgb_off=False); self.state.pop('rgb_saved', None); self.state.pop('rgb_off_by', None)
                             json_save(STATE_FILE, self.state)
                 self.log_event('RGB ' + ('spenti' if eco else 'riaccesi') + ': ' + (', '.join(done) or 'nessun dispositivo'))
-                if eco: self.rgb_settle(stamp)
             except Exception as ex:
                 self.log_event('OpenRGB non raggiungibile: ' + str(ex)[:200])
+            self.msi_apply(off=eco)
+            if eco:
+                try: self.rgb_settle(stamp)
+                except Exception: logging.info('LED: ricontrollo dopo lo spegnimento non riuscito')
         # Il primo avvio del server richiede qualche secondo: non bloccare la finestra.
         threading.Thread(target=run, daemon=True, name='openrgb').start()
         return 'RGB: ' + ('spegnimento LED' if eco else 'riaccensione LED') + ' in corso'
+
+    def msi_apply(self, off):
+        """Luci MSI come le vuole NEXAR: spente, oppure il colore scelto per loro (o quello di tutti i LED)."""
+        if self.msi_state() != 'ready': return ''
+        rgb = self.config.get('rgb', {})
+        try:
+            if off: return self.msi_set(off=True)
+            return self.msi_set((rgb.get('device_colors') or {}).get(MSI_KEY) or rgb.get('normal_color') or '#ffffff', int(rgb.get('brightness', 100)))
+        except Exception as ex:
+            self.log_event('Luci MSI: ' + str(ex)[:200]); return ''
 
     def rgb_settle(self, stamp, sleep=time.sleep):
         """Subito dopo lo spegnimento qualcuno può rimettere il suo effetto (MSI Center sincronizza la RAM, firmware
@@ -1475,6 +1489,32 @@ class Control:
         """Controller lasciati al firmware: OpenRGB 1.1 spegne la MSI MS-7E62 ma non le ridà colore."""
         return tuple(self.config.get('rgb', {}).get('exclude', []))
 
+    def msi_state(self):
+        """Luci sulla scheda MSI (l'ARCTIC): 'ready' se NEXAR le comanda col programma di MSI, 'setup' se manca una
+        conferma da amministratore, '' se sul PC non c'è Mystic Light."""
+        import discovery
+        at, st = getattr(self, 'msi_state_cache', (0.0, None))
+        if st is None or time.monotonic() - at > 30:
+            st = ''
+            if discovery.mystic_light_installed():
+                ok = self.admin.active() and self.admin.current() and self.admin.has('msi/MysticLight_SDK_x64.dll')
+                st = 'ready' if ok else 'setup'
+            self.msi_state_cache = (time.monotonic(), st)
+        return st
+
+    def msi_set(self, color='#000000', brightness=100, off=False):
+        """ARCTIC e luci della scheda MSI: spente o un colore fisso, tramite NEXAR Admin."""
+        import discovery
+        if discovery.msi_board_synced():
+            raise RuntimeError('In Mystic Light scheda madre e RAM sono sincronizzate: togli la catena (Sync) e premi Applica')
+        if off: args = {'style': 'Off', 'r': 0, 'g': 0, 'b': 0}
+        else:
+            r, g, b = (round(int(color[i:i + 2], 16) * brightness / 100) for i in (1, 3, 5))
+            args = {'style': 'Steady', 'r': r, 'g': g, 'b': b}
+        try: self.admin.call('msi_light', **args)
+        finally: self.msi_own_at = time.monotonic()   # MSI scrive "ResetItem" anche per i comandi di NEXAR: non è un suo ripristino
+        return MSI_NAME
+
     def msi_center_open(self):
         """Le luci sugli attacchi ARGB della scheda MSI (l'ARCTIC) le comanda solo Mystic Light: lo apre sul PC."""
         import discovery
@@ -1502,8 +1542,10 @@ class Control:
             allc = c.controllers()
         ctls = [(k, x) for k, x in zip(openrgb_sdk.keys(allc), allc) if x['name'] not in self.rgb_excluded()]
         self.store_leds([x for _, x in ctls])
-        return [{'key': k, 'name': x['name'], 'type': x['type'], 'leds': leds_estimate(x),
-                 'color': openrgb_sdk.lookup(colors, k, x) or ''} for k, x in ctls]
+        out = [{'key': k, 'name': x['name'], 'type': x['type'], 'leds': leds_estimate(x),
+                'color': openrgb_sdk.lookup(colors, k, x) or ''} for k, x in ctls]
+        if self.msi_state() == 'ready': out.append({'key': MSI_KEY, 'name': MSI_NAME, 'type': 3, 'leds': 0, 'color': colors.get(MSI_KEY, '')})
+        return out
 
     def count_leds(self):
         import openrgb_sdk
@@ -1516,32 +1558,44 @@ class Control:
             if total and self.state.get('rgb_leds') != total:
                 self.state['rgb_leds'] = total; json_save(STATE_FILE, self.state)
 
-    def rgb_color(self, color, brightness=100, device=None, remember=True, quiet=False):
+    def rgb_color(self, color, brightness=100, device=None, remember=True, quiet=False, msi=True):
         with self.rgb_lock:
             if not quiet: self.rgb_user_at = time.monotonic()
-            return self._rgb_color(color, brightness, device, remember, quiet)
+            return self._rgb_color(color, brightness, device, remember, quiet, msi)
 
-    def _rgb_color(self, color, brightness, device, remember, quiet):
+    def _rgb_color(self, color, brightness, device, remember, quiet, msi=True):
         """Un colore per tutti i dispositivi (device=None) o per uno solo; luminosità 0-100%."""
         import openrgb_sdk
         if not isinstance(color, str) or not re.fullmatch(r'#[0-9a-fA-F]{6}', color): raise ValueError('Colore non valido')
         if type(brightness) is not int or not 0 <= brightness <= 100: raise ValueError('Luminosità 0–100')
         scaled = '#' + ''.join(f'{round(int(color[i:i+2], 16) * brightness / 100):02x}' for i in (1, 3, 5))
-        self.openrgb_ready()
-        done = []
-        with openrgb_sdk.Client() as c:
-            allc = c.controllers()
-            for k, x in zip(openrgb_sdk.keys(allc), allc):
-                if (device and device not in (k, openrgb_sdk.legacy_key(x))) or x['name'] in self.rgb_excluded(): continue
-                if openrgb_sdk.leds_set(c, x, openrgb_sdk.color(scaled), allow_off_mode=False):
-                    done.append(x['name']); hit = (k, x['name'], sum(y['name'] == x['name'] for y in allc) == 1, openrgb_sdk.legacy_key(x))
-            c.controllers()
-        if not done: raise RuntimeError('Nessun dispositivo accetta un colore fisso')
+        done, msi_err = [], ''
+        with_msi = msi and device in (None, MSI_KEY) and self.msi_state() == 'ready'
+        if device != MSI_KEY:
+            try:
+                self.openrgb_ready()
+                with openrgb_sdk.Client() as c:
+                    allc = c.controllers()
+                    for k, x in zip(openrgb_sdk.keys(allc), allc):
+                        if (device and device not in (k, openrgb_sdk.legacy_key(x))) or x['name'] in self.rgb_excluded(): continue
+                        if openrgb_sdk.leds_set(c, x, openrgb_sdk.color(scaled), allow_off_mode=False):
+                            done.append(x['name']); hit = (k, x['name'], sum(y['name'] == x['name'] for y in allc) == 1, openrgb_sdk.legacy_key(x))
+                    c.controllers()
+            except (OSError, RuntimeError):
+                if not with_msi: raise
+        elif not with_msi: raise RuntimeError('Le luci MSI non sono ancora collegate a NEXAR: premi Sistema adesso')
+        if with_msi:
+            try: done.append(self.msi_set(color, brightness))
+            except RuntimeError as ex:
+                if device: raise
+                msi_err = str(ex)
+        if not done: raise RuntimeError(msi_err or 'Nessun dispositivo accetta un colore fisso')
         with self.lock:
             rgb = self.config.setdefault('rgb', {})
             if remember:   # i colori temporanei (Gaming) non diventano il colore normale
                 rgb['brightness'] = brightness
-                if device:   # salvato con la chiave stabile; quella vecchia "indice:nome" sparisce
+                if device == MSI_KEY: rgb.setdefault('device_colors', {})[MSI_KEY] = color
+                elif device:   # salvato con la chiave stabile; quella vecchia "indice:nome" sparisce
                     dc = rgb.setdefault('device_colors', {})
                     for d in [d for d in dc if d == hit[3] or (hit[2] and d.partition(':')[0].isdigit() and d.partition(':')[2] == hit[1])]:
                         dc.pop(d)
@@ -1555,6 +1609,7 @@ class Control:
                 self.state.update(rgb_off=False); self.state.pop('rgb_saved', None); self.state.pop('rgb_off_by', None)
                 json_save(STATE_FILE, self.state)
         msg = 'Colore ' + color.upper() + f' ({brightness}%) su ' + ', '.join(dict.fromkeys(done))
+        if msi_err: msg += ' · luci MSI: ' + msi_err
         if not quiet: self.log_event('RGB: ' + msg)
         return msg
 
@@ -1597,24 +1652,30 @@ class Control:
         if not self.rgb_lock.acquire(blocking=False): return ''  # un comando LED è in corso
         try:
             if now - self.rgb_user_at < RGB_QUIET_AFTER_USER: return ''
+            first = self.msi_log_pos is None
             reset = self.msi_light_reset()
-            if not (reset or resumed or now - self.rgb_kept_at >= every): return ''
+            if reset and now - getattr(self, 'msi_own_at', -1e9) < 15: reset = False   # l'ha scritto un comando di NEXAR
+            if not (reset or first or resumed or now - self.rgb_kept_at >= every): return ''
             self.rgb_kept_at = now
-            return self._rgb_keep(rgb, reset, resumed)
+            return self._rgb_keep(rgb, reset, resumed, first)
         finally: self.rgb_lock.release()
 
-    def _rgb_keep(self, rgb, reset, resumed):
+    def _rgb_keep(self, rgb, reset, resumed, startup=False):
         import openrgb_sdk
         why = 'MSI Center ha rimesso i suoi effetti' if reset else ('uscita dalla sospensione' if resumed else '')
+        msi = bool(reset or resumed or startup)   # le luci MSI si rimettono solo quando qualcuno le ha cambiate: ogni comando costa qualche secondo
         if self.state.get('rgb_off'):
             snaps, done = openrgb_sdk.all_off(self.state.get('rgb_saved'), exclude=self.rgb_excluded())
             with self.lock:
                 if self.state.get('rgb_off'): self.state['rgb_saved'] = snaps; json_save(STATE_FILE, self.state)
+            if msi and self.msi_apply(off=True): done.append(MSI_NAME)
             msg = 'LED rimessi spenti: ' + ', '.join(done)
         elif rgb.get('normal_color') and not self.state.get('rgb_gaming') and not self.state.get('rgb_saved'):
             bright = int(rgb.get('brightness', 100))
-            msg = self.rgb_color(rgb['normal_color'], bright, remember=False, quiet=True)
-            for dev, c in (rgb.get('device_colors') or {}).items():
+            colors = rgb.get('device_colors') or {}
+            msg = self.rgb_color(rgb['normal_color'], bright, remember=False, quiet=True, msi=msi and MSI_KEY not in colors)
+            for dev, c in colors.items():
+                if dev == MSI_KEY and not msi: continue
                 try: self.rgb_color(c, bright, dev, remember=False, quiet=True)
                 except Exception: pass
         else: return ''
@@ -2246,7 +2307,7 @@ class Control:
         for g, r in temps.all_rows(t.get('temps')):
             if (g['kind'] == 'cpu' and r['name'] == 'Processore') or (g['kind'] == 'gpu' and r['name'] == 'Chip' and g['name'] != 'Grafica integrata'):
                 continue
-            a = self.temp_alert.setdefault(r['id'], {'on': False, 'at': 0.0})
+            a = self.temp_alert.setdefault(r['id'], {'on': False, 'at': float('-inf')})   # anche nei primi 20 minuti dopo l'accensione
             label = r['name'] if g['kind'] == 'disk' else f"{g['name']} · {r['name']}"
             if r['value'] >= r['crit'] and not a['on']:
                 a['on'] = True
@@ -2384,7 +2445,7 @@ class Control:
             'rgb_palette':self.rgb_palette(),
             'boost':self.booster.info(),'fps':self.live_fps,
             'anim_style':self.config.get('ui',{}).get('anim_style','liquid'),
-            'rgb_excluded':list(self.rgb_excluded()),
+            'rgb_excluded':list(self.rgb_excluded()),'rgb_msi':self.msi_state(),
             'fans_eco':bool(self.state.get('fans_eco')),
             'fans_level':self.state.get('fans_level') or ('eco' if self.state.get('fans_eco') else 'normal'),
             'fans_levels_ready':self.fans_levels_ready() if self.config.get('fans',{}).get('enabled') else False,

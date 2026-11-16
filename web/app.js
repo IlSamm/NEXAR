@@ -63,7 +63,7 @@ const statusDemo={connected:true,fps:142,version:'1.0.0',update:new URLSearchPar
   {kind:'board',name:'Scheda madre',rows:[{id:'/lpc/nct6687dr/0/temperature/1',name:'Sistema',value:44,max:47,hot:60,crit:75},{id:'/lpc/nct6687dr/0/temperature/2',name:'VRM (alimentazione CPU)',value:52,max:61,hot:75,crit:95},{id:'/lpc/nct6687dr/0/temperature/3',name:'Chipset',value:58,max:62,hot:60,crit:75}]},
   {kind:'ram',name:'Memoria RAM',rows:[{id:'r0',name:'Banco 1',value:37,max:43,hot:50,crit:55},{id:'r1',name:'Banco 3',value:36,max:41,hot:50,crit:55}]},
   {kind:'disk',name:'Dischi',rows:[{id:'d0',name:'Crucial CT1000P310SSD8',tag:'NVMe',value:42,max:44,hot:60,crit:82},{id:'d1',name:'Sabrent',tag:'NVMe',value:31,max:45,hot:60,crit:74},{id:'d2',name:'Kingston SA2000M8250G',tag:'NVMe',value:35,max:35,hot:60,crit:74},{id:'d3',name:'WD WD10EARS-00Y5B1',tag:'HDD',value:34,max:34,hot:45,crit:55}]}],
- rgb_enabled:true,fans_enabled:true,auto_enabled:true,processes:{codex:true,claude:false},telegram_enabled:true,rgb_color:'#ff0000',rgb_brightness:100,rgb_excluded:['MSI MYSTIC LIGHT'],
+ rgb_enabled:true,fans_enabled:true,auto_enabled:true,processes:{codex:true,claude:false},telegram_enabled:true,rgb_color:'#ff0000',rgb_brightness:100,rgb_excluded:['MSI MYSTIC LIGHT'],rgb_msi:'setup',
  rgb_palette:['#ffffff','#ff0000','#ff8a00','#ffd400','#2cff5a','#00e5ff','#1f6bff','#8a3cff','#ff3cc8'],
  hardware:{cpu:'AMD Ryzen 7 9800X3D',gpu:'NVIDIA GeForce RTX 3060 Ti',motherboard:'MSI MAG B850 TOMAHAWK MAX WIFI',cooler:'ARCTIC Liquid Freezer II 240'},
  power:{items:[{key:'cpu',name:'Processore',watts:26.6,source:'misurato',detail:'24 W nel chip + regolatori'},{key:'gpu',name:'Scheda video',watts:24,source:'misurato',detail:'scheda intera'},
@@ -730,7 +730,7 @@ $('fm-each').addEventListener('click',()=>$('fan-list').scrollIntoView({behavior
 // Altre app di ventole e luci: stessa scheda in Luci e in Temperature.
 function renderConflicts(s){
  const a=s.apps||{apps:[],fix:[]},remote=!!s.remote,fix=(a.fix||[]).filter(k=>k!=='fans'||s.fans_enabled);
- const what={fans:'Fan Control lavorerà nascosto, senza aprirti la finestra a ogni cambio',openrgb:'OpenRGB in una copia sola: adesso ne partono due e i LED impazziscono',admin:'NEXAR Admin impara a chiudere le app avviate come amministratore'};;
+ const what={fans:'Fan Control lavorerà nascosto, senza aprirti la finestra a ogni cambio',openrgb:'OpenRGB in una copia sola: adesso ne partono due e i LED impazziscono',admin:'NEXAR comanda anche le luci MSI (ARCTIC) e chiude le app avviate come amministratore'};;
  ['lights','cooling'].forEach(page=>{
   const n=$('apps-fix-'+page);n.hidden=!fix.length;
   if(fix.length){n.querySelector('.af-text').textContent=fix.map(k=>what[k]).filter(Boolean).join(' · ')+(remote?'. Fallo dalla app sul PC: serve una conferma da amministratore.':'. Una sola conferma da amministratore.');
@@ -757,7 +757,7 @@ document.querySelectorAll('.ac-toggle').forEach(t=>t.addEventListener('click',()
  post('/api/conflicts',{action:'auto',enabled:on});
 }));
 document.querySelectorAll('.af-btn').forEach(b=>b.addEventListener('click',async()=>{
- if(!await ask('Sistemare ventole e luci?','Una conferma da amministratore: rifaccio le attività di Fan Control (ridotto a icona), tengo OpenRGB in una copia sola e aggiorno NEXAR Admin. Le tue scelte di ventole e luci restano.',{danger:false,ico:'fan',yes:'Sistema adesso'}))return;
+ if(!await ask('Sistemare ventole e luci?','Una conferma da amministratore: rifaccio le attività di Fan Control (ridotto a icona), tengo OpenRGB in una copia sola e aggiorno NEXAR Admin, che da qui comanda anche le luci MSI dell’ARCTIC. Le tue scelte di ventole e luci restano.',{danger:false,ico:'fan',yes:'Sistema adesso'}))return;
  if(demo){current.apps.fix=[];render(current);notify('✓ Sistemato');return;}
  post('/api/conflicts/fix',{});
 }));
@@ -943,8 +943,10 @@ let palette=[],paletteEditing=false,lxDevs=[],lxTarget=null,lxHue=0,lxSat=0,lxDe
 const bright=()=>Number.parseInt($('rgb-bright').value,10);
 const LX_TYPE={0:'mb',1:'ram',2:'gpu',3:'cooler',4:'strip',11:'strip',15:'strip',5:'kbd',18:'kbd',6:'mouse',7:'mouse'};
 // Dove va un dispositivo nel disegno: l'ARCTIC su un suo controller (OpenRGB lo chiama "Arctic RGB Controller") è il raffreddamento
-const lxZone=d=>/arctic|liquid|aio|kraken|pump|hydro|capellix/i.test(d.name)?'cooler':/\bfans?\b|ventol|commander|lighting node|\buni\b/i.test(d.name)&&[3,4].includes(d.type)?'fans':LX_TYPE[d.type];
+const lxZone=d=>d.key==='msi'?'cooler':/arctic|liquid|aio|kraken|pump|hydro|capellix/i.test(d.name)?'cooler':/\bfans?\b|ventol|commander|lighting node|\buni\b/i.test(d.name)&&[3,4].includes(d.type)?'fans':LX_TYPE[d.type];
 const LX_KIND={mb:'Scheda madre',ram:'RAM',gpu:'Scheda video',cooler:'Raffreddamento',fans:'Ventole del case',strip:'Strisce LED',kbd:'Tastiera',mouse:'Mouse'};
+// Le luci della scheda MSI (ARCTIC compreso) sono un solo comando: nel disegno accendono raffreddamento e scheda madre
+const lxIn=(d,z)=>d.key==='msi'?(z==='cooler'||z==='mb'):lxZone(d)===z;
 const lxMsi=()=>(current?.rgb_excluded||[]).some(n=>/mystic|msi/i.test(n));
 function hexHsv(hex){const n=parseInt(hex.slice(1),16),r=(n>>16&255)/255,g=(n>>8&255)/255,b=(n&255)/255,mx=Math.max(r,g,b),mn=Math.min(r,g,b),d=mx-mn;
  let h=0;if(d){h=mx===r?((g-b)/d)%6:mx===g?(b-r)/d+2:(r-g)/d+4;h=(h*60+360)%360;}return [h,mx?d/mx*100:0,mx*100];}
@@ -970,13 +972,16 @@ function lxPaint(){
  const s=current||{},off=!!s.rgb_off&&!rgbTouched,st=$('rgb-studio');st.classList.toggle('off',off||!s.rgb_enabled);
  const msiOn=lxMsi();let msiAny=false;
  document.querySelectorAll('#lx-pc .lx-z').forEach(g=>{
-  const z=g.dataset.z,devs=lxDevs.filter(d=>lxZone(d)===z),msi=!devs.length&&msiOn&&(z==='mb'||z==='cooler');msiAny||=msi;
+  const z=g.dataset.z,devs=lxDevs.filter(d=>lxIn(d,z)),msi=!devs.length&&msiOn&&(z==='mb'||z==='cooler');msiAny||=msi;
   const d=devs.find(x=>x.key===lxTarget)||devs[0],col=d?(lxLive(d)?lxColor():lxDevColor(d)):'';
   g.classList.toggle('on',!!d&&!off);g.classList.toggle('empty',!d&&!msi);g.classList.toggle('msi',msi);g.classList.toggle('sel',!!lxTarget&&devs.some(x=>x.key===lxTarget));
   if(col)g.style.setProperty('--zc',col);else g.style.removeProperty('--zc');
   g.setAttribute('role','button');g.setAttribute('aria-label',g.querySelector('title').textContent=msi?`${LX_KIND[z]}: LED comandati da MSI Center (qui c'è l'ARCTIC)`:d?`${LX_KIND[z]}: ${devs.map(x=>x.name).join(', ')}`:`${LX_KIND[z]}: nessun LED collegato`);
  });
  $('lx-msi').hidden=!msiAny;
+ const setup=s.rgb_msi==='setup';$('lx-msi').classList.toggle('setup',setup);
+ $('lx-msi-text').textContent=setup?"NEXAR li può comandare con il programma di MSI: serve una conferma da amministratore sul PC. In Mystic Light la scheda madre deve restare senza sincronizzazione.":"Sono attaccati alla scheda MSI: quei LED li comanda solo MSI Center (Mystic Light).";
+ $('lx-msi-open').textContent=setup?'Collega a NEXAR':'Apri Mystic Light';
  const t=lxDevs.find(d=>d.key===lxTarget);$('lx-target').textContent=t?t.name:'Tutti i LED';$('lx-all').hidden=!t;
  document.querySelectorAll('#lx-chips .lx-chip').forEach(ch=>{const d=lxDevs.find(x=>x.key===ch.dataset.key);
   ch.classList.toggle('sel',(ch.dataset.key||null)===lxTarget);ch.style.setProperty('--cc',off?'#334155':d?(lxLive(d)?lxColor():lxDevColor(d)):(rgbTouched&&!lxTarget?lxColor():(s.rgb_color||'#ffffff')));});
@@ -1053,12 +1058,19 @@ function lxMsiPing(){const b=$('lx-msi');b.classList.remove('ping');void b.offse
 document.querySelectorAll('#lx-pc .lx-z').forEach(g=>{
  const go=()=>{
   if(g.classList.contains('msi')){lxMsiPing();return;}
-  const devs=lxDevs.filter(d=>lxZone(d)===g.dataset.z);if(!devs.length)return;
+  const devs=lxDevs.filter(d=>lxIn(d,g.dataset.z));if(!devs.length)return;
   const i=devs.findIndex(d=>d.key===lxTarget);lxSelect(devs.length===1&&i===0?null:devs[(i+1)%devs.length].key);
  };
  g.addEventListener('click',go);g.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();go();}});
 });
 $('lx-msi-open').addEventListener('click',async()=>{
+ if($('lx-msi').classList.contains('setup')){
+  if(!await ask('Collegare le luci MSI?','Una conferma da amministratore sul PC: NEXAR scarica il programma ufficiale di MSI per le luci e da lì colora, accende e spegne anche l\'ARCTIC.',{danger:false,ico:'bulb',yes:'Collega'}))return;
+  if(demo){current.rgb_msi='ready';lxDemoDevs.push({key:'msi',name:'ARCTIC e scheda madre (MSI)',type:3,leds:0,color:''});lxChips();notify('✓ Luci MSI collegate');return;}
+  const fix=(current?.apps?.fix||[]).length;
+  try{const r=fix?await req('/api/conflicts/fix','POST',{}):await req('/api/admin/setup','POST',{enabled:true});notify('✓ '+(r.message||'Fatto'));setTimeout(loadRgbDevices,4000);}catch(ex){notify('⚠ '+ex.message,true);}
+  return;
+ }
  const c=lxColor().toUpperCase(),tip=`In Mystic Light scegli ${c} per vederli uguali agli altri.`;
  try{await navigator.clipboard?.writeText(c);}catch(_){}
  if(demo){notify('Anteprima: sul PC si aprirebbe MSI Center. '+tip);return;}

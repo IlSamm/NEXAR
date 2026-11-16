@@ -16,7 +16,7 @@ import time
 from pathlib import Path
 
 TASK = 'NEXAR Admin'
-LONG_ACTIONS = {'install': 900, 'fans': 180}
+LONG_ACTIONS = {'install': 900, 'fans': 180, 'msi_light': 45}
 TIMEOUT = 120
 
 
@@ -104,6 +104,20 @@ try {
     'fans' {
       @@FANS@@
     }
+    'msi_light' {
+      # Luci della scheda MSI (dove c'è l'ARCTIC) con il programma ufficiale di MSI, solo spente o un colore fisso
+      $style = [string]$a.style
+      if (@('Off', 'Steady') -cnotcontains $style) { throw 'Effetto non previsto' }
+      $c = @([int]$a.r, [int]$a.g, [int]$a.b)
+      foreach ($v in $c) { if ($v -lt 0 -or $v -gt 255) { throw 'Colore non valido' } }
+      $m = Join-Path $PSScriptRoot 'msi'
+      if (-not (Test-Path -LiteralPath (Join-Path $m 'MysticLight_SDK_x64.dll') -PathType Leaf)) { throw 'Manca il programma MSI per le luci: premi Sistema adesso' }
+      if (-not ('NexarMsi' -as [type])) { Add-Type -TypeDefinition @@MSICS@@ }
+      $code = [NexarMsi]::Run($m, $style, [uint32]$c[0], [uint32]$c[1], [uint32]$c[2], 25000)
+      if ($code -eq -998) { throw 'Programma MSI per le luci non caricato: premi Sistema adesso' }
+      if ($code -eq -999) { throw 'MSI non risponde: in Mystic Light togli la sincronizzazione della scheda madre e premi Applica' }
+      if ($code -ne 0) { throw ('MSI ha risposto ' + $code) }
+    }
     'close_apps' {
       foreach ($k in @($a.keys)) {
         if ([string]$k -ceq 'openrgb_extra') {
@@ -126,19 +140,58 @@ try {
 '''
 
 
+# Chiamate al programma ufficiale di MSI (Mystic Light SDK) in un thread a parte: se MSI non risponde il runner
+# non resta appeso (succede con scheda madre e RAM sincronizzate in Mystic Light).
+MSI_CS = r"""using System; using System.Runtime.InteropServices; using System.Threading;
+public static class NexarMsi {
+  [DllImport("kernel32", CharSet = CharSet.Unicode, SetLastError = true)] static extern bool SetDllDirectory(string p);
+  [DllImport("MysticLight_SDK_x64.dll")] static extern int MLAPI_Initialize();
+  [DllImport("MysticLight_SDK_x64.dll")] static extern int MLAPI_SetLedStyle([MarshalAs(UnmanagedType.BStr)] string type, uint index, [MarshalAs(UnmanagedType.BStr)] string style);
+  [DllImport("MysticLight_SDK_x64.dll")] static extern int MLAPI_SetLedColor([MarshalAs(UnmanagedType.BStr)] string type, uint index, uint r, uint g, uint b);
+  public static int Run(string dir, string style, uint r, uint g, uint b, int ms) {
+    int code = -999;
+    Thread t = new Thread(() => {
+      try {
+        SetDllDirectory(dir);
+        int c = MLAPI_Initialize();
+        if (c == 0) c = MLAPI_SetLedStyle("MSI_MB", 0, style);
+        if (c == 0 && style == "Steady") c = MLAPI_SetLedColor("MSI_MB", 0, r, g, b);
+        code = c;
+      } catch (Exception) { code = -998; }
+    });
+    t.IsBackground = true; t.Start();
+    return t.Join(ms) ? code : -999;
+  }
+}"""
+
+MSI_SDK_URL = 'https://download.msi.com/uti_exe/Mystic_light_SDK.zip'
+
+
+def msi_sdk_script() -> str:
+    """Nella conferma da amministratore: scarica il programma ufficiale di MSI per le luci e lo tiene nella cartella
+    protetta di NEXAR Admin, solo se è firmato da MSI. Senza rete non blocca il resto."""
+    return ("try{[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12;"
+            "$m=Join-Path $d 'msi';New-Item -ItemType Directory -Force -Path $m | Out-Null;$z=Join-Path $m 'sdk.zip';$x=Join-Path $m 'x';"
+            f"Invoke-WebRequest -Uri {q(MSI_SDK_URL)} -OutFile $z -UseBasicParsing;Expand-Archive -LiteralPath $z -DestinationPath $x -Force;"
+            "$f=Get-ChildItem -LiteralPath $x -Recurse -Filter 'MysticLight_SDK_x64.dll' | Select-Object -First 1;"
+            "$s=Get-AuthenticodeSignature -LiteralPath $f.FullName;"
+            "if($s.Status -eq 'Valid' -and $s.SignerCertificate.Subject -like '*MICRO-STAR INTERNATIONAL*'){Copy-Item -LiteralPath $f.FullName -Destination (Join-Path $m 'MysticLight_SDK_x64.dll') -Force};"
+            "Remove-Item -LiteralPath $z,$x -Recurse -Force -ErrorAction SilentlyContinue}catch{};")
+
+
 def runner_text(request: Path, result: Path, exe: str, clean: dict, packages: dict, fans_script: str = '', trim: str = '',
                 autostart: str = '', approved: str = '', rule: str = '', port: int = 0, autostart_task: str = '', apps: dict | None = None) -> str:
     table = lambda d: '; '.join(f'{q(k)} = {q(v)}' for k, v in d.items())
     fans = fans_script or "throw 'Fan Control non era presente: riattiva Amministratore da remoto sul PC'"
     values = {'@@REQ@@': q(request), '@@RES@@': q(result), '@@EXE@@': q(exe), '@@CLEAN@@': table(clean), '@@PKG@@': table(packages),
               '@@TRIM@@': trim, '@@APPROVED@@': q('HKLM:\\' + approved), '@@RULE@@': q(rule), '@@PORT@@': str(port),
-              '@@AUTOSTART@@': autostart, '@@AUTOTASK@@': q(autostart_task), '@@FANS@@': fans, '@@APPS@@': table(apps or {})}
+              '@@AUTOSTART@@': autostart, '@@AUTOTASK@@': q(autostart_task), '@@FANS@@': fans, '@@APPS@@': table(apps or {}), '@@MSICS@@': q(MSI_CS)}
     text = RUNNER
     for key, value in values.items(): text = text.replace(key, value)
     return text
 
 
-def setup_script(folder: Path, runner: str, user: str) -> str:
+def setup_script(folder: Path, runner: str, user: str, extra: str = '') -> str:
     """Una sola conferma UAC: cartella protetta, runner e attività avviabile senza altre richieste."""
     file = folder / 'runner.ps1'
     args = f'--headless powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{file}"'
@@ -150,7 +203,7 @@ def setup_script(folder: Path, runner: str, user: str) -> str:
             f"$a=New-ScheduledTaskAction -Execute 'conhost.exe' -Argument {q(args)} -WorkingDirectory $d;"
             f"$p=New-ScheduledTaskPrincipal -UserId {q(user)} -RunLevel Highest -LogonType Interactive;"
             "$s=New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -MultipleInstances Queue -ExecutionTimeLimit (New-TimeSpan -Hours 1);"
-            f"Register-ScheduledTask -TaskName {q(TASK)} -Action $a -Principal $p -Settings $s -Force | Out-Null;")
+            f"Register-ScheduledTask -TaskName {q(TASK)} -Action $a -Principal $p -Settings $s -Force | Out-Null;" + extra)
 
 
 def remove_script(folder: Path) -> str:
@@ -181,12 +234,15 @@ class AdminHelper:
             exists = discovery.task_exists
         return (self.folder / 'runner.ps1').is_file() and bool(exists(TASK))
 
+    def has(self, name: str) -> bool:
+        return (self.folder / name).is_file()
+
     def info(self) -> dict:
         return {'active': self.active()}
 
     def current(self) -> bool:
         """Il runner sa fare le azioni di questa versione (creato da una NEXAR vecchia: va rifatto con una conferma)."""
-        try: return "'close_apps'" in (self.folder / 'runner.ps1').read_text(encoding='utf-8-sig')
+        try: return "'msi_light'" in (self.folder / 'runner.ps1').read_text(encoding='utf-8-sig')
         except OSError: return False
 
     def _read_result(self):
