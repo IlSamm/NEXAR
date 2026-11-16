@@ -829,6 +829,38 @@ class Control:
         self.log_event('🏠 Codice per l\'app su Umbrel generato')
         return 'NEXAR1.' + base64.urlsafe_b64encode(json.dumps(data, separators=(',', ':')).encode()).decode().rstrip('=')
 
+    def relay_info(self):
+        """Bot Telegram per l'app su Umbrel (solo se è stata collegata): se lo abbini o lo cambi dopo, lì si aggiorna da solo."""
+        if not any(d.get('tag') == 'umbrel' for d in self.config.get('devices') or []): return None
+        tg = self.config.get('telegram', {})
+        return {'bot_token': str(tg.get('token') or ''), 'user_id': int(tg.get('allowed_user_id') or 0)}
+
+    def relay_test(self, test=None):
+        """Prova dell'accensione da spento: l'app NEXAR su Umbrel deve rispondere e vedere il PC."""
+        import beacon as beacon_mod
+        b = getattr(self, 'beacon', None)
+        if not b: raise RuntimeError('Prova non disponibile')
+        got = (test or beacon_mod.relay_test)(b.secret())
+        net = self.state.get('inventory', {}).get('net') or {}
+        tg = self.config.get('telegram', {})
+        if not got:
+            ok, msg = False, ("Umbrel non risponde: in casa serve un apparecchio sempre acceso con l'app NEXAR (Umbrel o il relay). "
+                              'Installala dallo store, poi premi Collega e incolla il codice.')
+        elif not got.get('on'):
+            ok, msg = False, (f'Umbrel risponde ma non vede il PC ({net.get("ip") or "indirizzo sconosciuto"}): devono stare nella stessa rete di casa. '
+                              'Premi Collega e incolla di nuovo il codice.')
+        elif tg.get('token') and tg.get('allowed_user_id') and got.get('tg') is False:
+            ok, msg = False, 'Umbrel vede il PC ma non ha il bot Telegram: premi Collega e incolla di nuovo il codice su Umbrel.'
+        else:
+            ok = True
+            msg = 'Umbrel risponde e vede il PC: da spento lo accende' + (' anche con /accendi su Telegram.' if tg.get('token') and got.get('tg') is not False else '.')
+        res = {'ok': ok, 'message': msg, 'at': datetime.now().isoformat(timespec='minutes')}
+        with self.lock:
+            self.state['relay_test'] = res
+            json_save(STATE_FILE, self.state)
+        self.log_event('⏻ Prova accensione: ' + msg)
+        return res
+
     def wake_link(self):
         """Link di accensione per il telefono: aprirlo pubblica un messaggio su ntfy che il relay su Umbrel ascolta."""
         import beacon as beacon_mod
@@ -2293,7 +2325,9 @@ class Control:
         boot = psutil.boot_time()
         return {'uptime_s': round(time.time() - boot), 'boot': datetime.fromtimestamp(boot).isoformat(timespec='minutes'),
                 'pending': plan, 'hibernate': pc_power.hibernate_available(),
-                'net': self.state.get('inventory', {}).get('net')}
+                'net': self.state.get('inventory', {}).get('net'), 'relay': self.state.get('relay_test'),
+                'board': (self.state.get('inventory', {}).get('hardware') or {}).get('motherboard', ''),
+                'telegram': bool(self.config.get('telegram', {}).get('token'))}
 
     def wol_setup(self, admin=None):
         import discovery

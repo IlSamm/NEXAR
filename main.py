@@ -62,7 +62,8 @@ async def lifespan(app: FastAPI):
                                              'mac': (controller.state.get('inventory', {}).get('net') or {}).get('mac', ''),
                                              'bc': (controller.state.get('inventory', {}).get('net') or {}).get('broadcast', ''),
                                              # l'app su Umbrel segue così i cambi di indirizzo del PC
-                                             'ip': (controller.state.get('inventory', {}).get('net') or {}).get('ip', '')})
+                                             'ip': (controller.state.get('inventory', {}).get('net') or {}).get('ip', '')},
+                               relay=controller.relay_info)
     controller.beacon = beacon
     def on_url(url):
         bot.set_webapp(url); beacon.kick.set()
@@ -470,6 +471,12 @@ def power_relay():
     # Contiene il token del bot: da lontano serve il PIN.
     try: return {'compose':controller.relay_compose(bridge=bool((controller.config.get('gateway') or {}).get('enabled')))}
     except (ValueError,RuntimeError) as ex: raise HTTPException(400,str(ex))
+
+@app.post('/api/power/relay-test',dependencies=[Depends(authorized)])
+def power_relay_test():
+    # Chiede all'app NEXAR su Umbrel se c'è e se vede il PC (col PC acceso non lo sveglia)
+    try: return {'ok':True,**controller.relay_test()}
+    except RuntimeError as ex: raise HTTPException(409,str(ex))
 
 @app.get('/api/power/wake-link',dependencies=[Depends(authorized)])
 def power_wake_link():

@@ -67,9 +67,34 @@ def _post(topic_name: str, message: str):
     with urllib.request.urlopen(req, timeout=10) as r: r.read()
 
 
+def _get(url: str) -> str:
+    req = urllib.request.Request(url, headers={'User-Agent': 'NEXAR'})
+    with urllib.request.urlopen(req, timeout=15) as r: return r.read().decode('utf-8', 'replace')
+
+
+def relay_test(secret: str, post=_post, get=_get, clock=time.time, sleep=time.sleep, wait=25) -> dict | None:
+    """Chiede all'app NEXAR su Umbrel (o al relay) di rispondere, sullo stesso canale dell'app per Mac.
+    Col PC acceso non lo sveglia: risponde solo dicendo se lo vede. None = nessun relay in casa ha risposto."""
+    t = round(clock(), 3)
+    w, a = 'wake:' + secret, 'ack:' + secret
+    post(topic(w), seal(w, {'wake': t, 'test': True}))
+    end = clock() + wait
+    while clock() < end:
+        sleep(3)
+        try: lines = get(f'{NTFY}/{topic(a)}/json?poll=1&since={int(t) - 5}').splitlines()
+        except OSError: continue
+        for line in lines:
+            try: got = unseal(a, json.loads(line).get('message', ''))
+            except (ValueError, AttributeError): continue
+            if isinstance(got, dict) and isinstance(got.get('ack'), (int, float)) and abs(got['ack'] - t) < 0.002: return got
+    return None
+
+
 class Beacon:
-    def __init__(self, config, save, get_url, info=lambda: {}, post=_post, clock=time.time):
+    def __init__(self, config, save, get_url, info=lambda: {}, post=_post, clock=time.time, relay=lambda: None):
         self.config, self.save, self.get_url, self.info, self.post, self.clock = config, save, get_url, info, post, clock
+        self.relay = relay         # bot Telegram per l'app su Umbrel: se cambia qui, lì si aggiorna da solo
+        self.relay_sent = (None, 0.0)
         self.kick = threading.Event()
         self.pending = None        # (codice pulito, scadenza)
         self.pending_sent = None   # (codice, indirizzo) già pubblicati
@@ -95,7 +120,18 @@ class Beacon:
         self.pending = (clean_code(code), self.clock() + ttl)
         self.kick.set()
 
+    def relay_tick(self):
+        data = self.relay()
+        if data is None: return
+        key = json.dumps(data, sort_keys=True)
+        if key == self.relay_sent[0] and self.clock() - self.relay_sent[1] < REPUBLISH: return
+        s = 'relay:' + self.secret()
+        self.post(topic(s), seal(s, {**data, 't': int(self.clock())}))
+        self.relay_sent = (key, self.clock())
+
     def tick(self):
+        try: self.relay_tick()
+        except Exception as ex: logging.warning("Bot per l'app su Umbrel non pubblicato: %s", ex)
         url = self.get_url()
         if not url: return
         payload = {'url': url, 't': int(self.clock()), **self.info()}

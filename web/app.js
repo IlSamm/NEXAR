@@ -346,7 +346,11 @@ function render(s){
  document.querySelectorAll('.vm-opt').forEach(b=>b.classList.toggle('selected',b.classList.contains(s.mode)));
  $('mode-desc').textContent=eco?`Turbo spento, CPU al ${s.eco_cpu_max_percent??'—'}%, dischi e USB a risparmio, monitor spento dopo ${Math.round((s.monitor_timeout_seconds||60)/60)} min`
   :s.mode==='gaming'?'Turbo al massimo, CPU sempre pronta, monitor mai spento':'Piano energetico originale di Windows';
- const tt=$('tl-temp');if(tt){countUp(tt.querySelector('b'),s.cpu_temp,v=>typeof v==='number'?Math.round(v)+'°':'—');tt.dataset.lv=s.cpu_temp>=85?'crit':s.cpu_temp>=75?'hot':'';}
+ const tt=$('tl-temp');if(tt){
+  const w=tpWorst(s.temps),wl=w?tpRank(tpLevel(w)):0,cl=s.cpu_temp>=85?3:s.cpu_temp>=75?2:0,alarm=w&&wl>=2&&wl>cl;
+  countUp(tt.querySelector('b'),alarm?w.value:s.cpu_temp,v=>typeof v==='number'?Math.round(v)+'°':'—');
+  const lv=Math.max(cl,alarm?wl:0);tt.dataset.lv=lv>=3?'crit':lv>=2?'hot':'';
+  tt.title=alarm?`${w.dev} · ${w.name}: ${Math.round(w.value)} °C (limite ${Math.round(w.crit)} °C)`:'Temperatura del processore';}
  const mp=$('mode-pill');mp.className='mode-pill '+(s.mode||'normal');mp.querySelector('span').textContent={eco:'AI ECO',gaming:'Gaming'}[s.mode]||'Normale';
  // Componenti
  const p=s.power||{};const w=k=>(p.items||[]).find(i=>i.key===k)?.watts;
@@ -873,6 +877,18 @@ function renderPc(pc){
  $('wol-win-text').textContent=!n?'—':winOk?'Attivo, anche da spento':n.wol_magic!==false&&n.wol_shutdown!==false
   ?'Da sistemare: il risparmio energetico Ethernet addormenta la rete a PC spento (una conferma)':'Da attivare (una conferma)';
  $('wol-enable').hidden=!n||winOk||!!current?.remote;
+ // BIOS: i nomi delle voci cambiano da marca a marca
+ const brand=(pc.board||'').split(' ')[0].toLowerCase();
+ const BIOS={msi:"Canc all'avvio → Settings → Advanced → Power Management: <em>ErP Ready</em> = Disabled. Poi in Wake Up Event Setup: <em>Resume By PCI-E Device</em> = Enabled.",
+  asus:"Canc o F2 all'avvio → F7 (Advanced Mode) → Advanced → APM Configuration: <em>ErP Ready</em> = Disabled e <em>Power On By PCI-E</em> = Enabled.",
+  gigabyte:"Canc all'avvio → Settings → Platform Power: <em>ErP</em> = Disabled e <em>Wake on LAN</em> = Enabled (su alcune: <em>Resume by PCIe Device</em>).",
+  asrock:"F2 o Canc all'avvio → Advanced → ACPI Configuration: <em>PCIE Devices Power On</em> = Enabled e <em>Deep Sleep</em> = Disabled.",
+  biostar:"Canc all'avvio → Advanced → ACPI: <em>Wake Up by PCIe</em> (o <em>Wake on LAN</em>) = Enabled e <em>ErP</em> = Disabled."};
+ $('wol-bios-how').innerHTML=(BIOS[brand]||"Nel BIOS cerca <em>ErP</em>, <em>EuP</em> o <em>Deep Sleep</em> e mettili su Disabled; poi <em>Wake on LAN</em> o <em>Power On By PCI-E</em> su Enabled.");
+ if(pc.board){const sm=el('small','',` (${pc.board})`);$('wol-bios-how').append(sm);}
+ // Umbrel: l'ultima prova dice se c'è, se vede il PC e se ha il bot Telegram
+ const rl=pc.relay;setStep('umbrel-step',rl?rl.ok:null);
+ $('umbrel-text').textContent=rl?rl.message:(pc.telegram?"Resta acceso in casa e accende il PC quando lo chiedi, anche con /accendi su Telegram. Premi Prova per controllare.":'Resta acceso in casa e sveglia il PC quando lo chiedi. Premi Prova per controllare.');
  $('wol-phone').textContent=n?`Senza Umbrel: un'app Wake-on-LAN sul telefono collegato al Wi-Fi di casa, con MAC ${n.mac} e indirizzo ${n.broadcast}.`:'';
  const ready=!!n&&winOk;
  $('wol-tag').textContent=ready?'PRONTA':'DA COMPLETARE';$('wol-tag').className='tag '+(ready?'on':'warn');
@@ -1182,6 +1198,13 @@ document.querySelectorAll('#sched-kind button').forEach(b=>b.addEventListener('c
 document.querySelectorAll('#sched-chips button').forEach(b=>b.addEventListener('click',()=>powerAction(schedKind,Number(b.dataset.minutes))));
 $('sched-ai').addEventListener('click',()=>powerAction(schedKind,0,true));
 $('wol-enable').addEventListener('click',()=>post('/api/power/wol',{}));
+$('umbrel-test').addEventListener('click',async()=>{
+ const b=$('umbrel-test');if(demo){notify('Anteprima: la prova chiede a Umbrel se vede il PC.');return;}
+ b.disabled=true;b.textContent='Provo…';$('umbrel-text').textContent='Chiedo all\'app NEXAR su Umbrel se c\'è e se vede il PC (fino a 25 secondi)…';
+ try{const r=await req('/api/power/relay-test','POST',{});notify((r.ok?'✓ ':'⚠ ')+r.message,!r.ok);await refresh();}
+ catch(ex){notify('⚠ '+ex.message,true);}
+ finally{b.disabled=false;b.textContent='Prova';}
+});
 // app NEXAR su Umbrel: un codice da incollare una volta sola
 $('umbrel-link').addEventListener('click',async()=>{
  const b=$('umbrel-link');b.disabled=true;
@@ -1768,6 +1791,10 @@ document.addEventListener('pointermove',e=>{
 let lastMode=null,fxQuiet=0;
 const TP_ICON={cpu:'cpu',gpu:'gpu',board:'grid',ram:'ram',disk:'disk'};
 function tpLevel(r){return r.value>=r.crit?'crit':r.value>=r.hot?'hot':r.value>=r.hot-15?'warm':'cool';}
+// Il sensore messo peggio rispetto al SUO limite (un HDD a 48° è più grave di un NVMe a 55°)
+function tpRank(lv){return {cool:0,warm:1,hot:2,crit:3}[lv]||0;}
+function tpWorse(a,b){if(!a)return b;const d=tpRank(tpLevel(b))-tpRank(tpLevel(a));return d>0||(d===0&&b.value/b.crit>a.value/a.crit)?b:a;}
+function tpWorst(groups){let w=null;(groups||[]).forEach(g=>(g.rows||[]).forEach(r=>{w=tpWorse(w,{...r,dev:g.name,kind:g.kind});}));return w;}
 function tpPct(v,r){const lo=20,hi=Math.max(r.crit+5,lo+10);return Math.max(2,Math.min(100,(v-lo)/(hi-lo)*100));}
 function renderTemps(groups){
  // Tutte le temperature: una scheda per componente, barre che si riempiono dal freddo al caldo.
@@ -1779,15 +1806,19 @@ function renderTemps(groups){
   const key=g.kind+'|'+g.name;seen.add(key);
   let c=box._map.get(key);
   if(!c){c=el('div','tp-g k-'+g.kind);c.style.setProperty('--i',i);
-   c.innerHTML=`<div class="tp-head"><span class="tp-ico"><svg class="i"><use href="#i-${TP_ICON[g.kind]||'temp'}"/></svg></span><div><small></small><b></b></div><strong class="tp-big"></strong></div><div class="tp-rows"></div>`;
+   c.innerHTML=`<div class="tp-head"><span class="tp-ico"><svg class="i"><use href="#i-${TP_ICON[g.kind]||'temp'}"/></svg></span><div><small></small><b></b></div><strong class="tp-big"></strong></div><p class="tp-why" hidden></p><div class="tp-rows"></div>`;
    c._key=key;c.tabIndex=0;c.setAttribute('role','button');c.addEventListener('click',()=>tpPick(key));c.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();tpPick(key);}});
    c.querySelector('small').textContent={cpu:'Processore',gpu:'Scheda video',board:'Scheda madre',ram:'Memoria',disk:'Archiviazione'}[g.kind]||'';
    c.querySelector('b').textContent=g.kind==='board'&&current?.hardware?.motherboard?current.hardware.motherboard:g.name;c._rows=new Map();box._map.set(key,c);box.append(c);}
-  const top=g.rows.reduce((a,r)=>!a||r.value>a.value?r:a,null);
-  const big=c.querySelector('.tp-big');countUp(big,g.kind==='cpu'||g.kind==='gpu'?g.rows[0]?.value:top?.value,v=>typeof v==='number'?Math.round(v)+'°':'—');
-  c.dataset.lv=top?tpLevel(top):'cool';
+  // Il numero grande è il sensore principale; se un altro è oltre il suo limite, comanda lui (colore, numero e una riga che lo dice)
+  const worst=g.rows.reduce(tpWorse,null),main=g.kind==='cpu'||g.kind==='gpu'?g.rows[0]:worst;
+  const over=worst&&worst!==main&&tpRank(tpLevel(worst))>=2&&tpRank(tpLevel(worst))>tpRank(tpLevel(main));
+  const shown=over?worst:main,big=c.querySelector('.tp-big');countUp(big,shown?.value,v=>typeof v==='number'?Math.round(v)+'°':'—');
+  c.dataset.lv=worst?tpLevel(worst):'cool';
+  const why=c.querySelector('.tp-why');why.hidden=!over;
+  if(over)why.textContent=`${worst.name} ${Math.round(worst.value)} °C: ${tpLevel(worst)==='crit'?'oltre il limite':'si sta scaldando'} (limite ${Math.round(worst.crit)} °C)`;
   const rows=c.querySelector('.tp-rows'),rs=new Set();
-  g.rows.forEach(r=>{rs.add(r.id);if(!hottest||r.value/r.crit>hottest.value/hottest.crit)hottest={...r,dev:g.name};
+  g.rows.forEach(r=>{rs.add(r.id);hottest=tpWorse(hottest,{...r,dev:g.name});
    let row=c._rows.get(r.id);
    if(!row){row=el('div','tp-row');row.innerHTML=`<span class="tp-n"><span></span></span><span class="tp-bar"><i class="tp-fill"></i><i class="tp-max"></i></span><b class="tp-v"></b>`;
     row.querySelector('.tp-n span').textContent=r.name;if(r.tag){row.querySelector('.tp-n').append(el('em','',r.tag));}

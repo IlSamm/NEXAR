@@ -187,20 +187,25 @@ class Waker:
                             continue
                         p = unseal(sec, ev.get('message', ''))
                         if not fresh(p, last, now): continue
-                        last = p['wake']; on = pc_on(cur)
-                        if not on: send_wake(cur)
-                        ack = urllib.request.Request(NTFY + '/' + topic('ack:' + ws), data=seal('ack:' + ws, {'ack': last, 'on': on}).encode(), headers={**UA, 'Firebase': 'no'})
+                        last = p['wake']; on = pc_on(cur); test = p.get('test') is True
+                        if not on and not test: send_wake(cur)
+                        tg = bool(cur.get('bot_token') and cur.get('user_id'))
+                        ack = urllib.request.Request(NTFY + '/' + topic('ack:' + ws), data=seal('ack:' + ws, {'ack': last, 'on': on, 'tg': tg}).encode(), headers={**UA, 'Firebase': 'no'})
                         urllib.request.urlopen(ack, timeout=10).read()
-                        self.tell(cur, "⏻ Accensione chiesta dall'app NEXAR per Mac." if not on else "💻 L'app per Mac ha chiesto l'accensione, ma il PC è già acceso.")
+                        if test:
+                            self.tell(cur, '✅ Prova dal PC riuscita: l\'app NEXAR su Umbrel vede il PC. Quando è spento, scrivi /accendi qui.' if on else
+                                      '⚠️ Prova dal PC: l\'app NEXAR su Umbrel non vede il PC (' + cur['pc_ip'] + '). Devono stare nella stessa rete di casa.')
+                        else:
+                            self.tell(cur, "⏻ Accensione chiesta dall'app NEXAR per Mac." if not on else "💻 L'app per Mac ha chiesto l'accensione, ma il PC è già acceso.")
             except Exception:
                 time.sleep(10)
 
     def follow(self):
-        """Se il router dà un altro indirizzo al PC, NEXAR lo pubblica cifrato e qui si aggiorna da solo."""
+        """Se il router dà un altro indirizzo al PC, o abbini un altro bot Telegram, NEXAR lo pubblica cifrato e qui si aggiorna da solo."""
+        time.sleep(20)
         while True:
-            time.sleep(300)
             cfg = load()
-            if not cfg: continue
+            if not cfg: time.sleep(30); continue
             try:
                 s = cfg['wake_secret']
                 req = urllib.request.Request(NTFY + '/' + topic(s) + '/json?poll=1&since=12h', headers=UA)
@@ -209,21 +214,36 @@ class Waker:
                 for line in lines:
                     got = unseal(s, json.loads(line).get('message', ''))
                     if got: info = got
-                if not info: continue
+                info = info or {}
                 ch = {}
                 if valid_ip(info.get('ip')) and info['ip'] != cfg['pc_ip']: ch['pc_ip'] = info['ip']
                 if MAC_RE.match(str(info.get('mac', ''))) and info['mac'] != cfg['pc_mac']: ch['pc_mac'] = info['mac']
                 if ch and load() == cfg: save({**cfg, **ch}); print('Indirizzi del PC aggiornati', flush=True)
             except Exception:
                 pass
+            try:
+                cfg = load()
+                r = 'relay:' + cfg['wake_secret']
+                req = urllib.request.Request(NTFY + '/' + topic(r) + '/json?poll=1&since=12h', headers=UA)
+                with urllib.request.urlopen(req, timeout=20) as f: lines = f.read().decode().splitlines()
+                bot = None
+                for line in lines:
+                    got = unseal(r, json.loads(line).get('message', ''))
+                    if isinstance(got, dict) and isinstance(got.get('bot_token'), str) and isinstance(got.get('user_id'), int): bot = got
+                if bot and (bot['bot_token'], bot['user_id']) != (cfg.get('bot_token', ''), cfg.get('user_id', 0)) and load() == cfg:
+                    save({**cfg, 'bot_token': bot['bot_token'], 'user_id': bot['user_id']}); print('Bot Telegram aggiornato dal PC', flush=True)
+            except Exception:
+                pass
+            time.sleep(300)
 
     def telegram(self):
         """Con il PC spento risponde qui il bot; col PC acceso lo gestisce NEXAR, così non si contendono i messaggi."""
-        offset = None
+        offset, bot = None, None
         kb = {'inline_keyboard': [[{'text': '⏻ Accendi il PC', 'callback_data': 'wake'}]]}
         while True:
             cfg = load()
             if not cfg or not cfg.get('bot_token'): time.sleep(30); continue
+            if cfg['bot_token'] != bot: offset, bot = None, cfg['bot_token']
             try:
                 if app_up(cfg):  # NEXAR acceso sul PC: il bot lo gestisce lui
                     offset = None; time.sleep(15); continue
@@ -239,11 +259,15 @@ class Waker:
                             time.sleep(5)
                             if pc_on(cfg): self.tell(cfg, '🟢 PC acceso. Tra poco NEXAR riprende il controllo.'); break
                             if i == 5: send_wake(cfg)  # secondo tentativo dopo 30 secondi
-                        else: self.tell(cfg, '⚠️ Il PC non risponde. Nel BIOS MSI: Settings → Advanced → Wake Up Event Setup → '
-                                             '"Resume By PCI-E Device" su Enabled, e "ErP Ready" su Disabled. Se il cavo va a un '
-                                             'ripetitore Wi-Fi, prova a collegarlo direttamente al router.')
+                        else: self.tell(cfg, '⚠️ Il PC non risponde. Nel BIOS: ErP (o Deep Sleep) su Disabled e Wake on LAN / '
+                                             'Power On By PCI-E su Enabled: in NEXAR → Accensione → BIOS trovi i nomi giusti per la tua scheda. '
+                                             'Il PC deve avere il cavo di rete; se il cavo va a un ripetitore Wi-Fi, collegalo direttamente al router.')
                     else:
                         self.tg(cfg, 'sendMessage', chat_id=cfg.get('user_id'), text='🔴 Il PC è spento.', reply_markup=kb)
+            except urllib.error.HTTPError as ex:
+                # 409: il bot lo sta già leggendo NEXAR sul PC (appena acceso): si lascia a lui
+                if ex.code == 409: offset = None; time.sleep(60)
+                else: time.sleep(10)
             except Exception:
                 time.sleep(10)
 

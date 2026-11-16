@@ -21,6 +21,7 @@ def duration(seconds):
 
 class TelegramBot:
     def __init__(self, controller):
+        self.conflict_logged = 0.0
         self.ctrl = controller
         cfg = controller.config.get('telegram',{})
         # Vuoto finché run() non ha verificato il token con getMe (nome del bot, comandi vecchi saltati).
@@ -217,7 +218,7 @@ class TelegramBot:
             try: return self.send(chat, '⏻ ' + self.ctrl.cancel_power(), self.menu())
             except Exception as ex: return self.send(chat, '⚠️ ' + str(ex)[:200], self.menu())
         if a in ('accendi', 'wake'):
-            text = '🟢 Il PC è già acceso.\n<i>Quando è spento, /accendi lo riceve il relay su Umbrel.</i>'
+            text = '🟢 Il PC è già acceso.\n<i>Quando è spento, /accendi lo riceve l\'app NEXAR su Umbrel: se funziona lo vedi in Accensione → Prova.</i>'
         else: text = self.home_text()
         if message_id: self.edit(chat, message_id, text, self.menu())
         else: self.send(chat, text, self.menu())
@@ -300,6 +301,13 @@ class TelegramBot:
                         except Exception: pass
             except HTTPError as ex:
                 if ex.code == 401: self.reject_token()  # token revocato mentre l'app era accesa
+                elif ex.code == 409:
+                    # Un altro programma legge lo stesso bot: di solito l'app su Umbrel nei secondi dopo l'accensione,
+                    # che poi si fa da parte. Si riprova subito per prendersi i messaggi; nel registro una riga ogni 10 minuti.
+                    if time.time() - self.conflict_logged > 600:
+                        self.conflict_logged = time.time()
+                        logging.warning('Telegram: il bot è letto anche da un altro programma (app NEXAR su Umbrel o un vecchio relay)')
+                    stop.wait(2); continue
                 else: logging.warning('Telegram non disponibile (HTTP %s)', ex.code)
                 stop.wait(6)
             except Exception as ex:
