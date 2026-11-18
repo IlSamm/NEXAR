@@ -4345,3 +4345,80 @@ html.calm .vli::before,html.calm .vli::after,html.calm .vli-ring,html.calm .vli-
  .mem-free{grid-template-columns:auto minmax(0,1fr)}
  .mf-acts{grid-column:1/-1;justify-content:stretch}.mf-acts .btn{flex:1}
 }
+
+/* ===== Rifinitura 1.0.87: pagina per pagina ===== */
+/* Panoramica: i watt sono già nel riquadro grande */
+body[data-view=home] #tl-watt{display:none}
+/* Dischi: spazio e salute */
+.disk-health{display:flex;flex-direction:column;gap:8px;margin-top:4px}
+.dh-head{font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin:4px 0 2px}
+.dh-row{display:grid;grid-template-columns:40px minmax(0,1fr) auto;align-items:center;gap:12px;padding:10px 12px;border-radius:14px;background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.06)}
+.dh-ico{display:grid;place-items:center;height:30px;border-radius:9px;font:800 10px var(--font-d);letter-spacing:.06em;color:#7dd3fc;background:rgba(56,189,248,.12)}
+.dh-name{display:flex;flex-direction:column;min-width:0}
+.dh-name b{font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dh-name small{font-size:11.5px;color:var(--muted)}
+.dh-tags{display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+.dh-t{font-size:11.5px;font-weight:650;color:#cbd5e1;padding:3px 8px;border-radius:999px;background:rgba(255,255,255,.06)}
+.dh-t.hot{color:#fdba74;background:rgba(251,146,60,.14)}
+.dh-ok{font-size:11.5px;font-weight:700;color:#6ee7b7;padding:3px 9px;border-radius:999px;background:rgba(16,185,129,.14)}
+.dh-row.bad .dh-ok{color:#fca5a5;background:rgba(239,68,68,.16)}
+.dh-go{align-self:flex-start}
+@media (max-width:760px){.dh-row{grid-template-columns:36px minmax(0,1fr)}.dh-tags{grid-column:2;justify-content:flex-start}}
+
+/* Gaming: icona del gioco quando manca la copertina */
+.gx-tile-art.ico{background-image:var(--ico),radial-gradient(circle at 50% 40%,hsl(var(--h) 70% 40%),hsl(calc(var(--h) + 40) 60% 12%));background-size:52px,cover;background-repeat:no-repeat;background-position:center;opacity:.9}
+.gx-tile-art.ico b{display:none}
+.gx-tile{width:200px}
+/* Gaming sul telefono: pulsanti interi e statistiche a tutta larghezza */
+@media (max-width:640px){
+ .gx-stage .btn-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;width:100%}
+ .gx-stage .btn-row>.btn{width:100%;min-width:0;justify-content:center;padding:0 12px}
+ .gx-stage .btn-row>#game-main{grid-column:1/-1}
+ .gx-stage .btn-row>.btn span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+ .gx-perf{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+ .gx-tile{width:150px}
+}
+
+/* Temperature: le rotelle non si sovrappongono ai pulsanti e sul telefono stanno in una griglia 2×2 */
+@media (min-width:1061px) and (max-width:1560px){
+ .vx-cool .vt-row{display:grid;grid-template-columns:repeat(2,124px);gap:12px}
+ .vx-cool .vt{width:124px;padding:12px 8px 11px}
+ .vx-cool .vt svg{width:94px;height:94px}
+}
+@media (max-width:760px){
+ .vt-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+ .vt{max-width:none;width:auto}
+}
+
+/* Accensione: niente macchie sfocate, una linea di colore quando ci passi sopra */
+.pact::after{inset:0 18px auto;top:0;right:auto;width:auto;height:2px;border-radius:2px;background:linear-gradient(90deg,transparent,var(--pc),transparent);opacity:0;transition:opacity .3s}
+.pact:hover::after{opacity:.9;transform:none}
+
+/* Ottimizza, Audio, Luci: niente riquadri allungati con il vuoto in fondo */
+.opt-panel.two-col>.card:last-child{align-self:start}
+.au-stage-acts{align-self:stretch;justify-content:center}
+.lx{align-items:start}
+.lx-hint{margin-top:2px}
+
+/* Schermo: cursore del volume */
+.sv-vol{align-items:center;gap:8px;padding:3px 12px 3px 3px}
+.sv-vol-r{display:flex;align-items:center;width:120px}
+.sv-vol b{min-width:36px;font-size:12px;font-weight:700;color:#c7d2e3;font-variant-numeric:tabular-nums;text-align:right}
+.sv-vol.muted b{color:#f87171}
+@media (max-width:760px){.sv-vol-r{width:90px}}
+
+/* Impostazioni: il menu a sinistra resta sotto la barra in alto */
+@media (min-width:761px){.set-nav{top:104px}}
+
+/* Menu a tendina scuri, come il resto dell'app (non quelli bianchi di Windows) */
+select{color-scheme:dark}
+.set-row select,.fields select,.anim-pick select,.sch-field select{-webkit-appearance:none;appearance:none;padding-right:34px!important;
+ background:var(--bg2) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239aa4b5' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 12px center;
+ transition:border-color .2s,background-color .2s}
+.set-row select:hover,.fields select:hover{border-color:rgba(255,255,255,.22)}
+select option{background:#141922;color:#e5e7eb}
+
+/* Etichette: due famiglie sole in tutta l'app.
+   Sopra i titoli grandi (OTTIMIZZA, LUCI, SUONO DAL VIVO...) e sopra le sezioni (ENERGIA, DA FARE, PREFERITI...). */
+.vx-tag,.au-kicker,.lx-tag,.vp-head>span{font-size:11px!important;font-weight:800!important;letter-spacing:.14em!important}
+.eyebrow,.vo-h,.fp-label,.lx-fav-head>small,.lx-target>small,.set-group>h4,.dh-head{font-size:11px!important;font-weight:700!important;letter-spacing:.1em!important;text-transform:uppercase}

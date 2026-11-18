@@ -219,7 +219,8 @@ function navigate(view){
  document.querySelectorAll('.page').forEach(p=>p.classList.toggle('active',p.id==='page-'+view));
  if(curView!==view)pageScan();curView=view;setZone();syncTelegram();
  document.querySelectorAll('.page.active .tabs').forEach(inkTabs);
- $('page-title').textContent=titles[view][0];$('page-desc').textContent=view==='home'?greeting():titles[view][1];
+ $('page-title').textContent=titles[view][0];$('page-desc').textContent=view==='home'?greeting():titles[view][1];document.body.dataset.view=view;
+ if(view==='screen')scrVolLoad();
  pageIcon(view);
  window.scrollTo({top:0});
 }
@@ -359,7 +360,7 @@ function render(s){
  $('cpu-sub').textContent=typeof w('cpu')==='number'?`${nf(w('cpu'))} W · ${p.items.find(i=>i.key==='cpu').source}`:'consumo —';
  $('gpu-sub').textContent=typeof w('gpu')==='number'?`${nf(w('gpu'))} W · ${p.items.find(i=>i.key==='gpu').source}`:'consumo —';
  $('ram-detail').textContent=typeof s.ram_used==='number'?`${nf(s.ram_used,1)} di ${nf(s.ram_total,0)} GB`:'—';
- $('ram-sub').textContent=typeof w('ram')==='number'?`~${nf(w('ram'),1)} W`:'—';
+ $('ram-sub').textContent=typeof w('ram')==='number'?`${nf(w('ram'),1)} W · stimato`:'consumo —';
  const hw=s.hardware||{};
  $('cpu-name').textContent=(hw.cpu||'—').replace(/^AMD |^Intel\(R\) /,'');$('gpu-name').textContent=(hw.gpu||'—').replace(/^NVIDIA GeForce /,'');
  $('hw-mb').textContent=hw.motherboard||'—';$('hw-cpu-name').textContent=hw.cpu||'—';$('hw-gpu-name').textContent=hw.gpu||'—';$('hw-cooler').textContent=hw.cooler||'—';
@@ -2329,11 +2330,12 @@ document.addEventListener('keydown',e=>{
  if(typing||e.ctrlKey||e.metaKey||e.altKey)return;
  if(/^[1-9]$/.test(e.key)){const p=PAGES[+e.key-1];if(p)navigate(p[0]);}
 });
-let homeStatsAt=0;
+let homeStatsAt=0,schNextTxt='';
 function renderHomeHero(s){
  // Riga di stato della Home: dice subito se qualcosa richiede attenzione.
  const hero=$('hm-hero');if(!hero)return;hero.dataset.mode=s.mode||'normal';
- const up=s.pc?.uptime_s;const upTxt=typeof up==='number'&&up>0?`acceso da ${duration(up)}`:'';$('hm-pc').textContent=matchMedia('(max-width:760px)').matches?(upTxt?'PC '+upTxt:'Il tuo PC'):greeting()+(upTxt?' · '+upTxt:'');
+ const up=s.pc?.uptime_s;const upTxt=typeof up==='number'&&up>0?`PC acceso da ${duration(up)}`:'Il tuo PC';
+ $('hm-pc').textContent=upTxt+(schNextTxt&&!matchMedia('(max-width:760px)').matches?' · '+schNextTxt:'');
  const hot=(s.cpu_temp>=85&&'Processore')||(s.gpu_temp>=83&&'Scheda video');
  const st=hot?[`${hot} molto caldo`,'warn']:s.update?.available?['Aggiornamento pronto','info']:s.ram>=90?['Memoria quasi piena','warn']
   :s.boost?.running?[`In gioco: ${s.boost.running.name||'partita'}`,'']:s.mode==='eco'?['Risparmio attivo','']:s.mode==='gaming'?['Pronto per giocare','']:['Tutto sotto controllo',''];
@@ -2478,17 +2480,28 @@ function renderGaming(d,animate=false){
 }
 let libSort='recent';try{libSort=localStorage.getItem('nexar.libSort')||'recent';}catch(e){}
 let gxFocus=null;try{gxFocus=sessionStorage.getItem('nexar.gxFocus')||null;}catch(e){}
+// Libreria: se l'ultima riga avrebbe un gioco quasi da solo, prova una colonna in più o in meno per riempire le righe.
+function balanceGrid(grid){
+ if(!grid)return;grid.style.removeProperty('grid-template-columns');
+ const n=grid.querySelectorAll('.gcard').length,cs=getComputedStyle(grid),gap=parseFloat(cs.columnGap)||0,w=grid.clientWidth;
+ const max=cs.gridTemplateColumns.split(' ').filter(Boolean).length,min=w&&max?(w-gap*(max-1))/max:0;
+ if(!n||!min||n<=max||n%max===0||n%max>max/2)return;
+ for(const c of [max+1,max-1]){if(c<2)continue;const cw=(w-gap*(c-1))/c,r=n%c;
+  if(cw>=min*.84&&cw<=min*1.3&&(!r||r>c/2)){grid.style.setProperty('grid-template-columns',`repeat(${c},minmax(0,1fr))`,'important');return;}}
+}
+addEventListener('resize',()=>{clearTimeout(balanceGrid.t);balanceGrid.t=setTimeout(()=>balanceGrid($('game-grid')),150);});
 function gxGame(id){return (gameData?.games||[]).find(g=>g.id===id)||null;}
 function renderShelf(){
  // Giochi recenti in fondo alla vetrina: un tocco porta il gioco in primo piano.
  const box=$('gx-shelf');if(!box||!gameData)return;
  const games=(gameData.games||[]).filter(g=>!g.hidden);
- const list=[...games.filter(g=>g.last).sort((a,b)=>b.last-a.last),...games.filter(g=>!g.last).sort((a,b)=>(b.playtime||0)-(a.playtime||0))].slice(0,7);
+ const list=[...games.filter(g=>g.last).sort((a,b)=>b.last-a.last),...games.filter(g=>!g.last).sort((a,b)=>(b.playtime||0)-(a.playtime||0))].slice(0,4);
  const run=(current?.boost||gameData.boost)?.running?.id,key=list.map(g=>g.id+(g.cv||'')).join('|');
  if(box._key!==key){box._key=key;box.replaceChildren();
   list.forEach((g,i)=>{const b=el('button','gx-tile');b.type='button';b.dataset.id=g.id;b.style.setProperty('--h',hue(g.name));b.style.setProperty('--i',i);
    b.setAttribute('aria-label',g.name);const art=el('span','gx-tile-art');art.append(el('b','',initials(g.name)));
-   firstCover(g.id,['header','hero','capsule']).then(u=>{if(u){art.style.backgroundImage=`url("${u}")`;art.classList.add('img');}});
+   firstCover(g.id,['header','hero','capsule']).then(u=>{if(u){art.style.backgroundImage=`url("${u}")`;art.classList.add('img');}
+    else if(g.icon)coverUrl(g.id,'icon').then(i=>{if(i){art.style.setProperty('--ico',`url("${i}")`);art.classList.add('ico');}});});
    b.append(art,el('span','gx-tile-name',g.name));
    b.addEventListener('click',()=>{if(gxFocus===g.id&&!run){openGame(g.id);return;}gxFocus=g.id;try{sessionStorage.setItem('nexar.gxFocus',g.id);}catch(e){}renderGamingLive(current||statusDemo);});
    box.append(b);});}
@@ -2566,7 +2579,7 @@ function renderLibrary(animate=false){
  const running=(current?.boost||d.boost)?.running?.id;
  $('lib-sub').textContent=games.length?`${games.length-hiddenN} giochi · ${stores.join(', ')}`:'Nessun gioco trovato';
  const lh=$('lib-hidden');lh.hidden=!hiddenN;lh.textContent=showHidden?'Nascondi i programmi esclusi':`Mostra ${hiddenN} ${hiddenN>1?'esclusi':'escluso'}`;
- const grid=$('game-grid');grid.replaceChildren();
+ const grid=$('game-grid');grid.replaceChildren();requestAnimationFrame(()=>balanceGrid(grid));
  if(!list.length){grid.append(el('p','muted',games.length?'Nessun gioco corrisponde alla ricerca.':'Non ho trovato giochi di Steam, Epic, Riot o GOG su questo PC.'));return;}
  list.forEach((g,i)=>{
   // Locandina 2:3 come nei launcher. Steam: copertina dalla sua cache; Epic/Riot/GOG: icona grande del gioco
@@ -2784,9 +2797,19 @@ async function scrLive(on){
   await shot();await new Promise(r=>setTimeout(r,180));
  }
 }
+let scrVolDev=null;
+async function scrVolLoad(){
+ const box=$('scr-vol');if(!box)return;
+ let d=null;try{const r=demo?DEMO_AUDIO:await req('/api/audio');d=(r.out||[]).find(x=>x.default)||null;}catch(e){}
+ scrVolDev=d?.id||null;$('scr-vol-v').textContent=d?d.volume+'%':'—';box.closest('.sv-vol').classList.toggle('muted',!!d?.mute);
+ const send=v=>{$('scr-vol-v').textContent=v+'%';if(scrVolDev)auSend('/api/audio/device',{id:scrVolDev,volume:v},true);};
+ box.replaceChildren(auRange(0,100,1,d?d.volume:50,{label:'Volume del PC',input:send,change:send}));
+ box.querySelector('input').disabled=!d;
+}
 async function scrAction(action,extra={}){
  if(demo){notify('Anteprima: comando non attivo.');return;}
  try{const r=await req('/api/screen/action','POST',{action,...extra});notify('✓ '+r.message);
+  if(action==='mute')setTimeout(scrVolLoad,400);
   if(action==='monitor_off'||action==='lock'){if(scrLiveOn)scrLive(false);return;}   // schermi spenti: niente foto continue
   setTimeout(()=>{loadScreen(false);shot();},action==='close'?1500:400);}
  catch(ex){notify('⚠ '+ex.message,true);}
@@ -3249,7 +3272,7 @@ function renderGamingLive(s){
  $('boost-live').replaceChildren(...(on?live.map(t=>el('span','',t)):[]));
  const foc=gxFocus&&gxGame(gxFocus),last=foc&&!foc.hidden?foc:(gameData?.games||[]).filter(g=>!g.hidden&&g.last).sort((a,b)=>b.last-a.last)[0];
  let state,title,sub,main,second=null,gid='';
- if(on&&(ses?.game||run)){state='IN GIOCO';title=ses?.game||run.name;gid=ses?.gid||run?.id;sub='Gaming attivo: il gioco ha la precedenza su tutto il resto.';main=run?['Chiudi il gioco','x','quit']:['Esci da Gaming','x','exit'];second=run?['Solo esci da Gaming','bolt','exit']:null;}
+ if(on&&(ses?.game||run)){state='IN GIOCO';title=ses?.game||run.name;gid=ses?.gid||run?.id;sub='Gaming attivo: il gioco ha la precedenza su tutto il resto.';main=run?['Chiudi il gioco','x','quit']:['Esci da Gaming','x','exit'];second=run?['Esci da Gaming','bolt','exit']:null;}
  else if(on){state='GAMING ATTIVO';title='Aspetto il gioco';sub='Apri un gioco: gli do la priorità appena parte.';main=['Esci da Gaming','x','exit'];}
  else if(run){state='GIOCO APERTO';title=run.name;gid=run.id;sub='Gaming è spento: attivalo per dare la precedenza al gioco.';main=['Attiva Gaming','game','on'];second=['Chiudi il gioco','x','quit'];}
  else if(last){state='PRONTO';title=last.name;gid=last.id;
@@ -3629,10 +3652,18 @@ async function loadLiveHistory(){
    const w=S.map(x=>x.w).filter(x=>typeof x==='number');if(w.length>hist.power.length)hist.power.splice(0,hist.power.length,...w.slice(-60));
    Object.keys(live).forEach(k=>{if(Array.isArray(live[k]))live[k]=[];});live.lastT=0;S.forEach(livePush);
   }
-  renderHomeDisks(h.disks||[]);if(current)renderLive(current);
+  renderHomeDisks(h.disks||[],demo?DEMO_OPT.health.disks:h.health);if(current)renderLive(current);
  }catch(e){}
 }
-function renderHomeDisks(list){
+function renderHomeDisks(list,health){
+ const hb=$('disk-health');if(hb){hb.replaceChildren();
+  if(health?.length){hb.append(el('div','dh-head','Salute'));
+   health.forEach(d=>{const r=el('div','dh-row'+(d.ok?'':' bad'));const ic=el('span','dh-ico',d.media==='SSD'?'SSD':'HDD');
+    const nm=el('div','dh-name');nm.append(el('b','',d.name||'Disco'),el('small','',[d.bus,d.size?bytes(d.size):''].filter(Boolean).join(' · ')));
+    const tags=el('div','dh-tags');if(d.temp)tags.append(el('span','dh-t'+(d.temp>=55?' hot':''),d.temp+' °C'));
+    if(d.wear!=null&&d.wear!=='')tags.append(el('span','dh-t','usura '+d.wear+'%'));
+    tags.append(el('span','dh-ok',d.ok?'In salute':'Da controllare'));r.append(ic,nm,tags);hb.append(r);});}
+  else{const b=el('button','btn small ghost dh-go','Controlla la salute dei dischi');b.type='button';b.addEventListener('click',()=>{navigate('optimize');optTabGo('disks');});hb.append(b);}}
  const box=$('disk-list');box.replaceChildren();
  if(!list.length){box.append(el('p','muted','—'));$('disk-free').textContent='—';return;}
  $('disk-free').textContent=bytes(list.reduce((a,d)=>a+d.free,0))+' liberi';
@@ -3785,7 +3816,7 @@ $('home-reset').addEventListener('click',()=>{try{localStorage.removeItem(LAYOUT
  if(!demo&&(key||tgInit))req('/api/layout','POST',{}).catch(()=>{});
  const box=document.querySelector('#page-home .bento');HOME_DEFAULT.forEach(id=>{const t=bentoTiles().find(x=>x.dataset.tile===id);if(t)box.append(t);});layoutApply();layoutEdit(true);});
 const HOME_DEFAULT=currentOrder();
-layoutApply();layoutLoad();loadLiveHistory();loadFiles();loadHomeProcs();
+layoutApply();layoutLoad();loadSchedules();loadLiveHistory();loadFiles();loadHomeProcs();
 if(window.ResizeObserver){let bt=0;new ResizeObserver(()=>{cancelAnimationFrame(bt);bt=requestAnimationFrame(()=>bentoFill());}).observe(document.querySelector('#page-home .bento'));}
 
 /* ---------- Grafici lunghi: 24 ore, 7 giorni, 30 giorni (medie salvate sul PC) ---------- */
@@ -3867,6 +3898,7 @@ function renderSchedules(){
  $('sch-empty').hidden=!!schRules.length||!$('sch-form').hidden;
  const on=schRules.filter(r=>r.enabled).length;$('sch-count').textContent=schRules.length?on+' attiv'+(on===1?'a':'e'):'';$('sch-count').hidden=!schRules.length;
  const nextR=schRules.filter(r=>r.enabled).map(r=>[r,schNext(r)]).filter(x=>x[1]).sort((a,b)=>a[1]-b[1])[0];
+ schNextTxt=nextR?`${SCH_LABEL[nextR[0].action]||nextR[0].action} ${schWhen(nextR[1])}`:'';
  $('pwf-next').textContent=nextR?`${SCH_LABEL[nextR[0].action]||nextR[0].action} · ${schWhen(nextR[1])}`:'Nessuna';
  const order=schRules.map((r,i)=>[r,i]).sort((a,b)=>((a[0].enabled?schNext(a[0]):null)?.getTime()??9e15)-((b[0].enabled?schNext(b[0]):null)?.getTime()??9e15));
  order.forEach(([r,idx],pos)=>{

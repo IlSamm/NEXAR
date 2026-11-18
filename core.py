@@ -115,6 +115,12 @@ def json_load(path: Path, default):
     try: return json.loads(path.read_text(encoding='utf-8-sig'))
     except (OSError, ValueError): return default
 
+def names_list(names) -> str:
+    """«ENE DRAM, ENE DRAM, Corsair» → «ENE DRAM ×2, Corsair»: due banchi di RAM con lo stesso nome non si ripetono."""
+    count = {}
+    for n in names or []: count[n] = count.get(n, 0) + 1
+    return ', '.join(n + (f' ×{c}' if c > 1 else '') for n, c in count.items())
+
 def json_save(path: Path, val):
     temp = path.with_suffix('.tmp')
     temp.write_text(json.dumps(val, ensure_ascii=False, indent=2), encoding='utf-8')
@@ -1421,7 +1427,8 @@ class Control:
         try:
             with self.lock:
                 config = json.loads(json.dumps(self.config))
-                state = dict(self.state)
+                state = json.loads(json.dumps(self.state))
+                before = json.loads(json.dumps(self.state))
             report = discovery.autoconfigure(config, state, allow_uac)
             inventory = discovery.hardware_inventory()
             if config.get('rgb', {}).get('enabled') and discovery.port_open(discovery.OPENRGB_PORT):
@@ -1430,7 +1437,8 @@ class Control:
             with self.lock:
                 for section in ('rgb', 'fans', 'sensors', 'auto_detect'):
                     self.config[section] = config.get(section, {})
-                self.state.update({k: v for k, v in state.items() if k != 'rgb_leds'})  # appena contati sopra
+                # Solo le chiavi cambiate dalla ricerca: intanto il resto dell'app può aver scritto altro (versione, LED, ventole).
+                self.state.update({k: v for k, v in state.items() if k != 'rgb_leds' and before.get(k, object()) != v})
                 if inventory: self.state['inventory'] = inventory
                 # Nomi dei componenti rilevati da Windows: riempiono solo i campi vuoti, quelli scritti a mano restano.
                 hw = self.config.setdefault('hardware', {})
@@ -1480,7 +1488,7 @@ class Control:
                         with self.lock:
                             self.state.update(rgb_off=False); self.state.pop('rgb_saved', None); self.state.pop('rgb_off_by', None)
                             json_save(STATE_FILE, self.state)
-                self.log_event('RGB ' + ('spenti' if eco else 'riaccesi') + ': ' + (', '.join(done) or 'nessun dispositivo'))
+                self.log_event('RGB ' + ('spenti' if eco else 'riaccesi') + ': ' + (names_list(done) or 'nessun dispositivo'))
             except Exception as ex:
                 self.log_event('OpenRGB non raggiungibile: ' + str(ex)[:200])
             self.msi_apply(off=eco)
@@ -1756,7 +1764,7 @@ class Control:
             with self.lock:
                 if self.state.get('rgb_off'): self.state['rgb_saved'] = snaps; json_save(STATE_FILE, self.state)
             if msi and self.msi_apply(off=True): done.append(MSI_NAME)
-            msg = 'LED rimessi spenti: ' + ', '.join(done)
+            msg = 'LED rimessi spenti: ' + names_list(done)
         elif rgb.get('normal_color') and not self.state.get('rgb_gaming') and not self.state.get('rgb_saved'):
             bright = int(rgb.get('brightness', 100))
             colors = rgb.get('device_colors') or {}

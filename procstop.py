@@ -39,6 +39,7 @@ NEVER_THROTTLE = PROTECTED | {'nvidia broadcast.exe', 'ds4windows.exe', 'dsx.exe
                               'cmd.exe', 'windowsterminal.exe', 'openconsole.exe', 'code.exe', 'rg.exe'}
 IDLE = psutil.IDLE_PRIORITY_CLASS if os.name == 'nt' else 19
 RECLOSE_SECONDS = 20
+MAX_CLOSES = 3           # se Windows lo riapre ancora dopo 3 chiusure, per questa modalità lo lascio stare
 
 
 class _PPT(ctypes.Structure):
@@ -91,6 +92,7 @@ class Stopper:
         self.throttled = {}      # pid -> (nome, priorità originale)
         self.last_close = {}     # nome -> quando l'ho chiuso l'ultima volta
         self.stopped = set()     # nomi fermati in questa modalità (per la pagina)
+        self.closes = {}         # nome -> quante volte l'ho chiuso in questa modalità
         self.me = None
 
     def info(self):
@@ -103,7 +105,7 @@ class Stopper:
                 efficiency(pid, False)
                 psutil.Process(pid).nice(old)
             except (psutil.Error, OSError): pass
-        self.throttled.clear(); self.stopped.clear(); self.mode = None
+        self.throttled.clear(); self.stopped.clear(); self.closes.clear(); self.mode = None
 
     def _throttle(self, p, name):
         if p.pid in self.throttled: return
@@ -153,7 +155,8 @@ class Stopper:
         closed = []
         for name, procs in to_close.items():
             if now - self.last_close.get(name, -1e9) < RECLOSE_SECONDS: continue
-            self.last_close[name] = now
+            if self.closes.get(name, 0) >= MAX_CLOSES: continue     # riparte sempre (lo riapre Windows): inutile insistere
+            self.last_close[name] = now; self.closes[name] = self.closes.get(name, 0) + 1
             if (closer or close)(name, procs, force=name in JUNK):
                 closed.append(name); self.stopped.add(name)
         return closed

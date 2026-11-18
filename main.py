@@ -542,7 +542,8 @@ def device_remove(data: DeviceId):
 # ---------- più controllo: storico, media, appunti e cartella condivisa ----------
 @app.get('/api/history',dependencies=[Depends(authorized)])
 def live_history(range: str = '15m'):
-    if range == '15m': return {'samples':controller.history.data(),'every':control_plus.SAMPLE_EVERY,'disks':control_plus.disks()}
+    if range == '15m': return {'samples':controller.history.data(),'every':control_plus.SAMPLE_EVERY,'disks':control_plus.disks(),
+                               'health':(getattr(controller,'disk_report',None) or {}).get('disks')}
     if range not in control_plus.RANGES: raise HTTPException(400,'Intervallo non previsto')
     return {'range':range,'step':control_plus.RANGES[range][1],'points':controller.history.range(range)}
 

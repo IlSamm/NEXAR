@@ -209,11 +209,11 @@
      <section class="card b-quick" data-tile="quick">
       <div class="be-head"><span class="eyebrow">Azioni rapide</span></div>
       <div class="qgrid">
-       <button class="qb" data-action="screen"><span><svg class="i"><use href="#i-monitor"/></svg></span>Monitor off</button>
-       <button class="qb" data-action="rgb-eco" id="q-rgb-off"><span><svg class="i"><use href="#i-bulb"/></svg></span>LED off</button>
-       <button class="qb" data-action="rgb-normal" id="q-rgb-on"><span><svg class="i"><use href="#i-palette"/></svg></span>LED on</button>
-       <button class="qb" data-action="fans-eco" id="q-fans-eco"><span><svg class="i"><use href="#i-fan"/></svg></span>Silenziose</button>
-       <button class="qb" data-action="fans-normal" id="q-fans-normal"><span><svg class="i"><use href="#i-fan"/></svg></span>Ventole</button>
+       <button class="qb" data-action="screen"><span><svg class="i"><use href="#i-monitor"/></svg></span>Spegni schermi</button>
+       <button class="qb" data-action="rgb-eco" id="q-rgb-off"><span><svg class="i"><use href="#i-bulb"/></svg></span>Luci spente</button>
+       <button class="qb" data-action="rgb-normal" id="q-rgb-on"><span><svg class="i"><use href="#i-palette"/></svg></span>Luci accese</button>
+       <button class="qb" data-action="fans-eco" id="q-fans-eco"><span><svg class="i"><use href="#i-fan"/></svg></span>Ventole piano</button>
+       <button class="qb" data-action="fans-normal" id="q-fans-normal"><span><svg class="i"><use href="#i-fan"/></svg></span>Ventole normali</button>
        <button class="qb danger" data-view="power"><span><svg class="i"><use href="#i-power"/></svg></span>Spegni</button>
       </div>
      </section>
@@ -239,6 +239,7 @@
      <section class="card b-disks" data-tile="disks">
       <div class="be-head"><span class="eyebrow">Dischi</span><small class="muted" id="disk-free">—</small></div>
       <div class="disk-list" id="disk-list"></div>
+      <div class="disk-health" id="disk-health"></div>
      </section>
 
      <section class="card b-procs" data-tile="procs">
@@ -632,7 +633,7 @@
       <div class="vt" id="tg-cpu"><svg viewBox="0 0 120 120" aria-hidden="true"><circle class="vt-track" cx="60" cy="60" r="50" pathLength="100"/><circle class="vt-fill" id="hw-cpu-arc" cx="60" cy="60" r="50" pathLength="100"/></svg><b class="vt-v" id="hw-cpu">—</b><small>Processore</small></div>
       <div class="vt" id="tg-gpu"><svg viewBox="0 0 120 120" aria-hidden="true"><circle class="vt-track" cx="60" cy="60" r="50" pathLength="100"/><circle class="vt-fill" id="hw-gpu-arc" cx="60" cy="60" r="50" pathLength="100"/></svg><b class="vt-v" id="hw-gpu">—</b><small>Scheda video</small></div>
       <div class="vt" id="tg-mb" hidden><svg viewBox="0 0 120 120" aria-hidden="true"><circle class="vt-track" cx="60" cy="60" r="50" pathLength="100"/><circle class="vt-fill" id="hw-mb-arc" cx="60" cy="60" r="50" pathLength="100"/></svg><b class="vt-v" id="hw-mb-t">—</b><small>Scheda madre</small></div>
-      <div class="vt pump" id="tg-pump" hidden><svg viewBox="0 0 120 120" aria-hidden="true"><circle class="vt-track" cx="60" cy="60" r="50" pathLength="100"/><circle class="vt-fill ok" id="hw-pump-arc" cx="60" cy="60" r="50" pathLength="100"/></svg><b class="vt-v" id="hw-pump">—</b><small>Pompa AIO</small></div>
+      <div class="vt pump" id="tg-pump" hidden><svg viewBox="0 0 120 120" aria-hidden="true"><circle class="vt-track" cx="60" cy="60" r="50" pathLength="100"/><circle class="vt-fill ok" id="hw-pump-arc" cx="60" cy="60" r="50" pathLength="100"/></svg><b class="vt-v" id="hw-pump">—</b><small>Pompa · giri/min</small></div>
      </div>
      <p class="fineprint cool-note">Allo spegnimento Windows chiude Fan Control: negli ultimi secondi le ventole seguono la curva del BIOS. Per tenerle silenziose anche lì, nel BIOS (Hardware Monitor) scegli la curva <b>Silent</b> per le ventole del case.</p>
     </section>
@@ -730,7 +731,7 @@
        <div class="sch-field"><span>Giorni</span><div class="sch-dpick" id="sch-days"><button type="button" data-d="0" aria-label="lunedì">L</button><button type="button" data-d="1" aria-label="martedì">M</button><button type="button" data-d="2" aria-label="mercoledì">M</button><button type="button" data-d="3" aria-label="giovedì">G</button><button type="button" data-d="4" aria-label="venerdì">V</button><button type="button" data-d="5" aria-label="sabato">S</button><button type="button" data-d="6" aria-label="domenica">D</button></div>
         <div class="sch-dq" id="sch-dq"><button type="button" data-q="all">Ogni giorno</button><button type="button" data-q="work">Lun–ven</button><button type="button" data-q="end">Weekend</button></div></div>
       </div>
-      <div class="sch-field"><span>Cosa fare</span><div class="sch-acts" id="sch-acts"><button type="button" data-a="shutdown"><svg class="i"><use href="#i-power"/></svg>Spegni il PC</button><button type="button" data-a="sleep"><svg class="i"><use href="#i-moon"/></svg>Sospendi</button><button type="button" data-a="eco"><svg class="i"><use href="#i-leaf"/></svg>AI ECO</button><button type="button" data-a="normal"><svg class="i"><use href="#i-bolt"/></svg>Normale</button><button type="button" data-a="gaming"><svg class="i"><use href="#i-game"/></svg>Gaming</button><button type="button" data-a="monitor_off"><svg class="i"><use href="#i-monitor"/></svg>Monitor off</button><button type="button" data-a="lock"><svg class="i"><use href="#i-lock"/></svg>Blocca</button><button type="button" data-a="leds_off"><svg class="i"><use href="#i-bulb"/></svg>LED spenti</button><button type="button" data-a="leds_on"><svg class="i"><use href="#i-palette"/></svg>LED accesi</button></div></div>
+      <div class="sch-field"><span>Cosa fare</span><div class="sch-acts" id="sch-acts"><button type="button" data-a="shutdown"><svg class="i"><use href="#i-power"/></svg>Spegni il PC</button><button type="button" data-a="sleep"><svg class="i"><use href="#i-moon"/></svg>Sospendi</button><button type="button" data-a="eco"><svg class="i"><use href="#i-leaf"/></svg>AI ECO</button><button type="button" data-a="normal"><svg class="i"><use href="#i-bolt"/></svg>Normale</button><button type="button" data-a="gaming"><svg class="i"><use href="#i-game"/></svg>Gaming</button><button type="button" data-a="monitor_off"><svg class="i"><use href="#i-monitor"/></svg>Spegni schermi</button><button type="button" data-a="lock"><svg class="i"><use href="#i-lock"/></svg>Blocca</button><button type="button" data-a="leds_off"><svg class="i"><use href="#i-bulb"/></svg>LED spenti</button><button type="button" data-a="leds_on"><svg class="i"><use href="#i-palette"/></svg>LED accesi</button></div></div>
       <p class="fineprint" id="sch-hint"></p>
       <div class="gw-row"><button class="btn small primary" type="submit"><svg class="i"><use href="#i-check"/></svg>Salva</button><button class="btn small ghost" type="button" id="sch-cancel">Annulla</button></div>
      </form>
@@ -1067,10 +1068,9 @@
         <div class="sv-mons" id="scr-mons-w" hidden><div class="sv-map" id="scr-mons" role="group" aria-label="Quale schermo vedere"></div><span class="sv-monname" id="scr-mon-name"></span></div>
        </div>
        <div class="sv-right">
-        <div class="sv-g" role="group" aria-label="Volume">
-         <button type="button" data-scr="down" title="Volume −10" aria-label="Volume meno"><svg class="i"><use href="#i-vol-down"/></svg></button>
-         <button type="button" data-scr="mute" title="Muto" aria-label="Muto"><svg class="i"><use href="#i-vol-x"/></svg></button>
-         <button type="button" data-scr="up" title="Volume +10" aria-label="Volume più"><svg class="i"><use href="#i-vol"/></svg></button></div>
+        <div class="sv-g sv-vol" role="group" aria-label="Volume">
+         <button type="button" data-scr="mute" title="Muto / riattiva" aria-label="Muto"><svg class="i"><use href="#i-vol"/></svg></button>
+         <span class="sv-vol-r" id="scr-vol"></span><b id="scr-vol-v">—</b></div>
         <div class="sv-g power" role="group" aria-label="Schermi e sessione">
          <button type="button" data-scr="monitor_off" title="Spegni gli schermi" aria-label="Spegni gli schermi"><svg class="i"><use href="#i-moon"/></svg><span>Spegni schermi</span></button>
          <button type="button" data-scr="lock" title="Blocca il PC" aria-label="Blocca il PC"><svg class="i"><use href="#i-lock"/></svg><span>Blocca</span></button></div>
