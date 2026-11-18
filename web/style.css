@@ -1699,18 +1699,10 @@ html.calm .hm-glow,html.calm .hm-dot,html.calm .fan-spin,html.calm .wk-bar i{ani
 .win-max .wb-max-out{display:inline}
 .wb-edges{display:none}
 .in-desktop:not(.win-max) .wb-edges{display:block}
-.wb-edges i{position:fixed;z-index:201}
-.wb-edges [data-edge=top]{top:0;height:5px;left:16px;right:16px;cursor:ns-resize}
-.wb-edges [data-edge=bottom]{bottom:0;height:5px;left:16px;right:16px;cursor:ns-resize}
-.wb-edges [data-edge=left]{left:0;width:5px;top:16px;bottom:16px;cursor:ew-resize}
-.wb-edges [data-edge=right]{right:0;width:5px;top:16px;bottom:16px;cursor:ew-resize}
-.wb-edges [data-edge=topleft]{top:0;left:0;width:16px;height:16px;cursor:nwse-resize}
-.wb-edges [data-edge=topright]{top:0;right:0;width:16px;height:16px;cursor:nesw-resize}
-.wb-edges [data-edge=bottomleft]{bottom:0;left:0;width:16px;height:16px;cursor:nesw-resize}
-.wb-edges [data-edge=bottomright]{bottom:0;right:0;width:16px;height:16px;cursor:nwse-resize}
-/* finestra con gli angoli tondi: un filo di luce sul bordo, così si stacca anche da uno sfondo scuro */
-.wb-edges::after{content:"";position:fixed;inset:0;z-index:202;pointer-events:none;border-radius:var(--win-r,16px);box-shadow:inset 0 0 0 1px rgba(255,255,255,.1)}
-.in-desktop:not(.win-round) .wb-edges::after{display:none}
+.wb-edges i{position:fixed;z-index:201;top:0;height:5px}
+.wb-edges [data-edge=top]{left:12px;right:12px;cursor:ns-resize}
+.wb-edges [data-edge=topleft]{left:0;width:12px;cursor:nwse-resize}
+.wb-edges [data-edge=topright]{right:0;width:12px;cursor:nesw-resize}
 .in-desktop .rail .brand,.in-desktop .main>.top{cursor:default;-webkit-user-select:none;user-select:none}
 /* in Home il titolo è già nella scheda grande: niente intestazione doppia */
 @media (min-width:761px){body:has(#page-home.active) .top{display:none}#page-home{padding-top:6px}}
