@@ -3970,7 +3970,8 @@ navigate('home');
 setInterval(()=>{if(!document.hidden)refresh();},4000);
 /* ---------- barra della finestra (solo nell'app per Windows) ---------- */
 // La barra grigia di Windows non c'è più: qui ci sono trascinamento, Snap, doppio clic per
-// ingrandire e ridimensionamento dal bordo alto.
+// ingrandire e ridimensionamento da tutti i bordi (la finestra è ritagliata con gli angoli tondi:
+// i bordi invisibili di Windows restano fuori, quindi li disegna la pagina).
 function setupWinbar(){
  const api=window.pywebview?.api;if(!api?.win_drag||$('winbar'))return;
  const root=document.documentElement;root.classList.add('in-desktop');
@@ -3980,9 +3981,10 @@ function setupWinbar(){
   <button type="button" class="wb-btn" data-wb="max" title="Ingrandisci" aria-label="Ingrandisci"><svg viewBox="0 0 12 12"><rect class="wb-max-in" x="1.75" y="1.75" width="8.5" height="8.5" rx="2"/><path class="wb-max-out" d="M3.75 3.25V2.9c0-.6.5-1.15 1.15-1.15h4.2c.6 0 1.15.5 1.15 1.15v4.2c0 .6-.5 1.15-1.15 1.15h-.35"/><rect class="wb-max-out" x="1.75" y="3.75" width="6.5" height="6.5" rx="1.6"/></svg></button>
   <button type="button" class="wb-btn close" data-wb="close" title="Chiudi: NEXAR resta attivo vicino all'orologio" aria-label="Chiudi"><svg viewBox="0 0 12 12"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7"/></svg></button></div>`;
  const edges=document.createElement('div');edges.className='wb-edges';edges.setAttribute('aria-hidden','true');
- edges.innerHTML='<i data-edge="top"></i><i data-edge="topleft"></i><i data-edge="topright"></i>';
+ edges.innerHTML=['top','bottom','left','right','topleft','topright','bottomleft','bottomright'].map(k=>`<i data-edge="${k}"></i>`).join('');
  document.body.append(bar,edges);
- const sync=()=>api.win_state().then(s=>{root.classList.toggle('win-max',!!s.max);
+ const sync=()=>api.win_state().then(s=>{root.classList.toggle('win-max',!!s.max);root.classList.toggle('win-round',!!s.round);
+  if(s.round)root.style.setProperty('--win-r',s.round+'px');
   const m=bar.querySelector('[data-wb=max]');m.title=s.max?'Ripristina':'Ingrandisci';m.setAttribute('aria-label',m.title);}).catch(()=>{});
  let last=0;
  const drag=e=>{

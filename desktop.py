@@ -47,8 +47,8 @@ html,body{margin:0;height:100%;background:#090b0f;overflow:hidden}
 </style></head><body></body></html>'''
 
 # ---------------- barra della finestra integrata nella dashboard ----------------
-# La finestra resta una finestra Windows vera (bordi per ridimensionare, Snap, ombra, angoli
-# arrotondati): togliamo solo la barra del titolo grigia e la dashboard disegna la sua.
+# La finestra resta una finestra Windows vera (Snap, ridimensionamento nativo): togliamo la barra
+# del titolo grigia, la dashboard disegna la sua, e la finestra viene ritagliata con angoli tondi.
 if os.name == 'nt':
     import ctypes
     from ctypes import wintypes
@@ -65,15 +65,25 @@ if os.name == 'nt':
     user32.IsZoomed.argtypes = [wintypes.HWND]
     user32.ShowWindowAsync.argtypes = [wintypes.HWND, ctypes.c_int]
     user32.SetWindowPos.argtypes = [wintypes.HWND, wintypes.HWND, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_uint]
+    user32.SetWindowRgn.argtypes = [wintypes.HWND, ctypes.c_void_p, wintypes.BOOL]
+    user32.GetWindowRect.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.RECT)]
+    user32.GetClientRect.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.RECT)]
+    user32.ClientToScreen.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.POINT)]
+    gdi32 = ctypes.windll.gdi32
+    gdi32.CreateRoundRectRgn.restype = ctypes.c_void_p
+    gdi32.CreateRoundRectRgn.argtypes = [ctypes.c_int] * 6
 
 WM_CLOSE, WM_NCCALCSIZE, WM_SYSCOMMAND, WM_APP_DRAG, WM_APP_SHOW = 0x10, 0x83, 0x112, 0x8001, 0x8002
-WM_WINDOWPOSCHANGING, WM_WINDOWPOSCHANGED = 0x46, 0x47
+WM_WINDOWPOSCHANGING, WM_WINDOWPOSCHANGED, WM_SIZE = 0x46, 0x47, 0x5
+# Raggio degli angoli della finestra (px a zoom 100%). Windows 11 da solo arriva a 8 px.
+RADIUS = 16
 if os.name == 'nt':
     class WINDOWPOS(ctypes.Structure):
         _fields_ = [('hwnd', wintypes.HWND), ('after', wintypes.HWND), ('x', ctypes.c_int), ('y', ctypes.c_int),
                     ('cx', ctypes.c_int), ('cy', ctypes.c_int), ('flags', ctypes.c_uint)]
 # SC_MOVE|HTCAPTION e SC_SIZE|WMSZ_*: gli stessi comandi che usa Windows trascinando la barra o il bordo
-SC_DRAG = {'caption': 0xF012, 'top': 0xF003, 'topleft': 0xF004, 'topright': 0xF005}
+SC_DRAG = {'caption': 0xF012, 'left': 0xF001, 'right': 0xF002, 'top': 0xF003, 'topleft': 0xF004, 'topright': 0xF005,
+           'bottom': 0xF006, 'bottomleft': 0xF007, 'bottomright': 0xF008}
 
 def find_hwnd(title='NEXAR', pid=None):
     """Finestra principale di questo processo (anche se è ancora nascosta), o di quello indicato."""
@@ -128,18 +138,28 @@ def show_other_instance():
     return False
 
 def style_window(hwnd):
-    """Windows 11: angoli arrotondati (il massimo che Windows permette), bordo sottile del colore dell'app,
-    cornice di sistema scura. Su Windows 10 queste richieste vengono ignorate senza errori."""
+    """Cornice di sistema scura e niente angoli/bordo di Windows: gli angoli li ritaglia round_region,
+    molto più tondi degli 8 px che Windows 11 permette. Su Windows 10 queste richieste vengono ignorate."""
     if os.name != 'nt': return
     try:
         dwm = ctypes.windll.dwmapi
         def put(attr, value):
-            v = ctypes.c_int(value)
+            v = ctypes.c_uint(value)
             dwm.DwmSetWindowAttribute(wintypes.HWND(hwnd), attr, ctypes.byref(v), ctypes.sizeof(v))
         put(20, 1)              # DWMWA_USE_IMMERSIVE_DARK_MODE
-        put(33, 2)              # DWMWA_WINDOW_CORNER_PREFERENCE = DWMWCP_ROUND
-        put(34, 0x002E2623)     # DWMWA_BORDER_COLOR (0x00BBGGRR): #23262E, come i bordi delle schede
+        put(33, 1)              # DWMWA_WINDOW_CORNER_PREFERENCE = DWMWCP_DONOTROUND
+        put(34, 0xFFFFFFFE)     # DWMWA_BORDER_COLOR = DWMWA_COLOR_NONE: il bordo lo disegna la pagina
     except (OSError, AttributeError): pass
+
+def round_region(win, client, zoomed, dpi=96, radius=RADIUS):
+    """Rettangolo arrotondato (sx, alto, dx, basso, diametro) in coordinate della finestra: copre solo
+    l'area visibile (i bordi invisibili per ridimensionare restano fuori). None se ingrandita."""
+    if zoomed: return None
+    l, t = client[0] - win[0], client[1] - win[1]
+    r, b = l + client[2], t + client[3]
+    if r - l < 50 or b - t < 50: return None
+    d = round(radius * dpi / 96) * 2
+    return (l, t, r + 1, b + 1, d, d)   # CreateRoundRectRgn esclude il bordo destro e basso
 
 class WindowApi:
     """Comandi della barra disegnata dalla dashboard (window.pywebview.api.win_*)."""
@@ -149,6 +169,7 @@ class WindowApi:
         self._proc = None
         self._orig = None
         self._nested = 0
+        self._shape = 'none'   # ultima forma data alla finestra: si ritaglia solo quando cambia
         self.on_show = None  # chiamata quando un'altra copia di NEXAR chiede di mostrare la finestra
 
     def _attach(self, window):
@@ -176,6 +197,10 @@ class WindowApi:
             if msg == WM_APP_SHOW:
                 if self.on_show: threading.Thread(target=self.on_show, daemon=True).start()
                 return 0
+            if msg == WM_SIZE:
+                res = user32.CallWindowProcW(self._orig, h, msg, wp, lp)
+                self._round(h)
+                return res
             if msg == WM_WINDOWPOSCHANGED:
                 self._nested += 1
                 try: return user32.CallWindowProcW(self._orig, h, msg, wp, lp)
@@ -198,6 +223,22 @@ class WindowApi:
         self._orig = user32.SetWindowLongPtrW(hwnd, -4, ctypes.cast(self._proc, ctypes.c_void_p))
         # SWP_NOMOVE|SWP_NOSIZE|SWP_NOZORDER|SWP_NOACTIVATE|SWP_FRAMECHANGED: ricalcola il bordo adesso
         user32.SetWindowPos(hwnd, None, 0, 0, 0, 0, 0x1 | 0x2 | 0x4 | 0x10 | 0x20)
+        self._round(hwnd)
+
+    def _round(self, h):
+        """Angoli tondi veri: la finestra viene ritagliata con un rettangolo arrotondato."""
+        try:
+            wr, cr, pt = wintypes.RECT(), wintypes.RECT(), wintypes.POINT(0, 0)
+            user32.GetWindowRect(h, ctypes.byref(wr)); user32.GetClientRect(h, ctypes.byref(cr))
+            user32.ClientToScreen(h, ctypes.byref(pt))
+            try: dpi = user32.GetDpiForWindow(h) or 96
+            except AttributeError: dpi = 96
+            shape = round_region((wr.left, wr.top), (pt.x, pt.y, cr.right, cr.bottom), bool(user32.IsZoomed(h)), dpi)
+            if shape == self._shape: return
+            rgn = gdi32.CreateRoundRectRgn(*shape) if shape else None
+            user32.SetWindowRgn(h, rgn, True)   # da qui la regione è di Windows: non va liberata
+            self._shape = shape
+        except Exception: logging.exception('Angoli della finestra')
 
     def win_ready(self):
         return bool(self._hwnd and self._proc)
@@ -224,7 +265,7 @@ class WindowApi:
         if self._hwnd: user32.PostMessageW(self._hwnd, WM_CLOSE, 0, 0)
 
     def win_state(self):
-        return {'max': bool(self._hwnd and user32.IsZoomed(self._hwnd))}
+        return {'max': bool(self._hwnd and user32.IsZoomed(self._hwnd)), 'round': RADIUS if self._shape not in (None, 'none') else 0}
 
 def run():
     if not claim_single_instance():
