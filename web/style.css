@@ -4422,3 +4422,28 @@ select option{background:#141922;color:#e5e7eb}
    Sopra i titoli grandi (OTTIMIZZA, LUCI, SUONO DAL VIVO...) e sopra le sezioni (ENERGIA, DA FARE, PREFERITI...). */
 .vx-tag,.au-kicker,.lx-tag,.vp-head>span{font-size:11px!important;font-weight:800!important;letter-spacing:.14em!important}
 .eyebrow,.vo-h,.fp-label,.lx-fav-head>small,.lx-target>small,.set-group>h4,.dh-head{font-size:11px!important;font-weight:700!important;letter-spacing:.1em!important;text-transform:uppercase}
+
+/* ===== Barra laterale 1.0.88: Sistema in fondo e modalità sempre a portata ===== */
+.rail-mini .rail-nav{flex:1 1 auto;min-height:0}
+.rail-mini .rail-nav .nav-sec:last-of-type{margin-top:auto}
+.rail-mode{position:relative;display:flex;justify-content:center;width:100%;margin-top:10px;padding-top:12px}
+.rail-mode::before{content:"";position:absolute;top:0;left:50%;width:30px;height:1px;margin-left:-15px;background:rgba(255,255,255,.08)}
+.rm-cur{--mc:#60a5fa;display:flex;flex-direction:column;align-items:center;gap:5px;padding:2px;background:none;border:0;color:inherit;cursor:pointer;font:inherit}
+.rm-cur[data-mode=eco]{--mc:#34d399}.rm-cur[data-mode=gaming]{--mc:#f472b6}
+.rm-ico{width:42px;height:42px;border-radius:14px;display:grid;place-items:center;color:var(--mc);
+ background:color-mix(in srgb,var(--mc) 14%,transparent);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--mc) 32%,transparent);transition:transform .2s,background .3s,color .3s}
+.rm-ico .i{width:19px;height:19px}
+.rm-cur:hover .rm-ico{transform:scale(1.06);background:color-mix(in srgb,var(--mc) 22%,transparent)}
+.rm-cur small{font-size:10px;font-weight:700;color:#9aa4b5;letter-spacing:.02em;white-space:nowrap}
+.rm-menu{position:absolute;left:calc(100% + 16px);bottom:-6px;z-index:80;width:236px;padding:6px;border-radius:16px;display:flex;flex-direction:column;gap:2px;
+ background:#161b24;border:1px solid rgba(255,255,255,.1);box-shadow:0 24px 60px rgba(0,0,0,.55)}
+.rm-menu[hidden]{display:none}
+.rm-h{padding:6px 10px 4px;font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#8a93a3}
+.rm-opt{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:11px;background:none;border:0;color:inherit;text-align:left;cursor:pointer;font:inherit}
+.rm-opt:hover{background:rgba(255,255,255,.06)}
+.rm-opt .i{width:18px;height:18px;flex:none}
+.rm-opt.eco .i{color:#34d399}.rm-opt.normal .i{color:#60a5fa}.rm-opt.gaming .i{color:#f472b6}
+.rm-opt b{display:block;font-size:13.5px;font-weight:650}.rm-opt small{font-size:11.5px;color:#8a93a3}
+.rm-opt.on{background:rgba(255,255,255,.08)}
+.rm-opt.on::after{content:"";margin-left:auto;width:7px;height:7px;border-radius:50%;background:currentColor;opacity:.7}
+@media (max-height:760px){.rail-mode{display:none}}

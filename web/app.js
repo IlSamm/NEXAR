@@ -344,7 +344,7 @@ function render(s){
  current=s;
  modeFx(s.mode);
  const eco=s.mode==='eco';
- document.querySelectorAll('.vm-opt').forEach(b=>b.classList.toggle('selected',b.classList.contains(s.mode)));
+ document.querySelectorAll('.vm-opt').forEach(b=>b.classList.toggle('selected',b.classList.contains(s.mode)));railMode(s.mode);
  $('mode-desc').textContent=eco?`Turbo spento, CPU al ${s.eco_cpu_max_percent??'—'}%, dischi e USB a risparmio, monitor spento dopo ${Math.round((s.monitor_timeout_seconds||60)/60)} min`
   :s.mode==='gaming'?'Turbo al massimo, CPU sempre pronta, monitor mai spento':'Piano energetico originale di Windows';
  const tt=$('tl-temp');if(tt){
@@ -2167,7 +2167,18 @@ function fx(kind,title,sub,img){
  const s=st==='discreet'?islandScene('gaming',null,{title:'Avvio '+(sub||title),sub:'NEXAR prepara il PC',auto:true})
   :liquidScene('gaming',null,{title:sub||title,sub:'Avvio il gioco…',auto:true,img});
 }
-function markMode(mode){
+// Modalità nella barra laterale: in fondo, cambiabile da ogni pagina.
+function railMode(mode){
+ const m={eco:['leaf','AI ECO'],normal:['bolt','Normale'],gaming:['game','Gaming']}[mode];const c=$('rm-cur');if(!m||!c)return;
+ c.dataset.mode=mode;c.querySelector('use').setAttribute('href','#i-'+m[0]);$('rm-name').textContent=m[1];c.title='Modalità: '+m[1]+' · tocca per cambiare';
+ document.querySelectorAll('.rm-opt').forEach(b=>b.classList.toggle('on',b.dataset.action===mode));
+}
+function railMenu(open){const m=$('rm-menu');if(!m)return;m.hidden=!open;$('rm-cur').setAttribute('aria-expanded',String(open));}
+$('rm-cur')?.addEventListener('click',()=>railMenu($('rm-menu').hidden));
+document.querySelectorAll('.rm-opt').forEach(b=>b.addEventListener('click',()=>railMenu(false)));
+document.addEventListener('click',e=>{if(!e.target.closest('#rail-mode'))railMenu(false);});
+document.addEventListener('keydown',e=>{if(e.key==='Escape')railMenu(false);});
+function markMode(mode){railMode(mode);
  // Il selettore si sposta subito al clic, senza aspettare che il PC abbia applicato tutto.
  document.querySelectorAll('.vm-opt').forEach(b=>b.classList.toggle('selected',b.classList.contains(mode)));
  const h=$('hm-hero');if(h)h.dataset.mode=mode;lastMode=mode;
@@ -2760,7 +2771,7 @@ function renderScreen(){
   const row=el('div','scr-win'+(w.hung?' hung':''));const name=(w.exe||w.title).replace(/\.exe$/i,'');
   const ic=el('span','as-ico',initials(name));ic.style.setProperty('--h',hue(name));
   const t=el('div');t.append(el('b','',w.title));const sm=el('small','',name+(w.min?' · ridotta a icona':''));
-  if(w.hung){sm.append(document.createTextNode(' · '));sm.append(el('em','','non risponde'));}t.append(sm);
+  if(w.hung){sm.prepend(el('em','','Non risponde'),document.createTextNode(' · '));}t.append(sm);   // prima del nome: con i puntini finali non si vedeva
   const b=el('button','btn'+(w.hung?' danger':''),w.hung?'Chiudi programma':'Chiudi');b.type='button';b.addEventListener('click',()=>scrCloseWin(w));
   row.append(ic,t,b);box.append(row);});
 }

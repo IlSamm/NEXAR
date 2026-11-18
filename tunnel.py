@@ -9,7 +9,6 @@ import os
 import re
 import subprocess
 import threading
-import time
 
 TUNNEL_PORT = 8766
 URL_RE = re.compile(r'https://[a-z0-9-]+\.trycloudflare\.com')

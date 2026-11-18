@@ -106,6 +106,15 @@
    <button data-view="links"><span class="nav-ico n-links"><svg class="i"><use href="#i-link"/></svg></span>Collegamenti<i class="badge" id="links-badge" hidden></i></button>
    <button data-view="settings"><span class="nav-ico n-settings"><svg class="i"><use href="#i-sliders"/></svg></span>Impostazioni</button>
   </nav>
+  <div class="rail-mode" id="rail-mode">
+   <button type="button" class="rm-cur" id="rm-cur" aria-haspopup="menu" aria-expanded="false" title="Cambia modalità"><span class="rm-ico"><svg class="i"><use href="#i-bolt"/></svg></span><small id="rm-name">Normale</small></button>
+   <div class="rm-menu" id="rm-menu" role="menu" hidden>
+    <small class="rm-h">Modalità</small>
+    <button type="button" role="menuitem" class="rm-opt eco" data-action="eco"><svg class="i"><use href="#i-leaf"/></svg><span><b>AI ECO</b><small>Consumo minimo</small></span></button>
+    <button type="button" role="menuitem" class="rm-opt normal" data-action="normal"><svg class="i"><use href="#i-bolt"/></svg><span><b>Normale</b><small>Piano di Windows</small></span></button>
+    <button type="button" role="menuitem" class="rm-opt gaming" data-action="gaming"><svg class="i"><use href="#i-game"/></svg><span><b>Gaming</b><small>Tutta la potenza</small></span></button>
+   </div>
+  </div>
   <div class="rail-foot"><div class="conn"><i class="dot" id="conn-dot"></i><span id="conn-text">Connessione…</span></div></div>
  </aside>
 

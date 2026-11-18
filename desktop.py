@@ -127,6 +127,20 @@ def show_other_instance():
             return True
     return False
 
+def style_window(hwnd):
+    """Windows 11: angoli arrotondati (il massimo che Windows permette), bordo sottile del colore dell'app,
+    cornice di sistema scura. Su Windows 10 queste richieste vengono ignorate senza errori."""
+    if os.name != 'nt': return
+    try:
+        dwm = ctypes.windll.dwmapi
+        def put(attr, value):
+            v = ctypes.c_int(value)
+            dwm.DwmSetWindowAttribute(wintypes.HWND(hwnd), attr, ctypes.byref(v), ctypes.sizeof(v))
+        put(20, 1)              # DWMWA_USE_IMMERSIVE_DARK_MODE
+        put(33, 2)              # DWMWA_WINDOW_CORNER_PREFERENCE = DWMWCP_ROUND
+        put(34, 0x002E2623)     # DWMWA_BORDER_COLOR (0x00BBGGRR): #23262E, come i bordi delle schede
+    except (OSError, AttributeError): pass
+
 class WindowApi:
     """Comandi della barra disegnata dalla dashboard (window.pywebview.api.win_*)."""
     def __init__(self):
@@ -146,6 +160,7 @@ class WindowApi:
             time.sleep(0.1)
         if not self._hwnd: return
         hwnd = self._hwnd
+        style_window(hwnd)
 
         def proc(h, msg, wp, lp):
             if msg == WM_APP_DRAG:
