@@ -117,6 +117,9 @@ def test_gaming_plan_and_back_to_normal(tmp_path, monkeypatch):
     assert ('/setdcvalueindex', '11111111-2222-3333-4444-555555555555', 'SUB_PROCESSOR', 'PERFBOOSTMODE', 0) in calls   # anche a batteria (portatili)
     c.apply_power('normal')
     assert active[0] == core.BALANCED and c.mode() == 'normal'
+    calls.clear(); c.apply_power('eco')
+    assert not [x for x in calls if x[0].startswith('/set') and 'valueindex' in x[0]]   # valori già scritti: si attiva e basta
+    assert ('/setactive', '11111111-2222-3333-4444-555555555555') in calls
 
 def test_fan_levels_validation():
     import core, pytest

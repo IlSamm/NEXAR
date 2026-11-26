@@ -2641,13 +2641,15 @@ function renderBoostApps(d){
  apps.sort((a,b)=>(!!junk[b.name]-!!junk[a.name])||(b.bytes-a.bytes));
  if(!apps.length){box.append(el('p','muted','Nessuna app in background da gestire.'));return;}
  apps.forEach(a=>{
-  const isJunk=!!junk[a.name],cur=chosen[a.name]==='keep'?'':chosen[a.name]||(isJunk&&junkOn?'close':'');
+  const isAi=(d.ai_apps||[]).includes(a.name);
+  const isJunk=!!junk[a.name];let cur=chosen[a.name]==='keep'?'':chosen[a.name]||(isJunk&&junkOn?'close':'');if(isAi&&cur==='close')cur='';
   const row=el('div','boost-app'+(isJunk?' junk':''));const t=el('div');
   const label=isJunk?junk[a.name].charAt(0).toUpperCase()+junk[a.name].slice(1):a.name.replace(/\.exe$/i,'');
   const nm=el('b','',label);if(isJunk)nm.append(el('em','pill warn','inutile'));
-  t.append(nm,el('small','',(isJunk?a.name.replace(/\.exe$/i,'')+' · ':'')+(a.closed?'non aperta ora':`${bytes(a.bytes)} di RAM`+(a.count>1?` · ${a.count} processi`:''))));
+  t.append(nm,el('small','',(isJunk?a.name.replace(/\.exe$/i,'')+' · ':'')+(a.closed?'non aperta ora':`${bytes(a.bytes)} di RAM`+(a.count>1?` · ${a.count} processi`:''))+(isAi?' · assistente AI: non si chiude mai':'')));
   const seg=el('div','seg3');
   [['','Lascia'],['lower','Rallenta'],['close','Chiudi']].forEach(([v,l])=>{const b=el('button',v,l);b.type='button';b.classList.toggle('selected',cur===v);
+   if(isAi&&v==='close'){b.disabled=true;b.title='Claude e Codex non si chiudono: perderesti il lavoro in corso';}
    b.addEventListener('click',()=>{const next=Object.fromEntries(Object.entries(chosen).filter(([k])=>k!==a.name));
     if(v)next[a.name]=v;else if(isJunk&&junkOn)next[a.name]='keep';saveGaming({[key]:next});});seg.append(b);});
   row.append(t,seg);box.append(row);

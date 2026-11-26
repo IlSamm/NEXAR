@@ -233,3 +233,17 @@ def test_fast_autostart_task_script():
     s = discovery.autostart_task_script(r'C:\Apps\NEXAR\NEXAR.exe')
     assert "-AtLogOn" in s and "-RunLevel Limited" in s and "-Priority 4" in s and "'--minimized'" in s and discovery.AUTOSTART_TASK in s
     assert 'Start-ScheduledTask' not in s            # non apre una seconda NEXAR mentre è già aperta
+
+
+def test_app_that_only_hides_is_not_closed_again_and_again(monkeypatch):
+    import procstop
+    st = procstop.Stopper(); st.me = ''
+    calls = []
+    class P:
+        pid, info = 77, {'name': 'tray.exe', 'username': '', 'exe': r'C:\\App\\tray.exe'}
+    monkeypatch.setattr(procstop.proclist, 'iter_info', lambda attrs: [P()])
+    monkeypatch.setattr(procstop, 'is_game', lambda exe, name: False)
+    for now in (0, 30, 60, 90):
+        st.tick('gaming', {'tray.exe': 'close'}, junk_on=False, throttle_bg=False, now=now,
+                closer=lambda n, procs, force=False: calls.append(n) or False)
+    assert calls == ['tray.exe']                        # non si è chiuso (va nell'area di notifica): una volta sola

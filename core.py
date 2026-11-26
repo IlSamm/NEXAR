@@ -143,6 +143,10 @@ def get_guid():
     if not m: raise RuntimeError('Profilo energetico di Windows non rilevato')
     return m.group(0).lower()
 
+def html_escape(x):
+    import html
+    return html.escape(str(x), quote=False)
+
 def valid_guid(x): return isinstance(x, str) and bool(GUID.fullmatch(x))
 
 def float_num(x):
@@ -296,8 +300,11 @@ class Control:
         self.video_timeout = (0.0, None)
         self.screen_off_at = 0.0
         self.power_plan = None
+        self.power_written = {}        # piano -> valori già scritti in questa sessione
+        self.mode_late = []            # luci/ventole/boost del cambio modalità precedente ancora in corso
         self.booster = gaming_boost.Booster(config, state=self.state, save=self.save_state,
                                             notify=lambda m: self.notify(m), log=lambda m: self.log_event(m))
+        self.booster.never_close = self.ai_apps
         import game_covers
         self.covers = game_covers.Covers(DATA_DIR / 'covers', online=lambda: bool(self.booster.settings().get('covers_online', True)),
                                          local=gaming_boost.steam_image)
@@ -317,7 +324,9 @@ class Control:
         self.planner = planner.Planner(lambda: self.config.get('schedules') or [], self.state.setdefault('schedule_runs', {}),
                                        self.save_state, self.run_scheduled, lock=self.lock)
         self.gaming_owned = False      # Gaming acceso da NEXAR perché è partito un gioco
-        self.gaming_prev = 'normal'
+        # Modalità a cui tornare quando il gioco si chiude: resta anche se NEXAR si riavvia (aggiornamento) a metà partita.
+        self.gaming_prev = self.state.get('gaming_prev') if self.state.get('gaming_prev') in ('normal', 'eco') else 'normal'
+        self.gaming_saw_game = False   # in questo Gaming si è visto un gioco aperto (anche se Gaming l'hai acceso tu)
         self.gaming_declined = False   # l'utente è uscito da Gaming a gioco aperto: non riattivarlo
         self.game_gone = None
         self.launch_grace = 0.0
@@ -523,28 +532,39 @@ class Control:
             except Exception: logging.exception('Programmi inutili')
 
     def auto_gaming(self, game, gaming):
+        """Gioco aperto: Gaming parte da solo. Gioco chiuso da 20 s: si torna alla modalità di prima, sia che Gaming
+        l'abbia acceso NEXAR sia che l'abbia acceso tu (se in quel Gaming si è visto un gioco)."""
         now = time.monotonic()
         if game:
             self.game_gone = None
+            if gaming and self.booster.game_pids: self.gaming_saw_game = True
             if (self.booster.settings()['auto'] and self.booster.game_profile(game.get('id', ''))['auto']
                     and not gaming and not self.gaming_owned and not self.gaming_declined):
-                self.gaming_prev = self.mode() or 'normal'
                 self.gaming_owned = True
                 self.set_mode('gaming', manual=False, reason=game['name'])
             return
         self.gaming_declined = False
-        if not self.gaming_owned or now < self.launch_grace: return
+        if not gaming:
+            self.gaming_owned, self.gaming_saw_game, self.game_gone = False, False, None
+            return
+        if not (self.gaming_owned or self.gaming_saw_game) or now < self.launch_grace: return
         if self.game_gone is None: self.game_gone = now
         elif now - self.game_gone >= 20:   # gioco chiuso da 20 s: si torna a com'era prima
-            self.gaming_owned, self.game_gone = False, None
-            if gaming: self.set_mode(self.gaming_prev if self.gaming_prev in MODES and self.gaming_prev != 'gaming' else 'normal', manual=False)
+            self.gaming_owned, self.gaming_saw_game, self.game_gone = False, False, None
+            self.set_mode(self.gaming_prev if self.gaming_prev in ('normal', 'eco') else 'normal', manual=False, reason='gioco chiuso')
+
+    def ai_apps(self):
+        """Gli assistenti AI che NEXAR segue (di solito Claude e Codex)."""
+        return {str(n).lower() for n in self.config.get('auto_detect', {}).get('process_names') or ['codex.exe', 'claude.exe']}
 
     def stopper_tick(self):
         """Gaming e AI ECO: chiude i programmi inutili (anche se ripartono) e in AI ECO mette lo sfondo in risparmio."""
         if os.name != 'nt': return []
         s, mode = self.booster.settings(), self.mode()
         rules = s.get('eco_apps') if mode == 'eco' else s.get('apps') if mode == 'gaming' else {}
-        spare = self.config.get('auto_detect', {}).get('process_names') or []
+        spare = sorted(self.ai_apps())
+        # Claude e Codex non si chiudono mai: perderesti il lavoro che stanno facendo (al massimo restano come sono).
+        rules = {n: a for n, a in (rules or {}).items() if not (a == 'close' and n.lower() in spare)}
         throttle = bool(s.get('eco_throttle', True)) if mode == 'eco' else bool(s.get('gaming_throttle', True))
         closed = self.stopper.tick(mode, rules or {}, bool(s.get('stop_junk', True)), throttle, spare=spare,
                                    spare_pids=self.booster.game_pids | ({self.booster.fg_pid} if self.booster.fg_pid else set()))
@@ -861,6 +881,31 @@ class Control:
         tg = self.config.get('telegram', {})
         return {'bot_token': str(tg.get('token') or ''), 'user_id': int(tg.get('allowed_user_id') or 0)}
 
+    def wake_ready(self):
+        """Accensione da spento con /accendi: cosa è pronto e cosa manca, per qualsiasi PC.
+        Restituisce (righe, tutto_pronto, si_sistema_da_solo)."""
+        net = self.state.get('inventory', {}).get('net') or {}
+        lines, fix = [], False
+        if not net.get('name'):
+            lines.append('❌ Serve il cavo di rete: da spento il PC si sveglia solo via cavo, non col Wi-Fi')
+        else:
+            miss = [x for x, bad in (('risveglio da spento', net.get('wol_magic') is False or net.get('wol_shutdown') is False),
+                                     ('avvio rapido di Windows', net.get('wol_fast')),
+                                     ('risparmio energetico Ethernet', net.get('wol_eee')),
+                                     ('permesso di svegliare il PC', net.get('wol_armed') is False)) if bad]
+            if miss: lines.append('⚠️ Windows da sistemare: ' + ', '.join(miss)); fix = True
+            else: lines.append('✅ Windows e scheda di rete pronti (' + html_escape(net['name']) + ')')
+        if self.relay_info() is None:
+            lines.append("❌ Nessun apparecchio sempre acceso in casa: a PC spento il bot non può rispondere da solo. "
+                         "Serve l'app NEXAR su Umbrel (o un altro apparecchio sempre acceso) collegata dalla pagina Accensione")
+        else:
+            t = self.state.get('relay_test') or {}
+            lines.append(('✅ ' if t.get('ok') else '⚠️ ') + ('Umbrel collegata · ultima prova: ' + html_escape(t.get('message', ''))[:160]
+                                                           if t else 'Umbrel collegata · non ancora provata: premi 🧪 Prova'))
+        lines.append('ℹ️ Nel BIOS deve essere attivo «Wake on LAN» / «Power On by PCI-E» (NEXAR non può farlo da Windows)')
+        ready = bool(net.get('name')) and not fix and self.relay_info() is not None and bool((self.state.get('relay_test') or {}).get('ok'))
+        return lines, ready, fix
+
     def relay_test(self, test=None):
         """Prova dell'accensione da spento: l'app NEXAR su Umbrel deve rispondere e vedere il PC."""
         import beacon as beacon_mod
@@ -928,7 +973,6 @@ class Control:
         if not game: raise ValueError('Gioco non trovato: aggiorna la libreria')
         notes = []
         if self.mode() != 'gaming':
-            self.gaming_prev = self.mode() or 'normal'
             notes.append(self.set_mode('gaming', manual=False, reason=game['name'], quiet=True))
             self.gaming_owned = True
         # Il launcher può aggiornare il gioco prima di aprirlo: 3 minuti di pazienza prima di tornare indietro.
@@ -948,7 +992,7 @@ class Control:
                                                              cpu_t=weighted(played.get(g['id']), 'cpu_temp_avg'), gpu_t=weighted(played.get(g['id']), 'gpu_temp_avg'))
                                                         for g in self.booster.games(force)],
                 'fps': {'source': fps_meter.status(), 'live': getattr(self, 'live_fps', None)},
-                'history': self.booster.history()[:12], 'apps': gaming_boost.user_apps()[:40],
+                'history': self.booster.history()[:12], 'apps': gaming_boost.user_apps()[:40], 'ai_apps': sorted(self.ai_apps()),
                 'fans': cfg.get('fans', {}).get('gaming_level', 'normal'), 'fans_enabled': bool(cfg.get('fans', {}).get('enabled')),
                 'rgb_color': cfg.get('rgb', {}).get('gaming_color', ''), 'rgb_enabled': bool(cfg.get('rgb', {}).get('enabled')),
                 'palette': self.rgb_palette(), 'junk': procstop.JUNK, 'stopper': self.stopper.info(),
@@ -1137,16 +1181,17 @@ class Control:
                 return                                  # voce nascosta su questo PC: si salta
             try: power('/setdcvalueindex', guid, sub, setting, value)
             except RuntimeError: pass                   # PC fisso: niente batteria
-        put('SUB_PROCESSOR', 'PROCTHROTTLEMAX', max_cpu)
-        put('SUB_PROCESSOR', 'PROCTHROTTLEMIN', min_cpu)
-        if parking is not None: put('SUB_PROCESSOR', 'CPMINCORES', parking, required=False)
         # Risparmio vero in AI ECO (turbo spento, PCIe/USB/Wi-Fi a risparmio, dischi meccanici fermi dopo 10 min);
         # in Gaming il contrario. Alcune voci mancano su certi PC: si saltano.
-        for sub, setting, value in (self.eco_power_extra() if mode == 'eco' else GAMING_EXTRA):
-            put(sub, setting, value, required=False)
-        put('SUB_VIDEO', 'VIDEOIDLE', timeout)
-        put('SUB_SLEEP', 'STANDBYIDLE', 0)
-        put('SUB_SLEEP', 'HIBERNATEIDLE', 0)
+        items = [('SUB_PROCESSOR', 'PROCTHROTTLEMAX', max_cpu, True), ('SUB_PROCESSOR', 'PROCTHROTTLEMIN', min_cpu, True)]
+        if parking is not None: items.append(('SUB_PROCESSOR', 'CPMINCORES', parking, False))
+        items += [(sub, setting, value, False) for sub, setting, value in (self.eco_power_extra() if mode == 'eco' else GAMING_EXTRA)]
+        items += [('SUB_VIDEO', 'VIDEOIDLE', timeout, True), ('SUB_SLEEP', 'STANDBYIDLE', 0, True), ('SUB_SLEEP', 'HIBERNATEIDLE', 0, True)]
+        # Il piano è di NEXAR: se i valori sono quelli già scritti (dall'avvio di NEXAR) basta attivarlo. Così il cambio
+        # di modalità è immediato invece di lanciare decine di powercfg a ogni clic.
+        if self.power_written.get(guid) != items:
+            for sub, setting, value, required in items: put(sub, setting, value, required)
+            self.power_written[guid] = items
         power('/setactive',guid)
 
     CONN_RETRY = 120   # secondi fra due tentativi sullo stesso collegamento
@@ -2164,6 +2209,12 @@ class Control:
     def set_mode(self, value, manual=True, reason='', quiet=False):
         if value not in MODES: raise ValueError('Modalità sconosciuta')
         with self.mode_lock:
+            before = self.mode()
+            if value == 'gaming' and before != 'gaming':
+                # Da qui si torna quando il gioco si chiude.
+                self.gaming_prev = before if before in ('normal', 'eco') else 'normal'
+                self.gaming_saw_game, self.game_gone = False, None
+                self.state['gaming_prev'] = self.gaming_prev; self.save_state()
             with self.lock:
                 # Se powercfg fallisce non modificare luci o ventole.
                 self.apply_power(value)
@@ -2180,18 +2231,37 @@ class Control:
             if not self.config.get('fans', {}).get('enabled'): fan_cb = lambda: ''   # ventole lasciate al BIOS: niente da dire
             # Gaming Boost: parte con Gaming e rimette tutto com'era quando si passa ad altra modalità.
             boost = (lambda: self.booster.start()) if value == 'gaming' else (lambda: self.booster.stop())
-            for cb in (lambda: self.rgb_mode(value), fan_cb, boost):
-                try:
-                    note = cb()
-                    if note: notes.append(note)
-                except Exception as ex: notes.append('Integrazione non applicata: '+str(ex))
-            self.last_message = ' · '.join(notes)
-            self.log_event(self.last_message)
-            if not manual and not quiet:
-                title = {'eco': '🌙 AI ECO attivata automaticamente', 'gaming': '🎮 Gaming attivato' + (': ' + reason if reason else ''),
-                         'normal': '⚡ Profilo normale ripristinato'}[value]
-                self.notify(title+'\n'+self.last_message[:270])
-            return self.last_message
+            # Luci, ventole e Gaming Boost partono insieme e fuori dal lock: il tasto risponde subito e il resto (OpenRGB,
+            # MSI, Fan Control) finisce da sé. Quello che dopo 3 s non ha ancora finito viene scritto nel registro appena pronto.
+            notes += self.mode_extras([lambda: self.rgb_mode(value), fan_cb, boost], value)
+            with self.lock:
+                self.last_message = ' · '.join(notes)
+                self.log_event(self.last_message)
+                if not manual and not quiet:
+                    title = {'eco': '🌙 AI ECO attivata automaticamente', 'gaming': '🎮 Gaming attivato' + (': ' + reason if reason else ''),
+                             'normal': '⚡ Profilo normale ripristinato'}[value]
+                    self.notify(title+'\n'+self.last_message[:270])
+                return self.last_message
+
+    def mode_extras(self, jobs, value, wait=3.0):
+        for t in self.mode_late: t.join(20)   # il cambio precedente finisce prima: niente luci del Gaming dopo AI ECO
+        out = [None] * len(jobs)
+        def run(i, cb):
+            try: out[i] = cb()
+            except Exception as ex: out[i] = 'Integrazione non applicata: ' + str(ex)
+        threads = [threading.Thread(target=run, args=(i, cb), daemon=True, name='mode-' + value) for i, cb in enumerate(jobs)]
+        for t in threads: t.start()
+        end = time.monotonic() + wait
+        for t in threads: t.join(max(0.0, end - time.monotonic()))
+        late = [t for t in threads if t.is_alive()]
+        self.mode_late = late
+        if late:
+            def finish():
+                for t in late: t.join(60)
+                rest = [out[i] for i, t in enumerate(threads) if t in late and out[i]]
+                if rest: self.log_event(MODES.get(value, value) + ': ' + ' · '.join(rest))
+            threading.Thread(target=finish, daemon=True, name='mode-late').start()
+        return [n for i, n in enumerate(out) if n and threads[i] not in late] + (['luci e ventole in arrivo'] if late else [])
 
     def rgb_mode(self, value):
         """Luci per modalità: ECO le spegne, Gaming usa il suo colore (se scelto), uscendo torna il colore normale."""

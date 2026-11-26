@@ -112,7 +112,11 @@ def volume(action: str, press=None) -> str:
 
 
 OFF_DELAY = 0.8              # aspetta che il clic (e il rilascio del mouse) sia finito, sennò li riaccende subito
-OFF_RECHECK = (3.0, 8.0)     # secondi dopo lo spegnimento: se nessuno ha toccato mouse o tastiera, li rispegne
+# Secondi dopo lo spegnimento in cui si ricontrolla: un monitor che va in standby a volte si «stacca e riattacca»
+# (DisplayPort/HDMI), un mouse che vibra sul tavolo o un controller collegato muovono l'input di Windows e lo
+# riaccendono. Se l'utente non ha davvero toccato niente, gli schermi vengono rispenti.
+OFF_RECHECK = (2.0, 5.0, 10.0, 20.0, 35.0)
+MOVE_PX = 25                 # movimento del mouse che conta come «lo sto usando» (sotto è vibrazione)
 
 
 def _idle_seconds():
@@ -124,24 +128,65 @@ def _idle_seconds():
 
 
 def _post_off():
-    _user32().PostMessageW(wintypes.HWND(0xFFFF), 0x0112, 0xF170, 2)   # WM_SYSCOMMAND, SC_MONITORPOWER, spento
+    # SendMessageTimeout e non PostMessage: arriva a tutte le finestre anche se una è bloccata, e non si accoda dietro
+    # a un gioco che non risponde. 2 = spento.
+    res = wintypes.DWORD()
+    u = _user32()
+    if not u.SendMessageTimeoutW(wintypes.HWND(0xFFFF), 0x0112, 0xF170, 2, 0x0002, 1500, ctypes.byref(res)):
+        u.PostMessageW(wintypes.HWND(0xFFFF), 0x0112, 0xF170, 2)   # WM_SYSCOMMAND, SC_MONITORPOWER
 
 
-def off_sequence(send, idle, sleep=time.sleep, delay=OFF_DELAY, recheck=OFF_RECHECK) -> int:
-    """Spegne, poi ricontrolla: quando un monitor va in standby a volte si «stacca e riattacca» (DisplayPort/HDMI) e
-    Windows riaccende tutto. Se da quando li ho spenti nessuno ha usato mouse o tastiera, li rispegne.
-    Un movimento vero dell'utente invece vince sempre: niente rispegnimento. Ritorna quante volte ha mandato il comando."""
-    sleep(delay); send(); sent, waited = 1, 0.0
+def _cursor():
+    pt = wintypes.POINT()
+    return (pt.x, pt.y) if _user32().GetCursorPos(ctypes.byref(pt)) else None
+
+
+def _keys_down():
+    """Un tasto della tastiera o del mouse premuto adesso (Maiusc, lettere, clic...)."""
+    u = _user32()
+    return any(u.GetAsyncKeyState(vk) & 0x8000 for vk in (1, 2, 4, *range(8, 0xFF)) if vk not in (0x5B, 0x5C))
+
+
+class Touch:
+    """Capisce se l'utente ha davvero usato il PC dopo lo spegnimento: il mouse spostato di parecchio o un tasto
+    premuto. Un mouse che vibra, un controller o un monitor che si riattacca non contano."""
+    def __init__(self, cursor=None, keys=None):
+        self.cursor, self.keys = cursor or _cursor, keys or _keys_down
+        self.start, self.hit = self.cursor(), False
+
+    def __call__(self):
+        if self.hit: return True
+        try:
+            now = self.cursor()
+            moved = bool(self.start and now) and max(abs(now[0] - self.start[0]), abs(now[1] - self.start[1])) >= MOVE_PX
+            self.hit = moved or self.keys()
+        except Exception: self.hit = False
+        return self.hit
+
+
+def off_sequence(send, touched=None, sleep=time.sleep, delay=OFF_DELAY, recheck=OFF_RECHECK, step=0.25) -> int:
+    """Spegne e per mezzo minuto tiene d'occhio mouse e tastiera: se l'utente li usa davvero gli schermi restano accesi,
+    altrimenti a ogni controllo vengono rispenti (anche se si erano già riaccesi da soli). Ritorna quanti comandi ha
+    mandato."""
+    sleep(delay)
+    touched = touched or Touch()
+    send(); sent, waited = 1, 0.0
     for at in recheck:
-        sleep(at - waited); waited = at
-        if idle() + 0.3 < at: break          # qualcuno ha mosso il mouse o premuto un tasto: li vuole accesi
+        while waited < at:                     # controlla spesso: un tasto premuto dura poco
+            sleep(step); waited += step
+            if touched(): return sent
         send(); sent += 1
     return sent
 
 
-def monitor_off(send=None, idle=None, start=None) -> str:
+def monitor_off(send=None, touched=None, start=None) -> str:
     """Spegne gli schermi (si riaccendono muovendo il mouse). Non blocca: la sequenza gira in un thread a parte."""
+    import logging
     import threading
-    job = lambda: off_sequence(send or _post_off, idle or _idle_seconds)
+    def job():
+        try:
+            n = off_sequence(send or _post_off, touched)
+            logging.info('Schermi spenti (%d %s)', n, 'comando' if n == 1 else 'comandi: si erano riaccesi o nessuno li ha toccati')
+        except Exception: logging.exception('Spegnimento schermi')
     (start or (lambda f: threading.Thread(target=f, daemon=True, name='monitor-off').start()))(job)
     return 'Schermi spenti'

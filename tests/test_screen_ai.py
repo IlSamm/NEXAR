@@ -201,13 +201,26 @@ def test_shot_endpoint_uses_monitor_and_skips_unchanged(monkeypatch):
 
 def test_monitor_off_resends_only_while_untouched():
     sent, naps = [], []
-    # nessuno tocca niente: spento, poi rispento ai due controlli (il monitor si era riacceso da solo)
-    n = screen_remote.off_sequence(lambda: sent.append(1), idle=lambda: 99, sleep=naps.append)
-    assert n == 3 and len(sent) == 3 and naps[0] == screen_remote.OFF_DELAY
+    # nessuno tocca niente: spento, poi rispento a ogni controllo (un monitor si riattacca, il mouse vibra)
+    n = screen_remote.off_sequence(lambda: sent.append(1), touched=lambda: False, sleep=naps.append)
+    assert n == 1 + len(screen_remote.OFF_RECHECK) and naps[0] == screen_remote.OFF_DELAY
     # l'utente muove il mouse dopo un secondo: si spegne una volta sola, poi resta acceso
-    sent.clear()
-    assert screen_remote.off_sequence(lambda: sent.append(1), idle=lambda: 1.0, sleep=lambda s: None) == 1
+    sent.clear(); clock = []
+    touched = lambda: len(clock) > 4
+    assert screen_remote.off_sequence(lambda: sent.append(1), touched=touched, sleep=clock.append) == 1
     # monitor_off non blocca la richiesta: la sequenza parte a parte
     jobs = []
-    assert screen_remote.monitor_off(send=lambda: None, idle=lambda: 0, start=jobs.append) == 'Schermi spenti'
+    assert screen_remote.monitor_off(send=lambda: None, touched=lambda: True, start=jobs.append) == 'Schermi spenti'
     assert len(jobs) == 1
+    jobs[0]()
+
+
+def test_touch_ignores_a_jittery_mouse():
+    pos = [(100, 100)]; keys = [False]
+    t = screen_remote.Touch(cursor=lambda: pos[0], keys=lambda: keys[0])
+    pos[0] = (103, 98)
+    assert not t()                                  # vibrazione: non conta
+    pos[0] = (180, 100)
+    assert t() and t()                              # spostato davvero: resta «toccato»
+    t = screen_remote.Touch(cursor=lambda: (0, 0), keys=lambda: keys[0]); keys[0] = True
+    assert t()                                      # tasto premuto

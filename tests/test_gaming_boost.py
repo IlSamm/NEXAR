@@ -118,8 +118,10 @@ class FakeCtl:
         self.booster = gb.Booster({'gaming_boost': {'auto': auto}})
         self.current, self.calls = 'eco', []
         self.gaming_owned, self.gaming_prev, self.gaming_declined, self.game_gone, self.launch_grace = False, 'normal', False, None, 0.0
+        self.gaming_saw_game = False
     def mode(self): return self.current
     def set_mode(self, value, manual=True, reason='', quiet=False):
+        if value == 'gaming' and self.current != 'gaming': self.gaming_prev, self.gaming_saw_game = self.current, False
         self.calls.append((value, reason)); self.current = value
 
 def test_auto_gaming_on_and_back(monkeypatch):
@@ -131,7 +133,21 @@ def test_auto_gaming_on_and_back(monkeypatch):
     assert len(c.calls) == 1
     c.game_gone = time.monotonic() - 25             # chiuso da 25 s: torna com'era
     c.auto_gaming(None, True)
-    assert c.calls[-1] == ('eco', '') and not c.gaming_owned
+    assert c.calls[-1] == ('eco', 'gioco chiuso') and not c.gaming_owned
+
+
+def test_manual_gaming_goes_back_when_the_game_closes():
+    c = FakeCtl(auto=False)
+    c.set_mode('gaming'); c.calls.clear()            # Gaming acceso a mano dalla modalità AI ECO
+    c.auto_gaming(None, True)                       # nessun gioco ancora: resta in Gaming
+    c.game_gone = time.monotonic() - 60; c.auto_gaming(None, True)
+    assert c.calls == []
+    c.booster.game_pids = {42}
+    c.auto_gaming({'id': 'x', 'name': 'X', 'store': ''}, True)
+    c.booster.game_pids = set()
+    c.auto_gaming(None, True); c.game_gone = time.monotonic() - 25
+    c.auto_gaming(None, True)
+    assert c.calls == [('eco', 'gioco chiuso')]
 
 def test_auto_gaming_respects_user(monkeypatch):
     c = FakeCtl(auto=False)

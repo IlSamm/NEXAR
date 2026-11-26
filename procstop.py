@@ -171,6 +171,9 @@ class Stopper:
             except (psutil.Error, OSError) as ex:
                 logging.info('Non chiuso: %s (%s)', name, ex); ok = False
             if ok: closed.append(name); self.stopped.add(name)
+            # Non si è chiuso (app che con la X va solo nell'area di notifica, come Claude o Discord): riprovare ogni
+            # 20 s gli farebbe solo sparire la finestra mentre la usi. Per questa modalità si lascia stare.
+            else: self.closes[name] = MAX_CLOSES
         return closed
 
 

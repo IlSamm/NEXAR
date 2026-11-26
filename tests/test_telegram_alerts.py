@@ -41,3 +41,26 @@ def test_fresh_alert_has_no_time_prefix():
     bot, sent = bot_with([])
     bot.notify('subito'); bot.flush_notifications()
     assert sent == ['subito']
+
+
+def test_wake_command_reports_and_offers_fix():
+    bot, _ = bot_with([])
+    out = []
+    bot.send = lambda chat, text, markup=None: out.append((text, markup))
+    bot.ctrl.wake_ready = lambda: (['⚠️ Windows da sistemare: avvio rapido di Windows'], False, True)
+    bot.dispatch('/accendi', 5)
+    text, markup = out[-1]
+    assert 'Accensione da spento' in text and 'Sistema tutto' in text
+    assert [b['callback_data'] for b in markup['inline_keyboard'][0]] == ['wol_fix', 'wol_test']
+
+
+def test_wake_ready_lists_what_is_missing(tmp_path, monkeypatch):
+    import core
+    monkeypatch.setattr(core, 'STATE_FILE', tmp_path / 'state.json')
+    c = core.Control({})
+    c.state['inventory'] = {'net': {'name': 'Ethernet', 'wol_magic': True, 'wol_shutdown': True, 'wol_fast': True}}
+    lines, ready, fix = c.wake_ready()
+    assert fix and not ready and 'avvio rapido' in lines[0] and 'Umbrel' in lines[1]
+    c.state['inventory'] = {}
+    lines, ready, fix = c.wake_ready()
+    assert not fix and 'cavo di rete' in lines[0]

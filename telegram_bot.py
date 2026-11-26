@@ -11,7 +11,7 @@ from urllib.request import Request, urlopen
 
 # Il bot non è un telecomando a pulsanti: manda gli avvisi e apre la dashboard (Mini App), dove c'è tutto.
 COMMANDS = [('start', 'Apri NEXAR'), ('stato', 'Il PC in breve'), ('schermo', 'Foto dello schermo del PC'),
-            ('annulla', 'Ferma uno spegnimento programmato')]
+            ('annulla', 'Ferma uno spegnimento programmato'), ('accendi', 'Accensione da spento: stato e prova')]
 SCREEN_BTN = {'text': '🖥 Vedi schermo', 'callback_data': 'schermo'}
 KEEP_BUTTONS = 25   # ultimi messaggi con il pulsante della dashboard: si aggiornano quando cambia il collegamento
 
@@ -232,11 +232,38 @@ class TelegramBot:
         if a in ('annulla', 'cancel'):
             try: return self.send(chat, '⏻ ' + self.ctrl.cancel_power(), self.menu())
             except Exception as ex: return self.send(chat, '⚠️ ' + str(ex)[:200], self.menu())
-        if a in ('accendi', 'wake'):
-            text = '🟢 Il PC è già acceso.\n<i>Quando è spento, /accendi lo riceve l\'app NEXAR su Umbrel: se funziona lo vedi in Accensione → Prova.</i>'
-        else: text = self.home_text()
+        if a in ('accendi', 'wake'): return self.send_wake(chat)
+        if a in ('wol_fix', 'wol_test'): return self.wake_job(chat, a)
+        text = self.home_text()
         if message_id: self.edit(chat, message_id, text, self.menu())
         else: self.send(chat, text, self.menu())
+
+    def send_wake(self, chat, head='🟢 Il PC è acceso.'):
+        """/accendi a PC acceso: controlla che l'accensione da spento funzioni e, con un tocco, sistema tutto da solo."""
+        try: lines, ready, fix = self.ctrl.wake_ready()
+        except Exception as ex: lines, ready, fix = ['⚠️ ' + html.escape(str(ex))[:200]], False, False
+        text = head + '\n\n<b>Accensione da spento</b>\n' + '\n'.join(lines)
+        text += '\n\n' + ('Pronta: da spento scrivi /accendi e il PC si accende.' if ready else
+                           'Tocca ⚙️ Sistema tutto: faccio io le impostazioni di Windows, poi 🧪 Prova.' if fix else
+                           'Tocca 🧪 Prova per controllare che da spento si accenda.')
+        row = ([{'text': '⚙️ Sistema tutto', 'callback_data': 'wol_fix'}] if fix else []) + [{'text': '🧪 Prova', 'callback_data': 'wol_test'}]
+        self.send(chat, text, {'inline_keyboard': [row] + self.menu()['inline_keyboard']})
+
+    def wake_job(self, chat, what):
+        """Sistemare Windows o provare Umbrel richiede qualche secondo: si fa a parte e poi si risponde."""
+        def job():
+            try:
+                if what == 'wol_fix':
+                    admin = getattr(self.ctrl, 'admin', None)
+                    if not admin or not admin.active():
+                        raise RuntimeError('Per sistemarlo da lontano attiva una volta sul PC «Amministratore da remoto» '
+                                           '(Impostazioni → Sistema), oppure premi Sistema nella pagina Accensione sul PC')
+                    msg = '✅ ' + self.ctrl.wol_setup(admin); self.ctrl.log_event('⏻ ' + msg[2:])
+                else:
+                    r = self.ctrl.relay_test(); msg = ('✅ ' if r['ok'] else '⚠️ ') + r['message']
+            except Exception as ex: msg = '⚠️ ' + str(ex)[:300]
+            self.send_wake(chat, html.escape(msg))
+        threading.Thread(target=job, daemon=True, name='tg-wake').start()
 
     def run(self, stop: threading.Event):
         logging.info('Bot Telegram: servizio in attesa di configurazione')

@@ -418,6 +418,7 @@ class Booster:
         self.boosted = {}          # pid -> (nome, priorità originale)
         self.lowered = {}
         self.closed = []           # app chiuse da riaprire: {name, exe, cmdline, cwd}
+        self.never_close = lambda: set()   # assistenti AI che NEXAR segue (Claude, Codex): il lavoro in corso non si perde
         self.game = ''
         self.running = None        # gioco aperto adesso (anche fuori da Gaming)
         self.seen_fg = set()       # PID passati in primo piano: un gioco vero lo è, un programma di sfondo no
@@ -571,8 +572,14 @@ class Booster:
             self.save()
             if self.saved_tweaks or self.saved_mouse: notes.append('Windows pronto per giocare')
             self.session = {'start': time.time(), 'last': time.time(), 'game': '', 'gid': '', 'wh': 0.0}
-        closed = self.close_apps([n for n, act in s['apps'].items() if act == 'close'])
-        if closed: notes.append('chiuse ' + ', '.join(closed))
+        # Le app scelte si chiudono in sottofondo: chi non risponde subito (o va nell'area di notifica) non fa
+        # aspettare il tasto Gaming.
+        names = [n for n, act in s['apps'].items() if act == 'close']
+        if names:
+            def bg():
+                closed = self.close_apps(names)
+                if closed: self.log('Gaming: chiuse ' + ', '.join(closed))
+            threading.Thread(target=bg, daemon=True, name='gaming-close').start()
         self.tick()
         msg = 'Gaming Boost attivo' + (': ' + '; '.join(notes) if notes else '')
         self.log(msg)
@@ -581,8 +588,9 @@ class Booster:
     def close_apps(self, names):
         """Chiusura gentile (come la X): chi ha lavoro non salvato può rifiutarsi e resta aperto."""
         done = []
+        keep = {n.lower() for n in self.never_close()}
         for name in names:
-            if name in PROTECTED: continue
+            if name in PROTECTED or name in keep: continue
             procs = [p for p in proclist.iter_info(['name', 'exe', 'cmdline', 'cwd']) if (p.info['name'] or '').lower() == name]
             if not procs: continue
             main = next((p for p in procs if p.info['cmdline'] and len(p.info['cmdline']) <= 2), procs[0])
