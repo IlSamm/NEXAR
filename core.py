@@ -2177,6 +2177,7 @@ class Control:
             # Personalizzate è una scelta tua: AI ECO e Normale non la toccano (Gaming solo se gli hai dato un livello suo).
             mine = self.state.get('fans_mine') and not (value == 'gaming' and fans != 'normal')
             fan_cb = (lambda: 'Ventole: restano personalizzate') if mine else (lambda: self.fans_level(fans))
+            if not self.config.get('fans', {}).get('enabled'): fan_cb = lambda: ''   # ventole lasciate al BIOS: niente da dire
             # Gaming Boost: parte con Gaming e rimette tutto com'era quando si passa ad altra modalità.
             boost = (lambda: self.booster.start()) if value == 'gaming' else (lambda: self.booster.stop())
             for cb in (lambda: self.rgb_mode(value), fan_cb, boost):
@@ -2195,6 +2196,8 @@ class Control:
     def rgb_mode(self, value):
         """Luci per modalità: ECO le spegne, Gaming usa il suo colore (se scelto), uscendo torna il colore normale."""
         rgb = self.config.get('rgb', {})
+        # PC senza OpenRGB (o luci non collegate): cambiare modalità non deve riempire gli avvisi di "OpenRGB non trovato".
+        if not rgb.get('enabled') or not Path(rgb.get('openrgb_exe', '')).is_file(): return ''
         gaming_color = rgb.get('gaming_color') if rgb.get('enabled') else ''
         notes = []
         if self.state.get('rgb_gaming') and value != 'gaming':

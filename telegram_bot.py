@@ -1,7 +1,7 @@
 """Bot NEXAR: avvisi dal PC e accesso alla dashboard. Long polling (nessuna porta aperta), solo il proprietario abbinato."""
+import collections
 import html
 import json
-import queue
 import logging
 import threading
 import time
@@ -28,7 +28,9 @@ class TelegramBot:
         self.token = ''
         self.user_id = int(cfg.get('allowed_user_id') or 0)
         self.offset = None
-        self.notifications = queue.Queue(maxsize=40)
+        self.notifications = collections.deque(maxlen=40)   # (quando, testo): i più vecchi escono se Telegram resta giù a lungo
+        self.notify_lock = threading.Lock()
+        self.notify_down = 0.0   # da quando Telegram rifiuta gli avvisi (per una sola riga nel registro)
         self.webapp_url = ''
         self.menu_synced = None
         self.tunnel = None
@@ -196,18 +198,31 @@ class TelegramBot:
     def notify(self, message):
         # In coda anche prima che il bot sia partito (es. "PC acceso" all'avvio): li invia il primo giro di run().
         if self.ctrl.config.get('telegram', {}).get('token') and self.user_id:
-            try: self.notifications.put_nowait(html.escape(str(message)[:3800]))
-            except queue.Full: logging.warning('Coda notifiche Telegram piena')
+            with self.notify_lock: self.notifications.append((time.time(), html.escape(str(message)[:3800])))
 
-    def flush_notifications(self):
-        while not self.notifications.empty():
-            message=self.notifications.get_nowait()
-            try: self.send(self.user_id,message,self.menu())
+    def flush_notifications(self, now=None):
+        """Avvisi in ordine; uno resta in coda finché Telegram non lo accetta. Se è arrivato in ritardo (Telegram o la rete
+        erano giù) porta l'ora in cui è successo."""
+        while True:
+            with self.notify_lock:
+                if not self.notifications: break
+                at, message = self.notifications[0]
+            late = (now or time.time()) - at > 120
+            text = (f'🕒 <i>alle {time.strftime("%H:%M", time.localtime(at))}</i>\n' + message) if late else message
+            try: self.send(self.user_id, text, self.menu())
+            except HTTPError as ex:
+                if ex.code == 400:                       # messaggio che Telegram non accetterà mai: si scarta
+                    logging.warning('Avviso Telegram scartato (HTTP 400)')
+                else:
+                    if not self.notify_down: logging.warning('Avvisi Telegram in attesa: Telegram risponde HTTP %s, riprovo', ex.code)
+                    self.notify_down = self.notify_down or time.time(); return
             except Exception:
-                logging.exception('Invio avviso Telegram')
-                try: self.notifications.put_nowait(message)
-                except queue.Full: pass
-                break
+                if not self.notify_down: logging.warning('Avvisi Telegram in attesa: rete o Telegram non raggiungibili, riprovo')
+                self.notify_down = self.notify_down or time.time(); return
+            with self.notify_lock:
+                if self.notifications and self.notifications[0] == (at, message): self.notifications.popleft()
+            if self.notify_down:
+                logging.info('Avvisi Telegram di nuovo inviati dopo %s', duration(time.time() - self.notify_down)); self.notify_down = 0.0
 
     # ---------- comandi ----------
     def dispatch(self, action, chat, message_id=None, arg=''):
