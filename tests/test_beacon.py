@@ -127,3 +127,18 @@ def test_wake_link_matches_relay_topic(monkeypatch):
     monkeypatch.setattr(main.controller, 'beacon', c.beacon, raising=False)
     r = TestClient(main.app, client=('127.0.0.1', 1000)).get('/api/power/wake-link', headers={'X-PC-ECO-Key': main.key})
     assert r.json() == {'url': url}
+
+
+
+def test_presence_only_with_umbrel_and_not_too_often():
+    posted, clock = [], [1000.0]
+    cfg = {'beacon': {'secret': 's'}}
+    b = beacon.Beacon(cfg, save=lambda: None, get_url=lambda: '', post=lambda t, m: posted.append((t, m)), clock=lambda: clock[0])
+    assert not b.presence('on') and not posted                       # Umbrel non collegata: niente
+    b.relay = lambda: {'bot_token': 'x', 'user_id': 1}
+    assert b.presence('on') and not b.presence('on')                 # 'acceso' una volta ogni 30 minuti
+    clock[0] += 31 * 60
+    assert b.presence('on')
+    assert b.presence('off') and b.presence('on')                    # dopo uno spegnimento annullato si ridice subito
+    t, m = posted[-1]
+    assert t == beacon.topic('presence:s') and beacon.unseal('presence:s', m)['state'] == 'on'

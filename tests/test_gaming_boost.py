@@ -142,3 +142,23 @@ def test_auto_gaming_respects_user(monkeypatch):
     assert c.calls == []
     c.auto_gaming(None, False)                      # chiuso il gioco: la prossima volta si riattiva
     assert c.gaming_declined is False
+
+
+def test_fullscreen_program_with_game_libraries_counts_as_game(monkeypatch):
+    class M:
+        def __init__(self, path): self.path = path
+    class P:
+        def __init__(self, files=None, denied=False): self.files, self.denied = files or [], denied
+        def memory_maps(self, grouped=True):
+            if self.denied: raise gb.psutil.AccessDenied(1)
+            return [M(f) for f in self.files]
+    assert gb.looks_like_game(P([r'C:\G\UnityPlayer.dll', r'C:\W\kernel32.dll']))
+    assert not gb.looks_like_game(P([r'C:\W\d3d11.dll', r'C:\W\kernel32.dll']))      # un'app qualsiasi a schermo intero
+    assert gb.looks_like_game(P(denied=True))                                          # anti-cheat: non si lascia leggere
+    b = gb.Booster({})
+    p = type('X', (), {'pid': 5})()
+    monkeypatch.setattr(gb, 'looks_like_game', lambda proc: True)
+    b.full_since = {5: 100.0}
+    assert not b.fullscreen_game(p, 'mygame.exe', r'D:\Giochi\mygame.exe', 110)      # a schermo intero da poco
+    assert b.fullscreen_game(p, 'mygame.exe', r'D:\Giochi\mygame.exe', 130)
+    assert not b.fullscreen_game(p, 'vlc.exe', r'C:\VLC\vlc.exe', 130)                 # video, non giochi

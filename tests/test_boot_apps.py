@@ -114,13 +114,42 @@ def test_stopper_closes_junk_and_throttles_background_in_eco(monkeypatch):
     assert s.throttled == {} and procs[1]._nice == 32                       # fuori da AI ECO tutto come prima
 
 
-def test_stopper_gaming_only_closes(monkeypatch):
-    procs = [FakeProc(1, 'overwolf.exe'), FakeProc(2, 'onedrive.exe')]
+def test_stopper_in_gaming_closes_junk_and_slows_the_background_but_not_the_game(monkeypatch):
+    procs = [FakeProc(1, 'overwolf.exe'), FakeProc(2, 'onedrive.exe'), FakeProc(3, 'mygame.exe'), FakeProc(4, 'discord.exe'),
+             FakeProc(5, 'chrome.exe')]
+    monkeypatch.setattr(procstop.psutil, 'process_iter', lambda attrs=None: procs)
+    monkeypatch.setattr(procstop, 'visible_pids', lambda: {5})              # chrome ha una finestra: resta com'è
+    monkeypatch.setattr(procstop, 'efficiency', lambda pid, on: True)
+    s = procstop.Stopper(); s.me = 'me'
+    assert s.tick('gaming', {}, now=0, closer=lambda n, p, force: True, spare_pids={3}) == ['overwolf.exe']
+    # sfondo in risparmio (sotto il normale, non al minimo come in AI ECO); gioco e chat vocale restano veloci
+    assert s.throttled == {2: ('onedrive.exe', 32)} and procs[1]._nice == procstop.psutil.BELOW_NORMAL_PRIORITY_CLASS
+    s2 = procstop.Stopper(); s2.me = 'me'
+    s2.tick('gaming', {}, throttle_bg=False, now=0, closer=lambda n, p, force: True)
+    assert s2.throttled == {}                                               # interruttore spento: solo chiusure
+
+
+def test_closing_a_protected_program_does_not_stop_the_others(monkeypatch):
+    procs = [FakeProc(1, 'overwolf.exe'), FakeProc(2, 'manycam.exe')]
     monkeypatch.setattr(procstop.psutil, 'process_iter', lambda attrs=None: procs)
     monkeypatch.setattr(procstop, 'visible_pids', lambda: set())
+    def closer(name, p, force):
+        if name == 'overwolf.exe': raise procstop.psutil.AccessDenied(1)   # protetto da Windows
+        return True
     s = procstop.Stopper(); s.me = 'me'
-    assert s.tick('gaming', {}, now=0, closer=lambda n, p, force: True) == ['overwolf.exe']
-    assert s.throttled == {}                                                # in Gaming lo sfondo non si rallenta da qui
+    assert s.tick('gaming', {}, throttle_bg=False, now=0, closer=closer) == ['manycam.exe']
+
+
+def test_wait_gone_counts_access_denied_as_still_open():
+    import proclist
+    class P:
+        def __init__(self, mode): self.mode = mode
+        def is_running(self):
+            if self.mode == 'denied': raise proclist.psutil.AccessDenied(1)
+            return self.mode == 'alive'
+        def status(self): return 'running'
+    gone, alive, denied = P('gone'), P('alive'), P('denied')
+    assert proclist.wait_gone([gone, alive, denied], 0) == [alive, denied]
 
 
 def test_startup_junk():

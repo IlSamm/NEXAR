@@ -114,6 +114,7 @@ def test_gaming_plan_and_back_to_normal(tmp_path, monkeypatch):
     c.apply_power('eco')
     assert ('/setacvalueindex', '11111111-2222-3333-4444-555555555555', 'SUB_PROCESSOR', 'PERFBOOSTMODE', 0) in calls   # turbo spento
     assert ('/setacvalueindex', '11111111-2222-3333-4444-555555555555', 'SUB_PCIEXPRESS', 'ASPM', 2) in calls
+    assert ('/setdcvalueindex', '11111111-2222-3333-4444-555555555555', 'SUB_PROCESSOR', 'PERFBOOSTMODE', 0) in calls   # anche a batteria (portatili)
     c.apply_power('normal')
     assert active[0] == core.BALANCED and c.mode() == 'normal'
 

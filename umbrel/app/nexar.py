@@ -110,6 +110,33 @@ def fresh(p, last, now):
     return isinstance(t, (int, float)) and t > last and abs(now - t) < 180
 
 
+# Bot Telegram col PC che non risponde: si guarda ogni POLL secondi; un messaggio si prende solo se nessuno l'ha letto
+# da STALE secondi (STALE_FAR se il PC risponde al ping: forse è acceso e NEXAR lo sta solo leggendo più lentamente).
+POLL, STALE, STALE_FAR = 4, 10, 45
+
+
+PRESENCE_FOR = 31 * 60      # NEXAR sul PC ripete 'on' ogni 30 minuti finché Umbrel non lo raggiunge
+
+
+def read_by_other(updates, seen):
+    """Un messaggio visto prima è sparito senza che Umbrel lo confermasse: lo ha letto NEXAR sul PC, quindi è acceso."""
+    ids = {u['update_id'] for u in updates}
+    return any(k not in ids for k in seen)
+
+
+def unread(updates, seen, now, stale):
+    """I messaggi rimasti senza lettore da almeno `stale` secondi, in ordine. NEXAR sul PC conferma ogni messaggio
+    appena lo legge: se un messaggio resta lì, nessuno lo sta leggendo. `seen` ricorda quando è comparso."""
+    ids = {u['update_id'] for u in updates}
+    for k in [k for k in seen if k not in ids]: del seen[k]
+    for u in updates: seen.setdefault(u['update_id'], now)
+    out = []
+    for u in sorted(updates, key=lambda u: u['update_id']):
+        if now - seen[u['update_id']] < stale: break   # dal primo ancora fresco in poi si aspetta
+        out.append(u)
+    return out
+
+
 def link_ok(ev, last, now):
     # Link del telefono: basta aprirlo. Vale solo se appena inviato, al massimo uno ogni 20 s.
     t = ev.get('time', 0)
@@ -152,6 +179,7 @@ def pc_on(cfg):
 class Waker:
     def __init__(self):
         self.last_page = 0.0
+        self.pc_busy_until = 0.0   # fino a quando NEXAR sul PC sta leggendo il bot (l'ha detto lui o Telegram)
 
     def tg(self, cfg, method, **params):
         if not cfg.get('bot_token'): return None
@@ -169,9 +197,9 @@ class Waker:
         while True:
             cfg = load()
             if not cfg: time.sleep(5); continue
-            ws = cfg['wake_secret']; sec, link = 'wake:' + ws, topic('link:' + ws)
+            ws = cfg['wake_secret']; sec, link, pres = 'wake:' + ws, topic('link:' + ws), 'presence:' + ws
             try:
-                req = urllib.request.Request(NTFY + '/' + topic(sec) + ',' + link + '/json', headers=UA)
+                req = urllib.request.Request(NTFY + '/' + topic(sec) + ',' + link + ',' + topic(pres) + '/json', headers=UA)
                 with urllib.request.urlopen(req, timeout=120) as r:
                     for line in r:
                         cur = load()
@@ -179,6 +207,9 @@ class Waker:
                         ev = json.loads(line)
                         if ev.get('event') != 'message': continue
                         now = time.time()
+                        if ev.get('topic') == topic(pres):
+                            self.presence(unseal(pres, ev.get('message', '')), now)
+                            continue
                         if ev.get('topic') == link:
                             if not link_ok(ev, last_link, now): continue
                             last_link = now; on = pc_on(cur)
@@ -199,6 +230,12 @@ class Waker:
                             self.tell(cur, "⏻ Accensione chiesta dall'app NEXAR per Mac." if not on else "💻 L'app per Mac ha chiesto l'accensione, ma il PC è già acceso.")
             except Exception:
                 time.sleep(10)
+
+    def presence(self, p, now):
+        """NEXAR sul PC avvisa quando legge il bot ma Umbrel non lo raggiunge ('on'), e quando si spegne ('off')."""
+        if not isinstance(p, dict) or not isinstance(p.get('t'), (int, float)) or abs(now - p['t']) > 300: return
+        if p.get('state') == 'on': self.pc_busy_until = now + PRESENCE_FOR
+        elif p.get('state') == 'off': self.pc_busy_until = 0.0
 
     def follow(self):
         """Se il router dà un altro indirizzo al PC, o abbini un altro bot Telegram, NEXAR lo pubblica cifrato e qui si aggiorna da solo."""
@@ -237,39 +274,52 @@ class Waker:
             time.sleep(300)
 
     def telegram(self):
-        """Con il PC spento risponde qui il bot; col PC acceso lo gestisce NEXAR, così non si contendono i messaggi."""
-        offset, bot = None, None
-        kb = {'inline_keyboard': [[{'text': '⏻ Accendi il PC', 'callback_data': 'wake'}]]}
+        """Il bot lo legge NEXAR sul PC. Qui si risponde solo ai messaggi che nessuno ha letto: così, anche se Umbrel
+        non riesce a raggiungere il PC (firewall, rete diversa), non gli ruba mai i messaggi quando è acceso."""
+        seen, bot = {}, None
         while True:
             cfg = load()
             if not cfg or not cfg.get('bot_token'): time.sleep(30); continue
-            if cfg['bot_token'] != bot: offset, bot = None, cfg['bot_token']
+            if cfg['bot_token'] != bot: seen, bot = {}, cfg['bot_token']
             try:
-                if app_up(cfg):  # NEXAR acceso sul PC: il bot lo gestisce lui
-                    offset = None; time.sleep(15); continue
-                for ev in self.tg(cfg, 'getUpdates', offset=offset or 0, timeout=20, allowed_updates=['message', 'callback_query']) or []:
-                    offset = ev['update_id'] + 1
-                    cb = ev.get('callback_query'); msg = ev.get('message') or (cb or {}).get('message') or {}
-                    who = (cb or msg).get('from', {}).get('id'); text = (cb or {}).get('data') or msg.get('text', '')
-                    if cb: self.tg(cfg, 'answerCallbackQuery', callback_query_id=cb['id'])
-                    if who != cfg.get('user_id') or (not cb and time.time() - msg.get('date', 0) > 300): continue
-                    if text.split('@')[0] in ('/accendi', 'wake', '/wake'):
-                        send_wake(cfg); self.tell(cfg, '⏻ Segnale di accensione inviato. Ti scrivo appena il PC risponde.')
-                        for i in range(36):
-                            time.sleep(5)
-                            if pc_on(cfg): self.tell(cfg, '🟢 PC acceso. Tra poco NEXAR riprende il controllo.'); break
-                            if i == 5: send_wake(cfg)  # secondo tentativo dopo 30 secondi
-                        else: self.tell(cfg, '⚠️ Il PC non risponde. Nel BIOS: ErP (o Deep Sleep) su Disabled e Wake on LAN / '
-                                             'Power On By PCI-E su Enabled: in NEXAR → Accensione → BIOS trovi i nomi giusti per la tua scheda. '
-                                             'Il PC deve avere il cavo di rete; se il cavo va a un ripetitore Wi-Fi, collegalo direttamente al router.')
-                    else:
-                        self.tg(cfg, 'sendMessage', chat_id=cfg.get('user_id'), text='🔴 Il PC è spento.', reply_markup=kb)
+                if app_up(cfg) or time.time() < self.pc_busy_until:   # NEXAR acceso sul PC: il bot lo gestisce lui
+                    seen.clear(); time.sleep(15); continue
+                # Sbirciata senza "offset": i messaggi restano a disposizione di NEXAR sul PC se li sta leggendo.
+                ups = self.tg(cfg, 'getUpdates', timeout=0, allowed_updates=['message', 'callback_query']) or []
+                if read_by_other(ups, seen): self.pc_busy_until = time.time() + 120; seen.clear(); continue
+                todo = unread(ups, seen, time.monotonic(), STALE_FAR if quiet('ping', '-c', '1', '-W', '1', cfg['pc_ip']) else STALE)
+                if not todo: time.sleep(POLL); continue
+                # Confermati a Telegram prima di rispondere: se la risposta è lunga (accensione) non tornano indietro.
+                self.tg(cfg, 'getUpdates', offset=todo[-1]['update_id'] + 1, timeout=0)
+                for ev in todo: seen.pop(ev['update_id'], None)   # confermati da qui: non contano come letti dal PC
+                for ev in todo: self.answer(cfg, ev)
             except urllib.error.HTTPError as ex:
-                # 409: il bot lo sta già leggendo NEXAR sul PC (appena acceso): si lascia a lui
-                if ex.code == 409: offset = None; time.sleep(60)
-                else: time.sleep(10)
+                # 409: proprio adesso NEXAR sul PC sta leggendo il bot, quindi è acceso: lo si lascia a lui
+                if ex.code == 409: seen.clear(); self.pc_busy_until = time.time() + 60
+                time.sleep(10)
             except Exception:
                 time.sleep(10)
+
+    def answer(self, cfg, ev):
+        kb = {'inline_keyboard': [[{'text': '⏻ Accendi il PC', 'callback_data': 'wake'}]]}
+        cb = ev.get('callback_query'); msg = ev.get('message') or (cb or {}).get('message') or {}
+        who = (cb or msg).get('from', {}).get('id'); text = (cb or {}).get('data') or msg.get('text', '')
+        if cb:
+            try: self.tg(cfg, 'answerCallbackQuery', callback_query_id=cb['id'])
+            except Exception: pass                   # pulsante troppo vecchio: non importa
+        if who != cfg.get('user_id') or (not cb and time.time() - msg.get('date', 0) > 300): return
+        if text.split('@')[0].split(' ')[0] in ('/accendi', 'wake', '/wake'):
+            if pc_on(cfg): return self.tell(cfg, '🟢 Il PC è già acceso: NEXAR ti risponde tra poco.')
+            send_wake(cfg); self.tell(cfg, '⏻ Segnale di accensione inviato. Ti scrivo appena il PC risponde.')
+            for i in range(36):
+                time.sleep(5)
+                if pc_on(cfg): self.tell(cfg, '🟢 PC acceso. Tra poco NEXAR riprende il controllo.'); return
+                if i in (3, 11): send_wake(cfg)      # altri tentativi dopo 20 e 60 secondi
+            self.tell(cfg, '⚠️ Il PC non risponde. Nel BIOS: ErP (o Deep Sleep) su Disabled e Wake on LAN / '
+                           'Power On By PCI-E su Enabled: in NEXAR → Accensione → BIOS trovi i nomi giusti per la tua scheda. '
+                           'Il PC deve avere il cavo di rete; se il cavo va a un ripetitore Wi-Fi, collegalo direttamente al router.')
+        else:
+            self.tg(cfg, 'sendMessage', chat_id=cfg.get('user_id'), text='🔴 Il PC è spento.', reply_markup=kb)
 
     def page_wake(self):
         cfg = load()

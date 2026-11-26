@@ -83,15 +83,7 @@ try {
     }
     'wol' {
       $n = [string]$a.name
-      $nic = Get-NetAdapter | Where-Object { $_.Name -ceq $n } | Select-Object -First 1
-      if (-not $nic) { throw 'Scheda di rete non trovata' }
-      Set-NetAdapterAdvancedProperty -Name $nic.Name -RegistryKeyword '*WakeOnMagicPacket' -RegistryValue 1 -ErrorAction SilentlyContinue
-      Set-NetAdapterAdvancedProperty -Name $nic.Name -RegistryKeyword 'S5WakeOnLan' -RegistryValue 1 -ErrorAction SilentlyContinue
-      Set-NetAdapterPowerManagement -Name $nic.Name -WakeOnMagicPacket Enabled -ErrorAction SilentlyContinue
-      # Risparmio energetico Ethernet: a PC spento il collegamento dorme e il pacchetto magico non arriva.
-      foreach ($k in '*EEE', 'EnableGreenEthernet', 'AdvancedEEE') { Set-NetAdapterAdvancedProperty -Name $nic.Name -RegistryKeyword $k -RegistryValue 0 -ErrorAction SilentlyContinue }
-      $d = Get-PnpDevice -FriendlyName $nic.InterfaceDescription
-      & powercfg.exe /deviceenablewake $d.FriendlyName
+      @@WOL@@
     }
     'install' {
       $id = $pkg[[string]$a.key]
@@ -140,6 +132,29 @@ try {
 '''
 
 
+# Wake-on-LAN: tutte le opzioni di risveglio che il driver della scheda offre (i nomi cambiano da marca a marca)
+# e niente avvio rapido. $n = nome della scheda. Usato sia da NEXAR Admin sia dalla conferma UAC.
+WOL_PS = r'''$nic = Get-NetAdapter -Physical | Where-Object { $_.Name -ceq $n } | Select-Object -First 1
+      if (-not $nic) { throw 'Scheda di rete non trovata' }
+      $props = @(Get-NetAdapterAdvancedProperty -Name $nic.Name -AllProperties -ErrorAction SilentlyContinue)
+      # Risveglio con il pacchetto magico, anche da spento (nomi di Realtek, Intel, Killer, Aquantia e schede USB)
+      foreach ($k in '*WakeOnMagicPacket', 'S5WakeOnLan', 'EnablePME', '*ModernStandbyWoLMagicPacket', 'WakeOnMagicPacketFromS5', 'WakeFromS5', 'WOLShutdown') {
+        $p = $props | Where-Object { $_.RegistryKeyword -eq $k } | Select-Object -First 1
+        if ($p -and ((@($p.ValidRegistryValues) -contains '1') -or -not $p.ValidRegistryValues)) { Set-NetAdapterAdvancedProperty -Name $nic.Name -RegistryKeyword $k -RegistryValue 1 -NoRestart -ErrorAction SilentlyContinue }
+      }
+      # Risparmio energetico Ethernet: a PC spento il collegamento dorme e il pacchetto magico non arriva.
+      foreach ($k in '*EEE', 'EEELinkAdvertisement', 'AdvancedEEE', 'EnableGreenEthernet', 'PowerSavingMode', '*SelectiveSuspend') {
+        $p = $props | Where-Object { $_.RegistryKeyword -eq $k } | Select-Object -First 1
+        if ($p -and ((@($p.ValidRegistryValues) -contains '0') -or -not $p.ValidRegistryValues)) { Set-NetAdapterAdvancedProperty -Name $nic.Name -RegistryKeyword $k -RegistryValue 0 -NoRestart -ErrorAction SilentlyContinue }
+      }
+      Set-NetAdapterPowerManagement -Name $nic.Name -WakeOnMagicPacket Enabled -NoRestart -ErrorAction SilentlyContinue
+      Set-NetAdapterPowerManagement -Name $nic.Name -DeviceSleepOnDisconnect Disabled -NoRestart -ErrorAction SilentlyContinue
+      # Windows deve poter usare la scheda per svegliare il PC
+      & powercfg.exe /deviceenablewake $nic.InterfaceDescription 2>$null | Out-Null
+      # Avvio rapido di Windows: lo spegnimento diventa un letargo e molte schede di rete non si svegliano più.
+      Set-ItemProperty -LiteralPath 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Power' -Name HiberbootEnabled -Value 0 -Type DWord
+      Restart-NetAdapter -Name $nic.Name -ErrorAction SilentlyContinue'''
+
 # Chiamate al programma ufficiale di MSI (Mystic Light SDK) in un thread a parte: se MSI non risponde il runner
 # non resta appeso (succede con scheda madre e RAM sincronizzate in Mystic Light).
 MSI_CS = r"""using System; using System.Runtime.InteropServices; using System.Threading;
@@ -187,6 +202,7 @@ def runner_text(request: Path, result: Path, exe: str, clean: dict, packages: di
               '@@TRIM@@': trim, '@@APPROVED@@': q('HKLM:\\' + approved), '@@RULE@@': q(rule), '@@PORT@@': str(port),
               '@@AUTOSTART@@': autostart, '@@AUTOTASK@@': q(autostart_task), '@@FANS@@': fans, '@@APPS@@': table(apps or {}), '@@MSICS@@': q(MSI_CS)}
     text = RUNNER
+    values['@@WOL@@'] = WOL_PS
     for key, value in values.items(): text = text.replace(key, value)
     return text
 
@@ -242,7 +258,7 @@ class AdminHelper:
 
     def current(self) -> bool:
         """Il runner sa fare le azioni di questa versione (creato da una NEXAR vecchia: va rifatto con una conferma)."""
-        try: return "'msi_light'" in (self.folder / 'runner.ps1').read_text(encoding='utf-8-sig')
+        try: return 'HiberbootEnabled' in (self.folder / 'runner.ps1').read_text(encoding='utf-8-sig')   # Wake-on-LAN 1.0.91
         except OSError: return False
 
     def _read_result(self):

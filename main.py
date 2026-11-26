@@ -85,6 +85,7 @@ async def lifespan(app: FastAPI):
     t9 = threading.Thread(target=controller.optimize_loop,args=(stop,),daemon=True,name='auto-clean')
     threading.Thread(target=controller.net_loop,args=(stop,),daemon=True,name='auto-net').start()
     threading.Thread(target=controller.connections_loop,args=(stop,),daemon=True,name='connections').start()
+    threading.Thread(target=controller.presence_loop,args=(stop,),daemon=True,name='presence').start()
     t1.start();t2.start();t3.start();t4.start();t5.start();t6.start();t7.start();t8.start();t9.start()
     updater.announce()
     # Avviso "PC acceso" solo dopo un avvio vero di Windows, non a ogni riapertura dell'app.

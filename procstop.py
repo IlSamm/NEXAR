@@ -37,6 +37,13 @@ NEVER_THROTTLE = PROTECTED | {'nvidia broadcast.exe', 'ds4windows.exe', 'dsx.exe
                               # AI ECO parte proprio mentre lavorano Codex e Claude: loro e i loro strumenti restano veloci.
                               'codex.exe', 'claude.exe', 'node.exe', 'git.exe', 'bash.exe', 'pwsh.exe', 'powershell.exe',
                               'cmd.exe', 'windowsterminal.exe', 'openconsole.exe', 'code.exe', 'rg.exe'}
+# In Gaming restano veloci anche chat vocale, dirette, musica, overlay e launcher: servono mentre giochi.
+GAMING_KEEP = {'discord.exe', 'discordptb.exe', 'discordcanary.exe', 'teamspeak.exe', 'ts3client_win64.exe', 'mumble.exe',
+               'obs64.exe', 'obs32.exe', 'streamlabs obs.exe', 'streamlabs desktop.exe', 'xsplit.core.exe', 'spotify.exe',
+               'nvidia broadcast.exe', 'rtss.exe', 'msiafterburner.exe', 'rtsshooksloader64.exe', 'steelseriesgg.exe',
+               'icue.exe', 'lghub.exe', 'lghub_agent.exe', 'razer synapse 3.exe', 'razercentralservice.exe', 'medal.exe',
+               'blitz.exe', 'porofessor.exe', 'mobalytics desktop.exe', 'battle.net.exe', 'eadesktop.exe',
+               'upc.exe', 'ubisoftconnect.exe', 'galaxyclient.exe', 'xboxpcapp.exe', 'gamingservices.exe'}
 IDLE = psutil.IDLE_PRIORITY_CLASS if os.name == 'nt' else 19
 RECLOSE_SECONDS = 20
 MAX_CLOSES = 3           # se Windows lo riapre ancora dopo 3 chiusure, per questa modalità lo lascio stare
@@ -117,10 +124,13 @@ class Stopper:
             self.throttled[p.pid] = (name, old)
         except (psutil.Error, OSError): pass
 
-    def tick(self, mode, rules, junk_on=True, throttle_bg=True, now=None, closer=None, spare=()):
-        """Una passata (ogni 5 s). Restituisce i programmi appena chiusi. spare = da non rallentare mai."""
+    def tick(self, mode, rules, junk_on=True, throttle_bg=True, now=None, closer=None, spare=(), spare_pids=()):
+        """Una passata (ogni 5 s). Restituisce i programmi appena chiusi. spare = da non rallentare mai;
+        spare_pids = i processi del gioco aperto. In AI ECO e in Gaming tutto ciò che gira in sfondo senza finestra
+        va in risparmio: in Gaming così il processore resta al gioco."""
         now = time.monotonic() if now is None else now
-        spare = {s.lower() for s in spare}
+        spare = {s.lower() for s in spare} | (GAMING_KEEP if mode == 'gaming' else set())
+        spare_pids = set(spare_pids)
         if mode not in ('eco', 'gaming'):
             if self.mode: self.release()
             return []
@@ -130,7 +140,7 @@ class Stopper:
         if self.me is None:
             try: self.me = psutil.Process().username()
             except psutil.Error: self.me = ''
-        shown = visible_pids() if mode == 'eco' and throttle_bg else set()
+        shown = visible_pids() if throttle_bg else set()
         mine = os.getpid()
         to_close, alive = {}, set()
         for p in proclist.iter_info(['name', 'username', 'exe']):
@@ -147,8 +157,8 @@ class Stopper:
                     to_close.setdefault(name, []).append(p)
                 elif act == 'lower':
                     if mode == 'eco': self._throttle(p, name)                     # in Gaming lo fa già il Boost
-                elif mode == 'eco' and throttle_bg and name not in NEVER_THROTTLE and name not in spare and p.pid not in shown \
-                        and (rules or {}).get(name) != 'keep' and not is_game(exe, name):
+                elif throttle_bg and name not in NEVER_THROTTLE and name not in spare and p.pid not in shown \
+                        and p.pid not in spare_pids and (rules or {}).get(name) != 'keep' and not is_game(exe, name):
                     self._throttle(p, name)
             except (psutil.Error, OSError): continue
         for pid in [k for k in self.throttled if k not in alive]: self.throttled.pop(pid, None)
@@ -157,8 +167,10 @@ class Stopper:
             if now - self.last_close.get(name, -1e9) < RECLOSE_SECONDS: continue
             if self.closes.get(name, 0) >= MAX_CLOSES: continue     # riparte sempre (lo riapre Windows): inutile insistere
             self.last_close[name] = now; self.closes[name] = self.closes.get(name, 0) + 1
-            if (closer or close)(name, procs, force=name in JUNK):
-                closed.append(name); self.stopped.add(name)
+            try: ok = (closer or close)(name, procs, force=name in JUNK)
+            except (psutil.Error, OSError) as ex:
+                logging.info('Non chiuso: %s (%s)', name, ex); ok = False
+            if ok: closed.append(name); self.stopped.add(name)
         return closed
 
 
@@ -166,10 +178,10 @@ def close(name, procs, force=False):
     """Chiusura gentile; i programmi noti come inutili, se non rispondono, vengono chiusi del tutto."""
     flags = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
     subprocess.run(['taskkill', '/im', name], capture_output=True, creationflags=flags)
-    gone, alive = psutil.wait_procs(procs, timeout=4)
+    alive = proclist.wait_gone(procs, 4)
     if alive and force:
         subprocess.run(['taskkill', '/f', '/im', name], capture_output=True, creationflags=flags)
-        gone, alive = psutil.wait_procs(alive, timeout=3)
+        alive = proclist.wait_gone(alive, 3)
     if alive: logging.info('Non chiuso: %s', name)
     return not alive
 

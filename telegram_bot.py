@@ -307,7 +307,10 @@ class TelegramBot:
                     if time.time() - self.conflict_logged > 600:
                         self.conflict_logged = time.time()
                         logging.warning('Telegram: il bot è letto anche da un altro programma (app NEXAR su Umbrel o un vecchio relay)')
-                    stop.wait(2); continue
+                    # L'app su Umbrel guarda se il PC c'è: le si dice che il bot lo sta leggendo NEXAR, così si fa da parte.
+                    b = getattr(self.ctrl, 'beacon', None)
+                    if b: threading.Thread(target=b.presence, args=('on',), daemon=True, name='presence').start()
+                    stop.wait(0.5); continue
                 else: logging.warning('Telegram non disponibile (HTTP %s)', ex.code)
                 stop.wait(6)
             except Exception as ex:

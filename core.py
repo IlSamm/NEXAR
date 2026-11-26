@@ -545,7 +545,9 @@ class Control:
         s, mode = self.booster.settings(), self.mode()
         rules = s.get('eco_apps') if mode == 'eco' else s.get('apps') if mode == 'gaming' else {}
         spare = self.config.get('auto_detect', {}).get('process_names') or []
-        closed = self.stopper.tick(mode, rules or {}, bool(s.get('stop_junk', True)), bool(s.get('eco_throttle', True)), spare=spare)
+        throttle = bool(s.get('eco_throttle', True)) if mode == 'eco' else bool(s.get('gaming_throttle', True))
+        closed = self.stopper.tick(mode, rules or {}, bool(s.get('stop_junk', True)), throttle, spare=spare,
+                                   spare_pids=self.booster.game_pids | ({self.booster.fg_pid} if self.booster.fg_pid else set()))
         if closed:
             self.log_event(('AI ECO' if mode == 'eco' else 'Gaming') + ': fermati ' + ', '.join(n.replace('.exe', '') for n in closed))
         return closed
@@ -1127,19 +1129,24 @@ class Control:
         else:
             # Gaming: CPU sempre pronta (nessun limite, core non parcheggiati) e monitor mai spento.
             max_cpu, min_cpu, timeout, parking = 100, 100, 0, 100
-        power('/setacvalueindex', guid, 'SUB_PROCESSOR', 'PROCTHROTTLEMAX',max_cpu)
-        power('/setacvalueindex', guid, 'SUB_PROCESSOR', 'PROCTHROTTLEMIN',min_cpu)
-        if parking is not None:
-            try: power('/setacvalueindex', guid, 'SUB_PROCESSOR', 'CPMINCORES',parking)
-            except RuntimeError: pass  # impostazione nascosta su alcuni PC
+        # Stessi valori a corrente e a batteria: sui portatili AI ECO e Gaming valgono anche scollegati.
+        def put(sub, setting, value, required=True):
+            try: power('/setacvalueindex', guid, sub, setting, value)
+            except RuntimeError:
+                if required: raise
+                return                                  # voce nascosta su questo PC: si salta
+            try: power('/setdcvalueindex', guid, sub, setting, value)
+            except RuntimeError: pass                   # PC fisso: niente batteria
+        put('SUB_PROCESSOR', 'PROCTHROTTLEMAX', max_cpu)
+        put('SUB_PROCESSOR', 'PROCTHROTTLEMIN', min_cpu)
+        if parking is not None: put('SUB_PROCESSOR', 'CPMINCORES', parking, required=False)
         # Risparmio vero in AI ECO (turbo spento, PCIe/USB/Wi-Fi a risparmio, dischi meccanici fermi dopo 10 min);
         # in Gaming il contrario. Alcune voci mancano su certi PC: si saltano.
         for sub, setting, value in (self.eco_power_extra() if mode == 'eco' else GAMING_EXTRA):
-            try: power('/setacvalueindex', guid, sub, setting, value)
-            except RuntimeError: pass
-        power('/setacvalueindex', guid, 'SUB_VIDEO', 'VIDEOIDLE',timeout)
-        power('/setacvalueindex', guid, 'SUB_SLEEP', 'STANDBYIDLE',0)
-        power('/setacvalueindex', guid, 'SUB_SLEEP', 'HIBERNATEIDLE',0)
+            put(sub, setting, value, required=False)
+        put('SUB_VIDEO', 'VIDEOIDLE', timeout)
+        put('SUB_SLEEP', 'STANDBYIDLE', 0)
+        put('SUB_SLEEP', 'HIBERNATEIDLE', 0)
         power('/setactive',guid)
 
     CONN_RETRY = 120   # secondi fra due tentativi sullo stesso collegamento
@@ -2270,6 +2277,7 @@ class Control:
             msg = label + (' quando Codex e Claude hanno finito' if after_ai else f' tra {minutes} minuti')
             self.log_event('⏻ Programmato: ' + msg)
             return msg + ' (programmato)'
+        if kind in ('sleep', 'hibernate'): self.presence('off')   # spegnimento e riavvio: lo dice presence_loop
         pc_power.execute(kind)
         with self.lock:
             # Spegnimento e riavvio restano annullabili per qualche secondo: la dashboard mostra il conto alla rovescia.
@@ -2278,6 +2286,20 @@ class Control:
         msg = label + (f' tra {pc_power.GRACE_SECONDS} secondi' if kind in ('shutdown', 'restart') else ' in corso')
         self.log_event('⏻ ' + msg)
         return msg
+
+    def presence(self, state):
+        b = getattr(self, 'beacon', None)
+        try: return bool(b and b.presence(state))
+        except Exception: return False
+
+    def presence_loop(self, stop_event):
+        """Windows si spegne o si riavvia (da NEXAR, dal menu Start o da un aggiornamento): l'app su Umbrel prende
+        subito il bot Telegram, così /accendi funziona appena il PC è spento."""
+        told = False
+        while not stop_event.wait(1):
+            if windows_shutting_down():
+                if not told: told = self.presence('off') or True
+            else: told = False
 
     def cancel_power(self):
         with self.lock: plan, self.power_plan = self.power_plan, None
@@ -2359,12 +2381,22 @@ class Control:
         import discovery
         net = self.state.get('inventory', {}).get('net') or {}
         if not net.get('name'): raise RuntimeError('Scheda di rete via cavo non trovata')
+        # NEXAR Admin creato da una versione vecchia conosce solo il vecchio Wake-on-LAN: va rinnovato dal PC.
+        if admin and not admin.current():
+            raise RuntimeError('Sul PC rinnova "Amministratore da remoto" (Impostazioni → Sistema, una conferma): poi qui sistemo tutto da lontano')
         if admin: admin.call('wol', name=net['name'])
         elif not discovery.run_elevated(discovery.wol_enable_script(net['name']), wait=True): raise RuntimeError('Conferma amministratore annullata')
-        inv = discovery.hardware_inventory()
-        if inv:
+        inv = {}
+        for _ in range(6):   # la scheda di rete si riavvia per applicare le opzioni: qualche secondo senza cavo
+            inv = discovery.hardware_inventory()
+            if inv.get('net'): break
+            time.sleep(4)
+        if inv.get('net'):
             with self.lock: self.state['inventory'] = inv; json_save(STATE_FILE, self.state)
-        return 'Wake-on-LAN attivato su ' + net['name']
+        n = inv.get('net') or {}
+        left = [x for x, bad in (('risveglio da spento', n.get('wol_magic') is False or n.get('wol_shutdown') is False),
+                                 ('avvio rapido', n.get('wol_fast')), ('risparmio energetico Ethernet', n.get('wol_eee'))) if bad]
+        return 'Wake-on-LAN attivato su ' + net['name'] + (' · non accettato dal driver: ' + ', '.join(left) if left else ' · avvio rapido di Windows spento')
 
     def log_event(self, message):
         record = {'at':datetime.now().isoformat(timespec='seconds'), 'message':str(message)[:400]}

@@ -20,6 +20,7 @@ import urllib.request
 
 NTFY = 'https://ntfy.sh'
 REPUBLISH = 6 * 3600          # ntfy tiene i messaggi 12 ore
+PRESENCE_EVERY = 30 * 60      # 'acceso' all'app su Umbrel al massimo ogni 30 minuti (là vale 31)
 CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
 
 
@@ -95,6 +96,7 @@ class Beacon:
         self.config, self.save, self.get_url, self.info, self.post, self.clock = config, save, get_url, info, post, clock
         self.relay = relay         # bot Telegram per l'app su Umbrel: se cambia qui, lì si aggiorna da solo
         self.relay_sent = (None, 0.0)
+        self.presence_sent = ('', 0.0)
         self.kick = threading.Event()
         self.pending = None        # (codice pulito, scadenza)
         self.pending_sent = None   # (codice, indirizzo) già pubblicati
@@ -108,6 +110,19 @@ class Beacon:
             self.config['beacon'] = b
             self.save()
         return b['secret']
+
+    def presence(self, state: str) -> bool:
+        """Dice all'app NEXAR su Umbrel se il bot Telegram lo sta leggendo il PC ('on') o se il PC si spegne ('off'):
+        serve quando Umbrel non riesce a raggiungere il PC da solo. Solo se Umbrel è collegata."""
+        if state not in ('on', 'off') or self.relay() is None: return False
+        now = self.clock()
+        if state == 'on' and self.presence_sent[0] == 'on' and now - self.presence_sent[1] < PRESENCE_EVERY: return False
+        s = 'presence:' + self.secret()
+        try: self.post(topic(s), seal(s, {'state': state, 't': int(now)}))
+        except Exception as ex:
+            logging.info("Stato per l'app su Umbrel non pubblicato: %s", ex); return False
+        self.presence_sent = (state, now)
+        return True
 
     def code_waiting(self) -> bool:
         return bool(self.pending and self.clock() < self.pending[1])

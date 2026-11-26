@@ -30,7 +30,16 @@ HELPER_HINTS = ('launcher', 'crashhandler', 'crashreport', 'riotclient', 'cefsub
 FULLSCREEN_SKIP = {'chrome.exe', 'msedge.exe', 'firefox.exe', 'brave.exe', 'opera.exe', 'vivaldi.exe', 'vlc.exe',
                    'mpc-hc64.exe', 'potplayermini64.exe', 'wmplayer.exe', 'microsoft.media.player.exe', 'video.ui.exe',
                    'powerpnt.exe', 'zoom.exe', 'ms-teams.exe', 'teams.exe', 'discord.exe', 'spotify.exe', 'chatgpt.exe',
-                   'claude.exe', 'code.exe', 'photos.exe', 'netflix.exe', 'obs64.exe'}
+                   'claude.exe', 'code.exe', 'photos.exe', 'netflix.exe', 'obs64.exe', 'kodi.exe', 'mpv.exe', 'plex.exe',
+                   'plexamp.exe', 'stremio.exe', 'disneyplus.exe', 'primevideo.exe', 'mspaint.exe', 'acrobat.exe',
+                   'acrord32.exe', 'excel.exe', 'winword.exe', 'onenote.exe', 'outlook.exe', 'whatsapp.exe', 'telegram.exe',
+                   'mstsc.exe', 'msrdc.exe', 'parsecd.exe', 'moonlight.exe', 'anydesk.exe', 'teamviewer.exe', 'rustdesk.exe',
+                   'wallpaper32.exe', 'wallpaper64.exe', 'lively.exe', 'notepad.exe', 'explorer.exe'}
+# Librerie che solo i giochi caricano: motori (Unity, Unreal), Steam/Epic dentro il gioco, comandi del controller.
+GAME_MODULES = ('steam_api64.dll', 'steam_api.dll', 'unityplayer.dll', 'eossdk-win64-shipping.dll', 'gameoverlayrenderer64.dll',
+                'gameoverlayrenderer.dll', 'xinput1_3.dll', 'xinput9_1_0.dll', 'd3d9.dll', 'vulkan-1.dll', 'gameinput.dll',
+                'galaxy64.dll', 'uplay_r1_loader64.dll', 'fmod.dll', 'fmodstudio.dll', 'bink2w64.dll', 'phonon.dll')
+FULLSCREEN_GAME_AFTER = 25   # secondi a schermo intero prima di chiedersi se è un gioco
 # Mai toccati: sistema, NEXAR e gli strumenti che la fanno funzionare.
 PROTECTED = {'system', 'registry', 'smss.exe', 'csrss.exe', 'wininit.exe', 'winlogon.exe', 'services.exe', 'lsass.exe',
              'svchost.exe', 'explorer.exe', 'dwm.exe', 'sihost.exe', 'fontdrvhost.exe', 'ctfmon.exe', 'searchhost.exe',
@@ -46,9 +55,9 @@ TWEAKS = {
     'no_dvr': ('Registrazione Xbox in background spenta', 'HKCU', r'System\GameConfigStore', 'GameDVR_Enabled', 0, 'no_dvr'),
     'no_capture': ('Acquisizione Game Bar spenta', 'HKCU', r'Software\Microsoft\Windows\CurrentVersion\GameDVR', 'AppCaptureEnabled', 0, 'no_dvr'),
 }
-OPTIONS = ('game_priority', 'game_mode', 'no_dvr', 'reopen', 'auto', 'mouse', 'stop_junk', 'eco_throttle', 'covers_online')
+OPTIONS = ('game_priority', 'game_mode', 'no_dvr', 'reopen', 'auto', 'mouse', 'stop_junk', 'eco_throttle', 'gaming_throttle', 'covers_online')
 DEFAULTS = {'game_priority': True, 'game_mode': True, 'no_dvr': True, 'reopen': True, 'auto': True, 'mouse': False, 'apps': {}, 'hidden': [],
-            'eco_apps': {}, 'stop_junk': True, 'eco_throttle': True, 'covers_online': True, 'per_game': {}}
+            'eco_apps': {}, 'stop_junk': True, 'eco_throttle': True, 'gaming_throttle': True, 'covers_online': True, 'per_game': {}}
 # Scelte di un singolo gioco. None = come le impostazioni generali di Gaming; per le luci '' = non cambiarle.
 PROFILE_DEFAULT = {'auto': True, 'fans': '', 'rgb': None, 'mouse': None}
 GAME_ID = re.compile(r'[a-z]+-[A-Za-z0-9_-]{1,70}')
@@ -61,7 +70,41 @@ def is_helper(name: str) -> bool:
 
 def is_game(exe: str, name: str = '') -> bool:
     low = (exe or '').lower()
-    return any(f in low for f in GAME_FOLDERS) and not is_helper(name or os.path.basename(low))
+    if is_helper(name or os.path.basename(low)): return False
+    return any(f in low for f in GAME_FOLDERS) or (bool(low) and norm(low) in windows_games())
+
+_wg_cache = {'at': -1e9, 'paths': frozenset()}
+
+def windows_games() -> frozenset:
+    """Giochi riconosciuti da Windows stesso (Game Bar): ogni gioco avviato almeno una volta, da qualsiasi negozio o
+    cartella (Battle.net, EA, Ubisoft, Xbox, giochi installati a mano). Letti dal registro, ricontrollati ogni 5 minuti."""
+    if os.name != 'nt': return frozenset()
+    if time.monotonic() - _wg_cache['at'] < 300: return _wg_cache['paths']
+    import winreg
+    paths = set()
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r'System\GameConfigStore\Children') as root:
+            for i in range(2000):
+                try: sub = winreg.EnumKey(root, i)
+                except OSError: break
+                try:
+                    with winreg.OpenKey(root, sub) as k: exe = winreg.QueryValueEx(k, 'MatchedExeFullPath')[0]
+                except OSError: continue
+                if isinstance(exe, str) and exe.lower().endswith('.exe') and not is_helper(os.path.basename(exe)):
+                    low = exe.lower()
+                    if not low.startswith(os.environ.get('WINDIR', r'C:\Windows').lower()): paths.add(norm(exe))
+    except OSError: pass
+    _wg_cache.update(at=time.monotonic(), paths=frozenset(paths))
+    return _wg_cache['paths']
+
+def looks_like_game(proc) -> bool:
+    """Programma a schermo intero da un po': è un gioco se ha caricato le librerie tipiche dei giochi. I giochi con
+    anti-cheat non si lasciano leggere: a schermo intero e protetti, sono giochi anche loro."""
+    try: files = proc.memory_maps(grouped=True)
+    except psutil.AccessDenied: return True
+    except (psutil.Error, OSError): return False
+    names = {os.path.basename(getattr(m, 'path', '') or '').lower() for m in files}
+    return any(m in names for m in GAME_MODULES)
 
 def norm(path) -> str:
     return os.path.normcase(os.path.normpath(str(path))).rstrip('\\/') + os.sep
@@ -381,6 +424,8 @@ class Booster:
         self.game_pids = set()     # processi del gioco aperto: servono a leggere i suoi FPS
         self.fg_pid = None
         self.session = None
+        self.full_since = {}       # pid -> da quando è a schermo intero in primo piano
+        self.verdict = {}          # pid -> True/False: gioco riconosciuto dalle sue librerie
 
     # ---------- impostazioni ----------
     def settings(self):
@@ -475,11 +520,11 @@ class Booster:
         procs = game_processes(run, pids, library())
         if not procs: return None
         close_windows({p.pid for p in procs})
-        _, alive = psutil.wait_procs(procs, timeout=wait)
+        alive = proclist.wait_gone(procs, wait)
         for p in alive:
             try: p.terminate()
             except psutil.Error: pass
-        _, alive = psutil.wait_procs(alive, timeout=4)
+        alive = proclist.wait_gone(alive, 4)
         for p in alive:
             try: p.kill()
             except psutil.Error: pass
@@ -543,8 +588,8 @@ class Booster:
             main = next((p for p in procs if p.info['cmdline'] and len(p.info['cmdline']) <= 2), procs[0])
             info = {'name': name, 'exe': main.info['exe'], 'cmdline': main.info['cmdline'] or [main.info['exe']], 'cwd': main.info['cwd']}
             subprocess.run(['taskkill', '/im', name], capture_output=True, creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
-            gone, alive = psutil.wait_procs(procs, timeout=6)
-            if not alive or len(gone) >= len(procs) / 2:
+            alive = proclist.wait_gone(procs, 6)
+            if not alive or len(procs) - len(alive) >= len(procs) / 2:
                 with self.lock: self.closed.append(info)
                 done.append(name.replace('.exe', ''))
         return done
@@ -561,6 +606,8 @@ class Booster:
         fg, full_screen = foreground_window()
         if fg: self.seen_fg.add(fg)
         fg = fg if full_screen else None
+        now = time.monotonic()
+        self.full_since = {fg: self.full_since.get(fg, now)} if fg else {}
         lower = {n for n, act in s['apps'].items() if act == 'lower'}
         found, alive, cands = None, set(), []
         for p in proclist.iter_info(['name', 'exe']):
@@ -573,6 +620,8 @@ class Booster:
                 lib = next((g for d, g in dirs if path.startswith(d)), None) if path and not is_helper(name) else None
                 # Conta solo se è passato in primo piano: i programmi di sfondo nelle cartelle dei giochi no.
                 game = p.pid in self.seen_fg and (lib is not None or (is_game(exe, name) and not any(path.startswith(d) for d in hidden_dirs)))
+                if not game and p.pid == fg and self.fullscreen_game(p, name, exe, now) and not any(path.startswith(d) for d in hidden_dirs):
+                    game = True                        # gioco fuori dai negozi conosciuti: riconosciuto a schermo intero
                 if not game: lib = None
                 else: cands.append((p.pid, lib['id'] if lib else 'proc-' + name[:-4]))
                 if game and (found is None or (lib and not found.get('store'))):
@@ -588,6 +637,7 @@ class Booster:
                     with self.lock: self.lowered[p.pid] = (name, old)
             except (psutil.Error, OSError): continue
         self.seen_fg &= alive
+        self.verdict = {k: v for k, v in self.verdict.items() if k in alive}
         with self.lock:
             self.running = found
             self.game_pids = {pid for pid, gid in cands if found and gid == found['id']}
@@ -597,6 +647,13 @@ class Booster:
                 if self.session is not None and not self.session['gid']:
                     self.session.update(game=found['name'], gid=found['id'])
         return found
+
+    def fullscreen_game(self, p, name, exe, now):
+        if name in FULLSCREEN_SKIP or is_helper(name) or not exe: return False
+        if exe.lower().startswith(os.environ.get('WINDIR', r'C:\Windows').lower()): return False
+        if now - self.full_since.get(p.pid, now) < FULLSCREEN_GAME_AFTER: return False
+        if p.pid not in self.verdict: self.verdict[p.pid] = looks_like_game(p)
+        return self.verdict[p.pid]
 
     # ---------- statistiche della sessione ----------
     def sample(self, t: dict):

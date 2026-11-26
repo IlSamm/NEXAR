@@ -408,7 +408,7 @@ def close_app(name: str):
     procs = [p for p in proclist.iter_info(['name']) if (p.info['name'] or '').lower() == name.lower()]
     if not procs: return f'{name[:-4]} non è più aperto'
     subprocess.run(['taskkill', '/im', name], capture_output=True, creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
-    gone, alive = psutil.wait_procs(procs, timeout=6)
+    alive = proclist.wait_gone(procs, 6)
     return f'{name[:-4]} chiuso' if not alive else f'{name[:-4]}: chiesto di chiudersi (potrebbe chiedere di salvare)'
 
 # ---------- file grandi nelle cartelle personali (solo elenco: si apre la cartella o si sposta nel Cestino) ----------

@@ -6,6 +6,8 @@ fuori un KeyError ('cpu_times', 'memory_info', 'exe' nel log). Qui ogni giro ha 
 """
 from __future__ import annotations
 
+import time
+
 import psutil
 
 
@@ -26,3 +28,20 @@ def iter_info(attrs):
         except psutil.Error: continue
         except AttributeError: info = dict(getattr(p, 'info', None) or {})   # processi finti dei test
         yield Proc(p, info)
+
+
+def wait_gone(procs, timeout):
+    """Come psutil.wait_procs, ma un processo protetto da Windows (accesso negato) conta come ancora aperto
+    invece di fermare tutto con un errore."""
+    end, alive = time.monotonic() + timeout, list(procs)
+    while alive:
+        still = []
+        for p in alive:
+            try:
+                if p.is_running() and p.status() != psutil.STATUS_ZOMBIE: still.append(p)
+            except psutil.NoSuchProcess: pass
+            except psutil.Error: still.append(p)
+        alive = still
+        if not alive or time.monotonic() >= end: break
+        time.sleep(0.25)
+    return alive

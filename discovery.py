@@ -783,12 +783,15 @@ if($nic){
  $ip=Get-NetIPAddress -InterfaceIndex $nic.ifIndex -AddressFamily IPv4 | Select-Object -First 1
  $adv=@{}; Get-NetAdapterAdvancedProperty -Name $nic.Name | ForEach-Object { $adv[$_.RegistryKeyword]=[string]$_.RegistryValue }
  $net=[pscustomobject]@{name=$nic.Name;desc=$nic.InterfaceDescription;mac=$nic.MacAddress;ip=$ip.IPAddress;prefix=[int]$ip.PrefixLength;
-  magic=$adv['*WakeOnMagicPacket'];s5=$adv['S5WakeOnLan'];eee=$adv['*EEE'];green=$adv['EnableGreenEthernet']}
+  magic=$adv['*WakeOnMagicPacket'];s5=$adv['S5WakeOnLan'];pme=$adv['EnablePME'];eee=$adv['*EEE'];green=$adv['EnableGreenEthernet'];
+  eeeadv=$adv['AdvancedEEE'];eeelink=$adv['EEELinkAdvertisement'];psave=$adv['PowerSavingMode'];
+  armed=[bool](@(powercfg /devicequery wake_armed) -contains $nic.InterfaceDescription)}
 }
+$fast=(Get-ItemProperty -LiteralPath 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Power').HiberbootEnabled
 $cpu=(Get-CimInstance Win32_Processor | Select-Object -First 1).Name
 $gpus=@(Get-CimInstance Win32_VideoController | ForEach-Object { $_.Name })
 $mb=Get-CimInstance Win32_BaseBoard
-[pscustomobject]@{dimms=$dimms;disks=$disks;net=$net;cpu=$cpu;gpus=$gpus;board_vendor=$mb.Manufacturer;board=$mb.Product} | ConvertTo-Json -Depth 4 -Compress
+[pscustomobject]@{dimms=$dimms;disks=$disks;net=$net;cpu=$cpu;gpus=$gpus;board_vendor=$mb.Manufacturer;board=$mb.Product;fast=$fast} | ConvertTo-Json -Depth 4 -Compress
 """
 VIRTUAL_GPU = ('basic display', 'basic render', 'virtual', 'parsec', 'remote', 'citrix', 'vmware', 'hyper-v', 'idd', 'meta ')
 VENDORS = {'micro-star': 'MSI', 'asustek': 'ASUS', 'gigabyte': 'Gigabyte', 'asrock': 'ASRock', 'biostar': 'Biostar', 'nzxt': 'NZXT'}
@@ -835,10 +838,16 @@ def hardware_inventory() -> dict:
                       'ip': net.get('ip') or '', 'broadcast': broadcast_of(net.get('ip') or '', net.get('prefix') or 24),
                       # Valori registro del driver: 1 = attivo; None = il driver non espone l'opzione.
                       'wol_magic': None if net.get('magic') is None else net.get('magic') == '1',
-                      'wol_shutdown': None if net.get('s5') is None else net.get('s5') == '1',
+                      # Da spento: Realtek lo chiama S5WakeOnLan, Intel EnablePME; None = il driver non lo espone.
+                      'wol_shutdown': (None if net.get('s5') is None and net.get('pme') is None
+                                       else net.get('s5') == '1' or (net.get('s5') is None and net.get('pme') == '1')),
+                      # Windows ha il permesso di svegliare il PC con questa scheda
+                      'wol_armed': bool(net.get('armed')),
+                      # Avvio rapido di Windows: lo spegnimento è un letargo e molte schede non si svegliano
+                      'wol_fast': raw.get('fast') == 1,
                       # Risparmio energetico Ethernet (Realtek EEE / Green Ethernet): a PC spento il collegamento
                       # si addormenta e il pacchetto magico spesso non arriva.
-                      'wol_eee': net.get('eee') == '1' or net.get('green') == '1'}
+                      'wol_eee': any(net.get(k) not in (None, '0') for k in ('eee', 'green', 'eeeadv', 'eeelink', 'psave'))}
     gpus = raw.get('gpus') or []
     cpu = re.sub(r'\s+', ' ', str(raw.get('cpu') or '')).strip()
     inv['hardware'] = {'cpu': re.sub(r'\s+\d+-Core Processor$|\(R\)|\(TM\)', '', cpu).strip(),
@@ -847,10 +856,6 @@ def hardware_inventory() -> dict:
     return inv
 
 def wol_enable_script(adapter: str) -> str:
-    """Attiva Wake-on-LAN sulla scheda di rete (anche da spento, se il driver lo prevede)."""
-    a = _q(adapter)
-    return (f"Set-NetAdapterAdvancedProperty -Name {a} -RegistryKeyword '*WakeOnMagicPacket' -RegistryValue 1 -ErrorAction SilentlyContinue;"
-            f"Set-NetAdapterAdvancedProperty -Name {a} -RegistryKeyword 'S5WakeOnLan' -RegistryValue 1 -ErrorAction SilentlyContinue;"
-            f"Set-NetAdapterPowerManagement -Name {a} -WakeOnMagicPacket Enabled -ErrorAction SilentlyContinue;"
-            f"Set-NetAdapterAdvancedProperty -Name {a} -RegistryKeyword '*EEE' -RegistryValue 0 -ErrorAction SilentlyContinue;Set-NetAdapterAdvancedProperty -Name {a} -RegistryKeyword 'EnableGreenEthernet' -RegistryValue 0 -ErrorAction SilentlyContinue;Set-NetAdapterAdvancedProperty -Name {a} -RegistryKeyword 'AdvancedEEE' -RegistryValue 0 -ErrorAction SilentlyContinue;"
-            f"$d=Get-PnpDevice -FriendlyName (Get-NetAdapter -Name {a}).InterfaceDescription; powercfg /deviceenablewake $d.FriendlyName")
+    """Attiva Wake-on-LAN sulla scheda di rete (anche da spento, se il driver lo prevede) e toglie l'avvio rapido."""
+    import admin_helper
+    return f"$n={_q(adapter)};" + admin_helper.WOL_PS

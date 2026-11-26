@@ -874,9 +874,10 @@ function renderPc(pc){
  const setStep=(id,ok)=>{$(id).classList.toggle('ok',ok===true);$(id).classList.toggle('bad',ok===false);};
  setStep('wol-net',!!n);
  $('wol-net-text').textContent=n?`${n.desc.replace(/\s*(Family )?Controller$/i,'')} · ${n.ip}`:'Nessun cavo di rete: col solo Wi-Fi il PC spento non si accende.';
- const winOk=!!n&&n.wol_magic!==false&&n.wol_shutdown!==false&&!n.wol_eee;setStep('wol-win',n?winOk:null);
- $('wol-win-text').textContent=!n?'—':winOk?'Attivo, anche da spento':n.wol_magic!==false&&n.wol_shutdown!==false
-  ?'Da sistemare: il risparmio energetico Ethernet addormenta la rete a PC spento (una conferma)':'Da attivare (una conferma)';
+ const wolMiss=!n?[]:[n.wol_magic===false||n.wol_shutdown===false?'risveglio da spento':'',n.wol_eee?'risparmio energetico Ethernet':'',
+  n.wol_fast?'avvio rapido di Windows':'',n.wol_armed===false?'permesso di svegliare il PC':''].filter(Boolean);
+ const winOk=!!n&&!wolMiss.length;setStep('wol-win',n?winOk:null);
+ $('wol-win-text').textContent=!n?'—':winOk?'Attivo, anche da spento':`Da sistemare: ${wolMiss.join(', ')} (una conferma, sistemo tutto io)`;
  $('wol-enable').hidden=!n||winOk||!!current?.remote;
  // BIOS: i nomi delle voci cambiano da marca a marca
  const brand=(pc.board||'').split(' ')[0].toLowerCase();
@@ -2432,7 +2433,7 @@ const FAN_BAR={off:0,off_pump:8,eco:35,normal:60,max:100};
 const DEMO_GAMING={boost:{active:true,game:'Hollow Knight',boosted:['hollow_knight.exe'],lowered:['discord.exe'],closed:['chrome.exe'],
   tweaks:['Modalità gioco di Windows','Registrazione Xbox in background spenta'],running:{id:'steam-367520',name:'Hollow Knight',store:'Steam'},
   session:{game:'Hollow Knight',gid:'steam-367520',start:Date.now()/1000-2580,elapsed:2580,cpu_temp_max:71,gpu_temp_max:66,cpu_temp_avg:63,gpu_temp_avg:60,cpu_avg:31,gpu_avg:74,kwh:.21,watts_avg:288,fps_avg:141,fps_low:96,fps_max:165},
-  settings:{game_priority:true,game_mode:true,no_dvr:true,reopen:true,auto:true,mouse:false,apps:{'discord.exe':'lower','chrome.exe':'close'},eco_apps:{'chrome.exe':'lower'},stop_junk:true,eco_throttle:true,hidden:[]}},
+  settings:{game_priority:true,game_mode:true,no_dvr:true,reopen:true,auto:true,mouse:false,apps:{'discord.exe':'lower','chrome.exe':'close'},eco_apps:{'chrome.exe':'lower'},stop_junk:true,eco_throttle:true,gaming_throttle:true,hidden:[]}},
  games:[{id:'steam-367520',name:'Hollow Knight',store:'Steam',size:5.2e9,last:Date.now()/1000-3000,playtime:9600,cover:false,sessions:6,fps:143,fps_low:101,cpu_t:62,gpu_t:58},
   {id:'steam-526870',name:'Satisfactory',store:'Steam',size:3e10,last:Date.now()/1000-90000,playtime:2400,cover:false,sessions:2,fps:74,fps_low:48,cpu_t:71,gpu_t:69},
   {id:'riot-valorant',name:'VALORANT',store:'Riot',size:0,last:Date.now()/1000-400000,playtime:3700,cover:false,sessions:3,fps:238,fps_low:171,cpu_t:68,gpu_t:61},
@@ -2627,7 +2628,7 @@ function renderBoostApps(d){
  // Una scelta per app e per modalità. I programmi noti come inutili partono già su "Chiudi" (Lascia = "keep").
  const s=d.boost?.settings||{},key=stopMode==='eco'?'eco_apps':'apps',chosen=s[key]||{},junk=d.junk||{},junkOn=s.stop_junk!==false;
  document.querySelectorAll('#stop-mode button').forEach(b=>b.classList.toggle('selected',b.dataset.sm===stopMode));
- $('stop-eco-row').hidden=stopMode!=='eco';
+ $('stop-eco-row').hidden=stopMode!=='eco';$('stop-game-row').hidden=stopMode!=='gaming';
  const st=d.stopper||{},live=st.mode===stopMode&&(st.stopped||[]).length;
  $('stop-sub').textContent=live?`Adesso: fermati ${st.stopped.map(n=>n.replace(/\.exe$/i,'')).join(', ')}`+(st.throttled?` · ${st.throttled} in risparmio`:'')
   :stopMode==='eco'?'Cosa fare di ogni app quando sei in AI ECO':'Cosa fare di ogni app mentre giochi';

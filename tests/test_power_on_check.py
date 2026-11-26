@@ -121,5 +121,63 @@ def test_umbrel_steps_aside_when_the_pc_reads_the_bot(monkeypatch):
     def sleep(s):
         sleeps.append(s); raise Stop
     monkeypatch.setattr(nx.time, 'sleep', sleep)
+    w = nx.Waker()
+    with pytest.raises(Stop): w.telegram()
+    assert sleeps == [10] and w.pc_busy_until > nx.time.time() + 50   # 409: NEXAR sul PC legge il bot, ci si fa da parte
+
+
+def test_umbrel_answers_only_messages_nobody_reads():
+    seen = {}
+    ups = [{'update_id': 1}, {'update_id': 2}]
+    assert nx.unread(ups, seen, 100, 10) == []                     # appena visti: forse li legge il PC
+    assert nx.unread(ups + [{'update_id': 3}], seen, 111, 10) == [{'update_id': 1}, {'update_id': 2}]
+    assert nx.read_by_other([{'update_id': 2}, {'update_id': 3}], seen)       # l'1 è sparito: l'ha letto il PC
+    assert not nx.read_by_other(ups + [{'update_id': 3}], seen)
+
+
+def test_umbrel_steps_aside_when_messages_vanish_and_on_presence(monkeypatch):
+    cfg = {'wake_secret': 'w', 'pc_ip': '192.168.1.20', 'bot_token': '1:x', 'user_id': 5}
+    calls = waker_env(monkeypatch, cfg, on=False)
+    monkeypatch.setattr(nx, 'app_up', lambda c: False)
+    monkeypatch.setattr(nx, 'quiet', lambda *a: False)
+    batches = [[{'update_id': 7, 'message': {'from': {'id': 5}, 'date': nx.time.time(), 'text': '/stato'}}], []]
+    asked = []
+    def tg(self, c, method, **p):
+        asked.append((method, p.get('offset')))
+        return batches.pop(0) if method == 'getUpdates' and batches else []
+    monkeypatch.setattr(nx.Waker, 'tg', tg)
+    sleeps = []
+    def sleep(s):
+        sleeps.append(s)
+        if len(sleeps) > 1: raise Stop
+    monkeypatch.setattr(nx.time, 'sleep', sleep)
+    w = nx.Waker()
+    with pytest.raises(Stop): w.telegram()
+    # il messaggio è sparito senza che Umbrel lo confermasse: lo ha letto NEXAR sul PC
+    assert all(off is None for _, off in asked) and w.pc_busy_until > nx.time.time() + 100 and not calls['told']
+    now = nx.time.time()
+    w.presence({'state': 'on', 't': now}, now); assert w.pc_busy_until > now + 1800
+    w.presence({'state': 'off', 't': now}, now); assert w.pc_busy_until == 0
+    w.presence({'state': 'on', 't': now - 3600}, now); assert w.pc_busy_until == 0        # vecchio: ignorato
+
+
+def test_umbrel_takes_unread_messages_and_confirms_them(monkeypatch):
+    cfg = {'wake_secret': 'w', 'pc_ip': '192.168.1.20', 'bot_token': '1:x', 'user_id': 5}
+    waker_env(monkeypatch, cfg, on=False)
+    monkeypatch.setattr(nx, 'app_up', lambda c: False)
+    monkeypatch.setattr(nx, 'quiet', lambda *a: False)
+    ev = {'update_id': 9, 'message': {'from': {'id': 5}, 'date': nx.time.time(), 'text': '/stato'}}
+    clock = [1000.0]
+    monkeypatch.setattr(nx.time, 'monotonic', lambda: clock[0])
+    asked = []
+    def tg(self, c, method, **p):
+        asked.append((method, p.get('offset'), p.get('text')))
+        return [ev] if method == 'getUpdates' and p.get('offset') is None else []
+    monkeypatch.setattr(nx.Waker, 'tg', tg)
+    rounds = []
+    def sleep(s):
+        rounds.append(s); clock[0] += 30
+        if len(rounds) > 1: raise Stop
+    monkeypatch.setattr(nx.time, 'sleep', sleep)
     with pytest.raises(Stop): nx.Waker().telegram()
-    assert sleeps == [60]
+    assert ('getUpdates', 10, None) in asked and ('sendMessage', None, '🔴 Il PC è spento.') in asked
